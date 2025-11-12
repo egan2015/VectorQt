@@ -32,6 +32,8 @@ public:
         Ellipse,
         Path,
         Line,
+        Polyline,
+        Polygon,
         Text,
         Group
     };
@@ -65,6 +67,9 @@ public:
     // 几何属性
     QRectF boundingRect() const override;
     QPainterPath shape() const override;
+    
+    // 获取可用于布尔运算的路径（考虑变换）
+    virtual QPainterPath transformedShape() const;
     
     // 样式属性
     void setFillBrush(const QBrush &brush) { m_fillBrush = brush; update(); }
@@ -138,14 +143,19 @@ protected:
 class DrawingRectangle : public DrawingShape
 {
 public:
-    explicit DrawingRectangle(const QRectF &rect = QRectF(0, 0, 100, 100), QGraphicsItem *parent = nullptr);
+    explicit DrawingRectangle(QGraphicsItem *parent = nullptr);
+    explicit DrawingRectangle(const QRectF &rect, QGraphicsItem *parent = nullptr);
     
     QRectF localBounds() const override;
+    QPainterPath shape() const override;
+    QPainterPath transformedShape() const override;
+    
+    // 矩形属性
     void setRectangle(const QRectF &rect);
     QRectF rectangle() const { return m_rect; }
     
-    // 圆角支持
-    void setCornerRadius(qreal radius) { m_cornerRadius = radius; update(); }
+    // 圆角半径
+    void setCornerRadius(qreal radius);
     qreal cornerRadius() const { return m_cornerRadius; }
     
     // 参考../qdraw的比例控制方式
@@ -190,9 +200,14 @@ private:
 class DrawingEllipse : public DrawingShape
 {
 public:
-    explicit DrawingEllipse(const QRectF &rect = QRectF(0, 0, 100, 100), QGraphicsItem *parent = nullptr);
+    explicit DrawingEllipse(QGraphicsItem *parent = nullptr);
+    explicit DrawingEllipse(const QRectF &rect, QGraphicsItem *parent = nullptr);
     
     QRectF localBounds() const override;
+    QPainterPath shape() const override;
+    QPainterPath transformedShape() const override;
+    
+    // 椭圆属性
     void setEllipse(const QRectF &rect);
     QRectF ellipse() const { return m_rect; }
     
@@ -239,6 +254,9 @@ public:
     void setPath(const QPainterPath &path);
     QPainterPath path() const { return m_path; }
     
+    // 重写变换形状方法
+    QPainterPath transformedShape() const override;
+    
     // 控制点相关
     void setControlPoints(const QVector<QPointF> &points);
     QVector<QPointF> controlPoints() const { return m_controlPoints; }
@@ -271,7 +289,9 @@ private:
     bool isPointNearControlPoint(const QPointF &scenePos, const QPointF &controlPoint, qreal threshold = 10.0) const;
     
     QPainterPath m_path;
+    QVector<QPainterPath::Element> m_pathElements; // 原始路径元素，保存曲线信息
     QVector<QPointF> m_controlPoints;  // 控制点，用于编辑
+    QVector<QPainterPath::ElementType> m_controlPointTypes; // 控制点类型
     bool m_showControlPolygon = false; // 是否显示控制点连线
     int m_activeControlPoint = -1;     // 当前活动的控制点索引
     QPointF m_dragStartPos;           // 拖动开始位置
@@ -318,6 +338,149 @@ private:
     QPointF m_position;
     qreal m_fontSize;  // 字体大小，用于节点编辑
     bool m_editing;    // 是否正在编辑
+};
+
+/**
+ * 直线形状 - 支持affine变换
+ */
+class DrawingLine : public DrawingShape
+{
+public:
+    explicit DrawingLine(const QLineF &line = QLineF(0, 0, 100, 100), QGraphicsItem *parent = nullptr);
+    
+    QRectF localBounds() const override;
+    void setLine(const QLineF &line);
+    QLineF line() const { return m_line; }
+    
+    // 线条属性
+    void setLineWidth(qreal width) { m_lineWidth = width; update(); }
+    qreal lineWidth() const { return m_lineWidth; }
+    
+    // 编辑点相关 - 直线的两个端点
+    QVector<QPointF> getNodePoints() const override;
+    void setNodePoint(int index, const QPointF &pos) override;
+    QPointF constrainNodePoint(int index, const QPointF &pos) const override;
+    void beginNodeDrag(int index) override;
+    void endNodeDrag(int index) override;
+    int getNodePointCount() const override { return 2; }
+
+protected:
+    void paintShape(QPainter *painter) override;
+    
+private:
+    QLineF m_line;
+    qreal m_lineWidth = 1.0;
+};
+
+/**
+ * 折线形状 - 支持多个连接的线段
+ */
+class DrawingPolyline : public DrawingShape
+{
+public:
+    explicit DrawingPolyline(QGraphicsItem *parent = nullptr);
+    
+    QRectF localBounds() const override;
+    QPainterPath shape() const override;
+    
+    // 重写变换形状方法
+    QPainterPath transformedShape() const override;
+    
+    // 点操作
+    void addPoint(const QPointF &point);
+    void insertPoint(int index, const QPointF &point);
+    void removePoint(int index);
+    void setPoint(int index, const QPointF &point);
+    QPointF point(int index) const;
+    int pointCount() const { return m_points.size(); }
+    void clearPoints() { m_points.clear(); update(); }
+    
+    // 线条属性
+    void setLineWidth(qreal width) { m_lineWidth = width; update(); }
+    qreal lineWidth() const { return m_lineWidth; }
+    
+    // 闭合属性
+    void setClosed(bool closed) { 
+        qDebug() << "DrawingPolyline::setClosed called with:" << closed << "from" << m_closed;
+        m_closed = closed; 
+        update(); 
+    }
+    bool isClosed() const { return m_closed; }
+    
+    // 编辑点相关 - 折线的所有顶点
+    QVector<QPointF> getNodePoints() const override;
+    void setNodePoint(int index, const QPointF &pos) override;
+    QPointF constrainNodePoint(int index, const QPointF &pos) const override;
+    void beginNodeDrag(int index) override;
+    void endNodeDrag(int index) override;
+    int getNodePointCount() const override { return m_points.size(); }
+    void updateFromNodePoints() override;
+
+protected:
+    void paintShape(QPainter *painter) override;
+    
+    // 重写鼠标事件以支持点编辑
+    void mousePressEvent(QGraphicsSceneMouseEvent *event) override;
+    void mouseMoveEvent(QGraphicsSceneMouseEvent *event) override;
+    void mouseReleaseEvent(QGraphicsSceneMouseEvent *event) override;
+    
+private:
+    QVector<QPointF> m_points;
+    qreal m_lineWidth = 1.0;
+    bool m_closed = false;
+    int m_activePoint = -1;
+    QPointF m_dragStartPos;
+};
+
+/**
+ * 多边形形状 - 闭合的多边形
+ */
+class DrawingPolygon : public DrawingShape
+{
+public:
+    explicit DrawingPolygon(QGraphicsItem *parent = nullptr);
+    
+    QRectF localBounds() const override;
+    QPainterPath shape() const override;
+    
+    // 重写变换形状方法
+    QPainterPath transformedShape() const override;
+    
+    // 点操作
+    void addPoint(const QPointF &point);
+    void insertPoint(int index, const QPointF &point);
+    void removePoint(int index);
+    void setPoint(int index, const QPointF &point);
+    QPointF point(int index) const;
+    int pointCount() const { return m_points.size(); }
+    void clearPoints() { m_points.clear(); update(); }
+    
+    // 填充属性
+    void setFillRule(Qt::FillRule rule) { m_fillRule = rule; update(); }
+    Qt::FillRule fillRule() const { return m_fillRule; }
+    
+    // 编辑点相关 - 多边形的所有顶点
+    QVector<QPointF> getNodePoints() const override;
+    void setNodePoint(int index, const QPointF &pos) override;
+    QPointF constrainNodePoint(int index, const QPointF &pos) const override;
+    void beginNodeDrag(int index) override;
+    void endNodeDrag(int index) override;
+    int getNodePointCount() const override { return m_points.size(); }
+    void updateFromNodePoints() override;
+
+protected:
+    void paintShape(QPainter *painter) override;
+    
+    // 重写鼠标事件以支持点编辑
+    void mousePressEvent(QGraphicsSceneMouseEvent *event) override;
+    void mouseMoveEvent(QGraphicsSceneMouseEvent *event) override;
+    void mouseReleaseEvent(QGraphicsSceneMouseEvent *event) override;
+    
+private:
+    QVector<QPointF> m_points;
+    Qt::FillRule m_fillRule = Qt::OddEvenFill;
+    int m_activePoint = -1;
+    QPointF m_dragStartPos;
 };
 
 #endif // DRAWING_SHAPE_H

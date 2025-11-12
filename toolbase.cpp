@@ -47,6 +47,13 @@ bool ToolBase::mouseReleaseEvent(QMouseEvent *event, const QPointF &scenePos)
     return false;
 }
 
+bool ToolBase::mouseDoubleClickEvent(QMouseEvent *event, const QPointF &scenePos)
+{
+    Q_UNUSED(event)
+    Q_UNUSED(scenePos)
+    return false;
+}
+
 // LegacySelectTool
 LegacySelectTool::LegacySelectTool(QObject *parent)
     : ToolBase(parent)
@@ -97,6 +104,13 @@ bool LegacySelectTool::mouseReleaseEvent(QMouseEvent *event, const QPointF &scen
     return false;
 }
 
+bool LegacySelectTool::mouseDoubleClickEvent(QMouseEvent *event, const QPointF &scenePos)
+{
+    Q_UNUSED(event)
+    Q_UNUSED(scenePos)
+    return false;
+}
+
 // LegacyRectangleTool
 LegacyRectangleTool::LegacyRectangleTool(QObject *parent)
     : ToolBase(parent)
@@ -118,11 +132,15 @@ LegacyRectangleTool::~LegacyRectangleTool()
         m_previewItem = nullptr;
     }
     if (m_currentItem) {
-        if (m_scene) {
+        // 检查对象是否仍然有效，通过检查它是否还在场景中
+        if (m_scene && m_scene->items().contains(m_currentItem)) {
             m_scene->removeItem(m_currentItem);
         }
-        // currentItem可能还没有被添加到场景中，需要手动删除
-        delete m_currentItem;
+        // 只有当对象不在场景中时才删除它
+        // 如果对象在场景中，场景会负责删除它
+        if (!m_currentItem->scene()) {
+            delete m_currentItem;
+        }
         m_currentItem = nullptr;
     }
 }
@@ -215,6 +233,8 @@ bool LegacyRectangleTool::mouseReleaseEvent(QMouseEvent *event, const QPointF &s
                 if (m_scene) {
                     m_scene->setModified(true);
                 }
+                // 重要：将所有权转移给场景，不再由工具管理
+                m_currentItem = nullptr;
             }
         }
         
@@ -244,11 +264,15 @@ LegacyEllipseTool::~LegacyEllipseTool()
         m_previewItem = nullptr;
     }
     if (m_currentItem) {
-        if (m_scene) {
+        // 检查对象是否仍然有效，通过检查它是否还在场景中
+        if (m_scene && m_scene->items().contains(m_currentItem)) {
             m_scene->removeItem(m_currentItem);
         }
-        // currentItem可能还没有被添加到场景中，需要手动删除
-        delete m_currentItem;
+        // 只有当对象不在场景中时才删除它
+        // 如果对象在场景中，场景会负责删除它
+        if (!m_currentItem->scene()) {
+            delete m_currentItem;
+        }
         m_currentItem = nullptr;
     }
 }
@@ -341,6 +365,8 @@ bool LegacyEllipseTool::mouseReleaseEvent(QMouseEvent *event, const QPointF &sce
                 if (m_scene) {
                     m_scene->setModified(true);
                 }
+                // 重要：将所有权转移给场景，不再由工具管理
+                m_currentItem = nullptr;
             }
         }
         

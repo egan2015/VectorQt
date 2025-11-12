@@ -10,6 +10,7 @@ class DrawingScene;
 class DrawingView;
 class DrawingRectangle;
 class DrawingEllipse;
+class DrawingShape;
 
 class ToolBase : public QObject
 {
@@ -25,9 +26,14 @@ public:
     virtual bool mousePressEvent(QMouseEvent *event, const QPointF &scenePos);
     virtual bool mouseMoveEvent(QMouseEvent *event, const QPointF &scenePos);
     virtual bool mouseReleaseEvent(QMouseEvent *event, const QPointF &scenePos);
+    virtual bool mouseDoubleClickEvent(QMouseEvent *event, const QPointF &scenePos);
     
     DrawingScene* scene() const { return m_scene; }
     DrawingView* view() const { return m_view; }
+
+signals:
+    // 形状创建完成信号
+    void shapeFinished(DrawingShape *shape);
 
 protected:
     DrawingScene *m_scene;
@@ -47,6 +53,7 @@ public:
     bool mousePressEvent(QMouseEvent *event, const QPointF &scenePos) override;
     bool mouseMoveEvent(QMouseEvent *event, const QPointF &scenePos) override;
     bool mouseReleaseEvent(QMouseEvent *event, const QPointF &scenePos) override;
+    bool mouseDoubleClickEvent(QMouseEvent *event, const QPointF &scenePos) override;
 
 private:
     bool m_dragging;

@@ -1,5 +1,0 @@
-/Users/firebolt/workspaces/qdrawpro/build/CMakeFiles/QDrawPro.dir
-/Users/firebolt/workspaces/qdrawpro/build/CMakeFiles/edit_cache.dir
-/Users/firebolt/workspaces/qdrawpro/build/CMakeFiles/rebuild_cache.dir
-/Users/firebolt/workspaces/qdrawpro/build/CMakeFiles/QDrawPro_autogen_timestamp_deps.dir
-/Users/firebolt/workspaces/qdrawpro/build/CMakeFiles/QDrawPro_autogen.dir

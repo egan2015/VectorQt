@@ -1,0 +1,45 @@
+# Build directory
+build/
+*.o
+*.a
+*.so
+*.dylib
+*.exe
+
+# Qt specific
+*.pro.user*
+*.qbs.user
+*.moc
+*.moc.cpp
+*.qrc.cpp
+Makefile
+*-build-debug/
+*-build-release/
+*.autosave
+
+# IDE
+.vscode/
+*.code-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+debug.log
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.ninja
+.ninja_deps
+.ninja_log
+
+# Qt MOC and build files
+QDrawPro_autogen/
+*.moc
+moc_*.cpp
+*.qrc.cpp

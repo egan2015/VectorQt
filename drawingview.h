@@ -15,11 +15,15 @@ public:
     double zoomLevel() const { return m_zoomLevel; }
     void setZoomLevel(double zoom);
     void setCurrentTool(ToolBase *tool);
+    ToolBase* currentTool() const { return m_currentTool; }
     
     void zoomIn();
     void zoomOut();
     void resetZoom();
     void fitToWindow();
+    
+    // 设置光标样式
+    void setCursorForTool(ToolBase *tool);
 
 signals:
     void zoomChanged(double zoom);

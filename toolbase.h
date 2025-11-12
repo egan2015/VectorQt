@@ -2,9 +2,13 @@
 #define TOOLBASE_H
 
 #include <QObject>
-#include <QMouseEvent>
 #include <QPointF>
 #include <QGraphicsItem>
+
+// Qt命名空间中的前置声明
+QT_BEGIN_NAMESPACE
+class QMouseEvent;
+QT_END_NAMESPACE
 
 class DrawingScene;
 class DrawingView;

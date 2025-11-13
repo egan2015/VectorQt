@@ -320,6 +320,9 @@ public:
     void setPosition(const QPointF &pos);
     QPointF position() const { return m_position; }
     
+    // 重写setPos以确保位置变化时文本也跟着移动
+    void setPos(const QPointF &pos);
+    
     // 编辑点相关 - 文本的控制点（位置和大小）
     QVector<QPointF> getNodePoints() const override;
     void setNodePoint(int index, const QPointF &pos) override;

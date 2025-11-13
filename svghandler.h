@@ -71,7 +71,7 @@ private:
     static DrawingText* parseTextElement(const QDomElement &element);
     
     // 解析组元素（现在支持图层）
-    static void parseGroupElement(DrawingScene *scene, const QDomElement &groupElement, QGraphicsItem *parentItem = nullptr);
+    static int parseGroupElement(DrawingScene *scene, const QDomElement &groupElement, QGraphicsItem *parentItem = nullptr);
     static DrawingLayer* parseLayerElement(const QDomElement &element);
     
     // 解析多线元素

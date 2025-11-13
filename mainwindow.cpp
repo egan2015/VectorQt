@@ -19,6 +19,7 @@
 // #include "layerpanel.h"    // Not implemented yet
 // #include "advancedtools.h" // Not implemented yet
 #include "svghandler.h"
+#include <algorithm>
 #include "drawing-shape.h"
 #include "colorpalette.h"
 #include "drawing-group.h"
@@ -372,6 +373,9 @@ void MainWindow::setupMenus()
     editMenu->addAction(m_alignTopAction);
     editMenu->addAction(m_alignMiddleAction);
     editMenu->addAction(m_alignBottomAction);
+    editMenu->addSeparator();
+    editMenu->addAction(m_distributeHorizontalAction);
+    editMenu->addAction(m_distributeVerticalAction);
 
     // View menu
     QMenu *viewMenu = menuBar()->addMenu("&View");
@@ -382,6 +386,8 @@ void MainWindow::setupMenus()
     viewMenu->addSeparator();
     viewMenu->addAction(m_toggleGridAction);
     viewMenu->addAction(m_toggleGridAlignmentAction);
+    viewMenu->addSeparator();
+    viewMenu->addAction(m_clearAllGuidesAction);
     viewMenu->addAction(m_gridSizeAction);
     viewMenu->addAction(m_gridColorAction);
 
@@ -505,6 +511,9 @@ void MainWindow::setupToolbars()
     viewToolBar->addAction(m_alignTopAction);
     viewToolBar->addAction(m_alignMiddleAction);
     viewToolBar->addAction(m_alignBottomAction);
+    viewToolBar->addSeparator();
+    viewToolBar->addAction(m_distributeHorizontalAction);
+    viewToolBar->addAction(m_distributeVerticalAction);
     
     // 添加视图操作图标
     m_zoomInAction->setIcon(style()->standardIcon(QStyle::SP_ArrowUp));
@@ -523,6 +532,10 @@ void MainWindow::setupToolbars()
     m_alignTopAction->setIcon(style()->standardIcon(QStyle::SP_ArrowUp));
     m_alignMiddleAction->setIcon(style()->standardIcon(QStyle::SP_TitleBarMaxButton));
     m_alignBottomAction->setIcon(style()->standardIcon(QStyle::SP_ArrowDown));
+    
+    // 分布工具图标
+    m_distributeHorizontalAction->setIcon(style()->standardIcon(QStyle::SP_ToolBarHorizontalExtensionButton));
+    m_distributeVerticalAction->setIcon(style()->standardIcon(QStyle::SP_ToolBarVerticalExtensionButton));
 }
 
 void MainWindow::setupDocks()
@@ -655,6 +668,11 @@ void MainWindow::createActions()
     m_toggleGridAlignmentAction->setStatusTip("启用或禁用网格对齐");
     m_toggleGridAlignmentAction->setChecked(true); // 默认启用网格对齐
     
+    // 清除所有参考线
+    m_clearAllGuidesAction = new QAction("清除所有参考线(&G)", this);
+    m_clearAllGuidesAction->setShortcut(QKeySequence("Ctrl+Shift+G"));
+    m_clearAllGuidesAction->setStatusTip("清除所有参考线");
+    
     m_groupAction = new QAction("组合(&G)", this);
     m_groupAction->setShortcut(QKeySequence("Ctrl+G"));
     m_groupAction->setStatusTip("将选中的项目组合成一个组");
@@ -681,6 +699,13 @@ void MainWindow::createActions()
     
     m_alignBottomAction = new QAction("底部对齐(&B)", this);
     m_alignBottomAction->setStatusTip("将选中的项目底部对齐");
+    
+    // 分布动作
+    m_distributeHorizontalAction = new QAction("水平分布(&H)", this);
+    m_distributeHorizontalAction->setStatusTip("将选中的项目水平均匀分布");
+    
+    m_distributeVerticalAction = new QAction("垂直分布(&V)", this);
+    m_distributeVerticalAction->setStatusTip("将选中的项目垂直均匀分布");
 
     // Tool actions
     m_toolGroup = new QActionGroup(this);
@@ -806,6 +831,7 @@ void MainWindow::connectActions()
     connect(m_gridSizeAction, &QAction::triggered, this, &MainWindow::showGridSettings);
     connect(m_gridColorAction, &QAction::triggered, this, &MainWindow::showGridSettings);
     connect(m_toggleGridAlignmentAction, &QAction::triggered, this, &MainWindow::toggleGridAlignment);
+    connect(m_clearAllGuidesAction, &QAction::triggered, this, &MainWindow::clearAllGuides);
     
     // Group connections
     connect(m_groupAction, &QAction::triggered, this, &MainWindow::groupSelected);
@@ -818,6 +844,8 @@ void MainWindow::connectActions()
     connect(m_alignTopAction, &QAction::triggered, this, &MainWindow::alignTop);
     connect(m_alignMiddleAction, &QAction::triggered, this, &MainWindow::alignMiddle);
     connect(m_alignBottomAction, &QAction::triggered, this, &MainWindow::alignBottom);
+    connect(m_distributeHorizontalAction, &QAction::triggered, this, &MainWindow::distributeHorizontal);
+    connect(m_distributeVerticalAction, &QAction::triggered, this, &MainWindow::distributeVertical);
 
     // Tool connections
     connect(m_selectToolAction, &QAction::triggered, this, &MainWindow::selectTool);
@@ -938,7 +966,7 @@ void MainWindow::newFile()
 void MainWindow::openFile()
 {
     QString fileName = QFileDialog::getOpenFileName(this,
-                                                    "打开文档", QDir::homePath(), "QDrawPro Files (*.qdp);;SVG Files (*.svg)");
+                                                    "打开文档", QDir::homePath(), "SVG Files (*.svg);;QDrawPro Files (*.qdp)");
 
     if (!fileName.isEmpty())
     {
@@ -949,9 +977,11 @@ void MainWindow::openFile()
             if (SvgHandler::importFromSvg(m_scene, fileName)) {
                 m_statusLabel->setText(QString("SVG文件已导入: %1").arg(fileInfo.fileName()));
                 
-                // 加载完成后调整视图以适应所有内容
+                // 加载完成后重置视图到100%而不是自动适应
                 if (m_canvas) {
-                    m_canvas->fitToWindow();
+                    m_canvas->resetZoom();
+                    // 可选：将视图居中到内容
+                    m_canvas->centerOnContent();
                 }
             } else {
                 QMessageBox::warning(this, "导入错误", "无法导入SVG文件");
@@ -2056,8 +2086,6 @@ void MainWindow::alignBottom()
 // 🌟 参考线创建槽函数
 void MainWindow::onGuideRequested(const QPointF &position, Qt::Orientation orientation)
 {
-    if (!m_scene) return;
-    
     // 提取参考线位置（只需要一个坐标）
     qreal guidePos = (orientation == Qt::Horizontal) ? position.y() : position.x();
     
@@ -2068,8 +2096,8 @@ void MainWindow::onGuideRequested(const QPointF &position, Qt::Orientation orien
             // 如果已存在，则删除该参考线
             m_scene->removeGuide(orientation, guide.position);
             m_statusLabel->setText(QString("删除参考线: %1 @ %2")
-                                 .arg(orientation == Qt::Horizontal ? "水平" : "垂直")
-                                 .arg(guidePos, 0, 'f', 1));
+                .arg(orientation == Qt::Horizontal ? "水平" : "垂直")
+                .arg(guidePos, 0, 'f', 1));
             return;
         }
     }
@@ -2077,8 +2105,100 @@ void MainWindow::onGuideRequested(const QPointF &position, Qt::Orientation orien
     // 添加新参考线
     m_scene->addGuide(orientation, guidePos);
     m_statusLabel->setText(QString("创建参考线: %1 @ %2")
-                         .arg(orientation == Qt::Horizontal ? "水平" : "垂直")
-                         .arg(guidePos, 0, 'f', 1));
+        .arg(orientation == Qt::Horizontal ? "水平" : "垂直")
+        .arg(guidePos, 0, 'f', 1));
+}
+
+void MainWindow::clearAllGuides()
+{
+    if (!m_scene) return;
+    
+    m_scene->clearGuides();
+    m_statusLabel->setText("已清除所有参考线");
+}
+
+void MainWindow::distributeHorizontal()
+{
+    if (!m_scene) return;
+    
+    QList<QGraphicsItem*> selectedItems = m_scene->selectedItems();
+    if (selectedItems.size() < 3) {
+        m_statusLabel->setText("水平分布需要至少3个项目");
+        return;
+    }
+    
+    // 按X坐标排序
+    std::sort(selectedItems.begin(), selectedItems.end(), [](QGraphicsItem* a, QGraphicsItem* b) {
+        return a->pos().x() < b->pos().x();
+    });
+    
+    // 计算总宽度和间距
+    qreal totalWidth = 0;
+    QList<qreal> widths;
+    for (QGraphicsItem* item : selectedItems) {
+        qreal w = item->boundingRect().width();
+        widths.append(w);
+        totalWidth += w;
+    }
+    
+    qreal leftmost = selectedItems.first()->pos().x();
+    qreal rightmost = selectedItems.last()->pos().x() + widths.last();
+    qreal totalSpace = rightmost - leftmost - totalWidth;
+    qreal spacing = totalSpace / (selectedItems.size() - 1);
+    
+    // 重新分布
+    qreal currentX = leftmost;
+    for (int i = 0; i < selectedItems.size(); ++i) {
+        QGraphicsItem* item = selectedItems[i];
+        item->setPos(currentX, item->pos().y());
+        currentX += widths[i] + spacing;
+    }
+    
+    m_scene->update();
+    m_scene->setModified(true);
+    m_statusLabel->setText(QString("已水平分布 %1 个项目").arg(selectedItems.size()));
+}
+
+void MainWindow::distributeVertical()
+{
+    if (!m_scene) return;
+    
+    QList<QGraphicsItem*> selectedItems = m_scene->selectedItems();
+    if (selectedItems.size() < 3) {
+        m_statusLabel->setText("垂直分布需要至少3个项目");
+        return;
+    }
+    
+    // 按Y坐标排序
+    std::sort(selectedItems.begin(), selectedItems.end(), [](QGraphicsItem* a, QGraphicsItem* b) {
+        return a->pos().y() < b->pos().y();
+    });
+    
+    // 计算总高度和间距
+    qreal totalHeight = 0;
+    QList<qreal> heights;
+    for (QGraphicsItem* item : selectedItems) {
+        qreal h = item->boundingRect().height();
+        heights.append(h);
+        totalHeight += h;
+    }
+    
+    qreal topmost = selectedItems.first()->pos().y();
+    qreal bottommost = selectedItems.last()->pos().y() + heights.last();
+    qreal totalSpace = bottommost - topmost - totalHeight;
+    qreal spacing = totalSpace / (selectedItems.size() - 1);
+    
+    // 重新分布
+    qreal currentY = topmost;
+    for (int i = 0; i < selectedItems.size(); ++i) {
+        QGraphicsItem* item = selectedItems[i];
+        item->setPos(item->pos().x(), currentY);
+        currentY += heights[i] + spacing;
+    }
+    
+    m_scene->update();
+    m_scene->setModified(true);
+    m_statusLabel->setText(QString("已垂直分布 %1 个项目").arg(selectedItems.size()));
 }
 
 QColor MainWindow::getCurrentFillColor() const

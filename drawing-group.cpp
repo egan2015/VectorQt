@@ -47,10 +47,10 @@ void DrawingGroup::addItem(DrawingShape *item)
     // 设置父项关系
     item->setParentItem(this);
     
-    // 🌟 直接计算相对位置（更可靠）
-    // 不使用mapFromScene，而是直接计算相对于组合对象的偏移
-    QPointF newPos = scenePos - this->scenePos();
-    item->setPos(newPos);
+    // 🌟 对于SVG导入的元素，需要转换到组的本地坐标系
+    // 使用mapFromScene正确转换位置
+    QPointF localPos = this->mapFromScene(scenePos);
+    item->setPos(localPos);
     
     // 🌟 不重置子项的变换，保持原始变换
     // item->setTransform(DrawingTransform());

@@ -71,11 +71,10 @@ void DrawingCanvas::resetZoom()
 
 void DrawingCanvas::fitToWindow()
 {
-    if (!m_scene) {
+    if (!m_scene || !m_view) {
         return;
     }
     
-    // 获取场景中所有项目的边界矩形
     QRectF contentRect = m_scene->itemsBoundingRect();
     
     // 如果内容矩形有效，使用它；否则使用场景矩形
@@ -88,6 +87,22 @@ void DrawingCanvas::fitToWindow()
     QTransform transform = m_view->transform();
     m_zoomLevel = transform.m11();
     emit zoomChanged(m_zoomLevel);
+}
+
+void DrawingCanvas::centerOnContent()
+{
+    if (!m_scene || !m_view) {
+        return;
+    }
+    
+    QRectF contentRect = m_scene->itemsBoundingRect();
+    
+    // 如果内容矩形有效，居中到内容；否则居中到场景中心
+    if (!contentRect.isEmpty()) {
+        m_view->centerOn(contentRect.center());
+    } else {
+        m_view->centerOn(m_scene->sceneRect().center());
+    }
 }
 
 double DrawingCanvas::zoomLevel() const

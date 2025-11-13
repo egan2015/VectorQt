@@ -81,6 +81,8 @@ private slots:
     void alignTop();
     void alignMiddle();
     void alignBottom();
+    void distributeHorizontal();
+    void distributeVertical();
     void showGridSettings();
     void about();
     void onSelectionChanged();
@@ -89,6 +91,7 @@ private slots:
     
     // 🌟 参考线相关槽函数
     void onGuideRequested(const QPointF &position, Qt::Orientation orientation);
+    void clearAllGuides();
 
 protected:
     void mouseMoveEvent(QMouseEvent *event) override;
@@ -163,6 +166,7 @@ private:
     QAction *m_gridSizeAction;
     QAction *m_gridColorAction;
     QAction *m_toggleGridAlignmentAction;
+    QAction *m_clearAllGuidesAction;
     QAction *m_groupAction;
     QAction *m_ungroupAction;
     QAction *m_alignLeftAction;
@@ -171,6 +175,8 @@ private:
     QAction *m_alignTopAction;
     QAction *m_alignMiddleAction;
     QAction *m_alignBottomAction;
+    QAction *m_distributeHorizontalAction;
+    QAction *m_distributeVerticalAction;
     QAction *m_aboutAction;
     QActionGroup *m_toolGroup;
     

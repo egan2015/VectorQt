@@ -1067,6 +1067,13 @@ void DrawingText::setPosition(const QPointF &pos)
     }
 }
 
+void DrawingText::setPos(const QPointF &pos)
+{
+    // 重写setPos以确保位置变化时文本也跟着移动
+    setPosition(pos);
+    QGraphicsItem::setPos(pos);
+}
+
 QVector<QPointF> DrawingText::getNodePoints() const
 {
     QVector<QPointF> points;
@@ -1722,4 +1729,5 @@ void DrawingPolygon::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
     DrawingShape::mouseReleaseEvent(event);
 }
 
-#include "drawing-shape.moc"
+
+

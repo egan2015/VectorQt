@@ -88,19 +88,20 @@ bool SvgHandler::parseSvgDocument(DrawingScene *scene, const QDomDocument &doc)
                 continue;
             }
             
-            qDebug() << "解析SVG元素:" << tagName;
+            // qDebug() << "解析SVG元素:" << tagName;
             
             if (tagName == "g") {
-                // 处理组元素
-                parseGroupElement(scene, element, nullptr);
+                // 处理组元素，并获取组中元素的计数
+                int groupElementCount = parseGroupElement(scene, element, nullptr);
+                elementCount += groupElementCount;
             } else {
                 DrawingShape *shape = parseSvgElement(element);
                 if (shape) {
                     scene->addItem(shape);
                     elementCount++;
-                    qDebug() << "添加形状到场景，当前元素数:" << elementCount;
+                    // qDebug() << "添加形状到场景，当前元素数:" << elementCount;
                 } else {
-                    qDebug() << "无法解析元素:" << tagName;
+                    // qDebug() << "无法解析元素:" << tagName;
                 }
             }
         }
@@ -167,7 +168,7 @@ DrawingShape* SvgHandler::parseSvgElement(const QDomElement &element)
     }
 }
 
-void SvgHandler::parseGroupElement(DrawingScene *scene, const QDomElement &groupElement, QGraphicsItem *parentItem)
+int SvgHandler::parseGroupElement(DrawingScene *scene, const QDomElement &groupElement, QGraphicsItem *parentItem)
 {
     // 检查是否是图层（带有 inkscape:label 属性）
     QString layerId = groupElement.attribute("inkscape:label");
@@ -192,18 +193,28 @@ void SvgHandler::parseGroupElement(DrawingScene *scene, const QDomElement &group
         // 如果有父项（说明是嵌套组），添加到父项；否则添加到场景
         if (parentItem) {
             group->setParentItem(parentItem);
-            qDebug() << "创建嵌套组合对象并添加到父项";
+            // qDebug() << "创建嵌套组合对象并添加到父项";
         } else {
             scene->addItem(group);
-            qDebug() << "创建组合对象并添加到场景";
+            // qDebug() << "创建组合对象并添加到场景";
         }
         
         // 解析组的样式属性（在添加到场景后）
         parseStyleAttributes(group, groupElement);
+        
+        // 解析变换属性（在添加子元素之后）
+        // 这样变换会应用到已经添加的子元素
+        if (groupElement.hasAttribute("transform")) {
+            QString transform = groupElement.attribute("transform");
+            if (!transform.isEmpty()) {
+                parseTransformAttribute(group, transform);
+            }
+        }
     }
     
     // 遍历组中的所有子元素
     QDomNodeList children = groupElement.childNodes();
+    int elementCount = 0;
     for (int i = 0; i < children.size(); ++i) {
         QDomNode node = children.at(i);
         if (node.isElement()) {
@@ -212,11 +223,13 @@ void SvgHandler::parseGroupElement(DrawingScene *scene, const QDomElement &group
             
             if (tagName == "g") {
                 // 递归处理嵌套组，传递当前组作为父项
+                int groupElementCount = 0;
                 if (group) {
-                    parseGroupElement(scene, element, group);
+                    groupElementCount = parseGroupElement(scene, element, group);
                 } else {
-                    parseGroupElement(scene, element, nullptr);
+                    groupElementCount = parseGroupElement(scene, element, nullptr);
                 }
+                elementCount += groupElementCount;
             } else {
                 try {
                     DrawingShape *shape = parseSvgElement(element);
@@ -224,33 +237,29 @@ void SvgHandler::parseGroupElement(DrawingScene *scene, const QDomElement &group
                         if (layer) {
                             // 添加到图层
                             layer->addShape(shape);
-                            qDebug() << "添加形状到图层" << layerId << "，元素:" << tagName;
+                            // qDebug() << "添加形状到图层" << layerId << "，元素:" << tagName;
                         } else if (group) {
                             // 添加到组合对象
                             group->addItem(shape);
-                            qDebug() << "添加形状到组合对象，元素:" << tagName;
+                            // qDebug() << "添加形状到组合对象，元素:" << tagName;
                         } else {
                             // 直接添加到场景
                             scene->addItem(shape);
-                            qDebug() << "从组中添加形状到场景，元素:" << tagName;
+                            // qDebug() << "从组中添加形状到场景，元素:" << tagName;
                         }
+                        elementCount++;
                     } else {
-                        qDebug() << "无法解析元素:" << tagName << "，跳过";
+                        // qDebug() << "无法解析元素:" << tagName << "，跳过";
                     }
                 } catch (...) {
-                    qDebug() << "解析元素时发生错误:" << tagName << "，跳过";
+                    // qDebug() << "解析元素时发生错误:" << tagName << "，跳过";
                 }
             }
         }
     }
     
-    // 最后应用组的变换属性（在所有子元素添加完成后）
-    if (group && groupElement.hasAttribute("transform")) {
-        QString transform = groupElement.attribute("transform");
-        if (!transform.isEmpty()) {
-            parseTransformAttribute(group, transform);
-        }
-    }
+    // 变换已在添加子元素之前应用
+    return elementCount;
 }
 
 DrawingLayer* SvgHandler::parseLayerElement(const QDomElement &element)

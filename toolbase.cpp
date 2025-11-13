@@ -465,14 +465,14 @@ QPointF ToolBase::smartSnap(const QPointF &scenePos, DrawingShape *excludeShape)
         if (objectSnap.snappedToObject) {
             // 对象吸附成功
             alignedPos = objectSnap.snappedPos;
-            qDebug() << "Object snap triggered:" << objectSnap.snapDescription;
+            // qDebug() << "Object snap triggered:" << objectSnap.snapDescription;
         } else {
             // 对象吸附失败，尝试网格吸附
             if (drawingScene->isGridAlignmentEnabled()) {
                 DrawingScene::SnapResult gridSnap = drawingScene->smartAlignToGrid(scenePos);
                 if (gridSnap.snappedX || gridSnap.snappedY) {
                     alignedPos = gridSnap.snappedPos;
-                    qDebug() << "Grid snap: X snapped:" << gridSnap.snappedX << "Y snapped:" << gridSnap.snappedY;
+                    // qDebug() << "Grid snap: X snapped:" << gridSnap.snappedX << "Y snapped:" << gridSnap.snappedY;
                 }
             }
         }

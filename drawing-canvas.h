@@ -23,6 +23,7 @@ public:
     void zoomOut();
     void resetZoom();
     void fitToWindow();
+    void centerOnContent();
     void setZoomLevel(double zoom);
     
     double zoomLevel() const;

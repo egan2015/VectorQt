@@ -75,7 +75,7 @@ bool DrawingBezierTool::mousePressEvent(QMouseEvent *event, const QPointF &scene
                 }
             }
             
-            // qDebug() << "Started drawing bezier curve at:" << alignedPos;
+            qDebug() << "Started drawing bezier curve at:" << alignedPos;
         } else {
             // 添加新的控制点
             m_controlPoints.append(alignedPos);
@@ -83,8 +83,8 @@ bool DrawingBezierTool::mousePressEvent(QMouseEvent *event, const QPointF &scene
             // 如果已经有足够的点来形成贝塞尔曲线，则更新路径
             updatePath();
             
-            // qDebug() << "Added control point at:" << alignedPos 
-//          << "Total points:" << m_controlPoints.size();
+            qDebug() << "Added control point at:" << alignedPos 
+                     << "Total points:" << m_controlPoints.size();
         }
         
         // 更新预览
@@ -177,7 +177,7 @@ bool DrawingBezierTool::mouseReleaseEvent(QMouseEvent *event, const QPointF &sce
 void DrawingBezierTool::activate(DrawingScene *scene, DrawingView *view)
 {
     ToolBase::activate(scene, view);
-    // qDebug() << "Bezier tool activated";
+    qDebug() << "Bezier tool activated";
 }
 
 void DrawingBezierTool::deactivate()
@@ -203,7 +203,7 @@ void DrawingBezierTool::deactivate()
     }
     
     ToolBase::deactivate();
-    // qDebug() << "Bezier tool deactivated";
+    qDebug() << "Bezier tool deactivated";
 }
 
 void DrawingBezierTool::updatePath()
@@ -214,7 +214,11 @@ void DrawingBezierTool::updatePath()
     
     // 重新构建路径
     m_currentPath->clear();
-    m_currentPath->moveTo(m_controlPoints.first());
+    
+    // 安全地获取第一个点
+    if (m_controlPoints.size() > 0) {
+        m_currentPath->moveTo(m_controlPoints[0]);
+    }
     
     // 根据控制点数量创建贝塞尔曲线
     for (int i = 1; i < m_controlPoints.size(); i += 3) {
@@ -224,7 +228,7 @@ void DrawingBezierTool::updatePath()
         } else if (i + 1 < m_controlPoints.size()) {
             // 有足够的点创建二次贝塞尔曲线
             m_currentPath->quadTo(m_controlPoints[i], m_controlPoints[i+1]);
-        } else {
+        } else if (i < m_controlPoints.size()) {
             // 只有一个点，创建直线
             m_currentPath->lineTo(m_controlPoints[i]);
         }
@@ -254,7 +258,7 @@ void DrawingBezierTool::finishDrawing()
                         QPointF p1 = drawingScene->alignToGrid(m_controlPoints[i]);
                         QPointF p2 = drawingScene->alignToGrid(m_controlPoints[i+1]);
                         alignedPath.quadTo(p1, p2);
-                    } else {
+                    } else if (i < m_controlPoints.size()) {
                         // 只有一个点，创建直线
                         QPointF p1 = drawingScene->alignToGrid(m_controlPoints[i]);
                         alignedPath.lineTo(p1);
@@ -282,7 +286,7 @@ void DrawingBezierTool::finishDrawing()
             m_scene->setModified(true);
         }
         
-        // qDebug() << "Finished drawing bezier curve with" << m_controlPoints.size() << "control points";
+        qDebug() << "Finished drawing bezier curve with" << m_controlPoints.size() << "control points";
     }
     
     // 从场景中移除并删除预览项

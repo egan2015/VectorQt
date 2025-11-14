@@ -28,6 +28,9 @@ public:
 
     // 事件处理 - 重写基类方法
     bool mousePressEvent(QMouseEvent *event, const QPointF &scenePos) override;
+    
+    // 获取工具光标类型
+    CursorManager::CursorType getCursorType() const override { return CursorManager::BezierCursor; }
     bool mouseMoveEvent(QMouseEvent *event, const QPointF &scenePos) override;
     bool mouseReleaseEvent(QMouseEvent *event, const QPointF &scenePos) override;
     
@@ -42,12 +45,15 @@ private:
     // 完成绘制
     void finishDrawing();
     
-    // 状态变量
-    QPainterPath *m_currentPath;  // 当前正在绘制的路径
-    QVector<QPointF> m_controlPoints;  // 控制点列表
-    bool m_isDrawing;  // 是否正在绘制
-    DrawingPath *m_currentItem;  // 当前正在创建的路径
-    DrawingPath *m_previewItem;  // 预览路径
+    // 预览项
+    DrawingPath *m_previewItem;
+    bool m_isDrawing;
+    
+    QPainterPath *m_currentPath;
+    QVector<QPointF> m_controlPoints;
+    
+    // 当前创建的图形项
+    DrawingPath *m_currentItem;
 };
 
 #endif // DRAWING_TOOL_BEZIER_H

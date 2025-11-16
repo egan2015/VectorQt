@@ -2,30 +2,23 @@
 #include "mainwindow.h"
 #include <QApplication>
 
-QDrawPro::QDrawPro()
-    : m_application(nullptr)
-    , m_mainWindow(nullptr)
+VectorFlow::VectorFlow()
 {
 }
 
-QDrawPro::~QDrawPro()
+VectorFlow::~VectorFlow()
 {
-    delete m_mainWindow;
-    delete m_application;
 }
 
-void QDrawPro::setupApplication()
+void VectorFlow::setupApplication()
 {
-    // Application setup is done in run()
 }
 
-void QDrawPro::setupMainWindow()
+void VectorFlow::setupMainWindow()
 {
-    m_mainWindow = new MainWindow();
-    m_mainWindow->show();
 }
 
-int QDrawPro::run(int argc, char *argv[])
+int VectorFlow::run(int argc, char *argv[])
 {
     m_application = new QApplication(argc, argv);
     

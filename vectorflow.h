@@ -1,14 +1,14 @@
-#ifndef QDRAWPRO_H
-#define QDRAWPRO_H
+#ifndef VECTORFLOW_H
+#define VECTORFLOW_H
 
 #include <QApplication>
 #include <QMainWindow>
 
-class QDrawPro
+class VectorFlow
 {
 public:
-    QDrawPro();
-    ~QDrawPro();
+    VectorFlow();
+    ~VectorFlow();
     
     int run(int argc, char *argv[]);
     
@@ -20,4 +20,4 @@ private:
     QMainWindow *m_mainWindow;
 };
 
-#endif // QDRAWPRO_H
+#endif // VECTORFLOW_H

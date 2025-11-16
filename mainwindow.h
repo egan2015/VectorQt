@@ -91,6 +91,9 @@ private slots:
     void updateZoomLabel();
     void updateRulerSelection();
     
+    // 调色板颜色应用槽函数
+    void onApplyColorToSelection(const QColor &color, bool isFill);
+    
     // 🌟 参考线相关槽函数
     void onGuideRequested(const QPointF &position, Qt::Orientation orientation);
     void clearAllGuides();

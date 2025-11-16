@@ -68,6 +68,7 @@ public:
 signals:
     void fillColorChanged(const QColor &color);
     void strokeColorChanged(const QColor &color);
+    void applyColorToSelection(const QColor &color, bool isFill); // 新增：应用颜色到选中对象
 
 public slots:
     void selectFillColor(const QColor &color);

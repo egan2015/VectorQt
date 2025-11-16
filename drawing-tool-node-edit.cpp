@@ -261,12 +261,6 @@ bool DrawingNodeEditTool::mouseMoveEvent(QMouseEvent *event, const QPointF &scen
         // 获取图形的变换
         DrawingTransform transform = m_selectedShape->transform();
         
-        // 首先使用Qt的内置方法将场景坐标转换为图形本地坐标
-        QPointF localPos = m_selectedShape->mapFromScene(alignedScenePos);
-        
-        // 然后应用DrawingTransform的逆变换来获取真正的本地坐标
-        localPos = transform.transform().inverted().map(localPos);
-        
         // 直接传递场景坐标给setNodePoint，让图形自己处理坐标转换
         m_selectedShape->setNodePoint(nodeIndex, alignedScenePos);
         

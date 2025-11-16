@@ -848,12 +848,17 @@ void SvgHandler::parseStyleAttributes(DrawingShape *shape, const QDomElement &el
 {
     // 解析stroke属性
     QString stroke = element.attribute("stroke");
-    if (!stroke.isEmpty() && stroke != "none") {
-        QColor strokeColor = parseColor(stroke);
-        if (strokeColor.isValid()) {
-            QPen pen = shape->strokePen();
-            pen.setColor(strokeColor);
-            shape->setStrokePen(pen);
+    if (!stroke.isEmpty()) {
+        if (stroke == "none") {
+            // 显式设置无边框
+            shape->setStrokePen(Qt::NoPen);
+        } else {
+            QColor strokeColor = parseColor(stroke);
+            if (strokeColor.isValid()) {
+                QPen pen = shape->strokePen();
+                pen.setColor(strokeColor);
+                shape->setStrokePen(pen);
+            }
         }
     }
     
@@ -870,9 +875,11 @@ void SvgHandler::parseStyleAttributes(DrawingShape *shape, const QDomElement &el
     
     // 解析fill属性
     QString fill = element.attribute("fill");
-    if (!fill.isEmpty() && fill != "none") {
-        // 检查是否引用渐变或Pattern
-        if (fill.startsWith("url(#")) {
+    if (!fill.isEmpty()) {
+        if (fill == "none") {
+            // 显式设置无填充
+            shape->setFillBrush(Qt::NoBrush);
+        } else if (fill.startsWith("url(#")) {
             QString refId = fill.mid(5, fill.length() - 6); // 去掉 "url(#" 和 ")"
             
             // 首先检查是否是渐变
@@ -1065,13 +1072,29 @@ QColor SvgHandler::parseColor(const QString &colorStr)
         return QColor(colorStr);
     } else if (colorStr.startsWith("rgb(")) {
         // 解析rgb(r,g,b)格式
-        QRegularExpression regex(R"(rgb\\s*\\(\\s*(\\d+)\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)\\s*\\))");
+        QRegularExpression regex(R"(rgb\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\))");
         QRegularExpressionMatch match = regex.match(colorStr);
         if (match.hasMatch()) {
             int r = match.captured(1).toInt();
             int g = match.captured(2).toInt();
             int b = match.captured(3).toInt();
-            return QColor(r, g, b);
+            QColor color(r, g, b);
+            if (color.isValid()) {
+                return color;
+            }
+        }
+        
+        // 尝试更宽松的匹配，允许小数
+        QRegularExpression regexFloat(R"(rgb\s*\(\s*([0-9.]+)\s*,\s*([0-9.]+)\s*,\s*([0-9.]+)\s*\))");
+        match = regexFloat.match(colorStr);
+        if (match.hasMatch()) {
+            int r = qRound(match.captured(1).toDouble());
+            int g = qRound(match.captured(2).toDouble());
+            int b = qRound(match.captured(3).toDouble());
+            QColor color(r, g, b);
+            if (color.isValid()) {
+                return color;
+            }
         }
     } else if (colorStr.startsWith("rgba(")) {
         // 解析rgba(r,g,b,a)格式
@@ -1162,7 +1185,8 @@ QDomDocument SvgHandler::exportSceneToSvgDocument(DrawingScene *scene)
             DrawingLayer *layer = static_cast<DrawingLayer*>(item);
             if (layer) {
                 layers.append(layer);
-                QRectF layerBounds = layer->boundingRect();
+                // 使用 sceneBoundingRect 获取场景中的实际边界
+                QRectF layerBounds = layer->sceneBoundingRect();
                 if (firstItem) {
                     contentBounds = layerBounds;
                     firstItem = false;
@@ -1174,7 +1198,8 @@ QDomDocument SvgHandler::exportSceneToSvgDocument(DrawingScene *scene)
             DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(item);
             if (shape) {
                 shapes.append(shape);
-                QRectF shapeBounds = shape->boundingRect();
+                // 使用 sceneBoundingRect 获取场景中的实际边界
+                QRectF shapeBounds = shape->sceneBoundingRect();
                 if (firstItem) {
                     contentBounds = shapeBounds;
                     firstItem = false;
@@ -1188,19 +1213,26 @@ QDomDocument SvgHandler::exportSceneToSvgDocument(DrawingScene *scene)
     // 如果有内容，使用内容边界框；否则使用场景默认大小
     if (!contentBounds.isEmpty()) {
         // 添加一些边距
-        contentBounds.adjust(-10, -10, 10, 10);
+        contentBounds.adjust(-20, -20, 20, 20);
     } else {
         contentBounds = QRectF(0, 0, 800, 600);
     }
     
-    svgElement.setAttribute("viewBox", QString("%1 %2 %3 %4")
-        .arg(contentBounds.left())
-        .arg(contentBounds.top())
+    // 设置 viewBox 从 (0,0) 开始，宽高为内容的实际尺寸
+    svgElement.setAttribute("viewBox", QString("0 0 %1 %2")
         .arg(contentBounds.width())
         .arg(contentBounds.height()));
     
+    // 设置 SVG 的实际尺寸
     svgElement.setAttribute("width", QString::number(contentBounds.width()));
     svgElement.setAttribute("height", QString::number(contentBounds.height()));
+    
+    // 添加一个 transform 来移动内容到正确的位置
+    if (contentBounds.left() != 0 || contentBounds.top() != 0) {
+        svgElement.setAttribute("transform", QString("translate(%1,%2)")
+            .arg(-contentBounds.left())
+            .arg(-contentBounds.top()));
+    }
     
     // 创建defs元素用于定义渐变和滤镜
     QDomElement defsElement = doc.createElement("defs");
@@ -1212,11 +1244,21 @@ QDomDocument SvgHandler::exportSceneToSvgDocument(DrawingScene *scene)
     // 导出滤镜定义
     exportFiltersToSvg(doc, defsElement, allItems);
     
+    // 创建一个组元素来包含所有内容，并应用必要的变换
+    QDomElement groupElement = doc.createElement("g");
+    
+    // 如果内容不在原点，添加变换来移动内容
+    if (contentBounds.left() != 0 || contentBounds.top() != 0) {
+        groupElement.setAttribute("transform", QString("translate(%1,%2)")
+            .arg(-contentBounds.left())
+            .arg(-contentBounds.top()));
+    }
+    
     // 首先导出图层（保持层次结构）
     for (DrawingLayer *layer : layers) {
         QDomElement layerElement = exportLayerToSvgElement(doc, layer);
         if (!layerElement.isNull()) {
-            svgElement.appendChild(layerElement);
+            groupElement.appendChild(layerElement);
         }
     }
     
@@ -1234,17 +1276,22 @@ QDomDocument SvgHandler::exportSceneToSvgDocument(DrawingScene *scene)
         if (!inLayer) {
             QDomElement shapeElement = exportShapeToSvgElement(doc, shape);
             if (!shapeElement.isNull()) {
-                svgElement.appendChild(shapeElement);
+                groupElement.appendChild(shapeElement);
             }
         }
     }
     
+    svgElement.appendChild(groupElement);
     doc.appendChild(svgElement);
     return doc;
 }
 
 QDomElement SvgHandler::exportShapeToSvgElement(QDomDocument &doc, DrawingShape *shape)
 {
+    if (!shape) {
+        return QDomElement();
+    }
+    
     switch (shape->shapeType()) {
         case DrawingShape::Path:
             return exportPathToSvgElement(doc, static_cast<DrawingPath*>(shape));
@@ -1255,9 +1302,14 @@ QDomElement SvgHandler::exportShapeToSvgElement(QDomDocument &doc, DrawingShape 
         case DrawingShape::Text:
             return exportTextToSvgElement(doc, static_cast<DrawingText*>(shape));
         case DrawingShape::Line:
-            return QDomElement(); // 暂不处理Line类型
+            return exportLineToSvgElement(doc, static_cast<DrawingLine*>(shape));
+        case DrawingShape::Polyline:
+            return exportPolylineToSvgElement(doc, static_cast<DrawingPolyline*>(shape));
+        case DrawingShape::Polygon:
+            return exportPolygonToSvgElement(doc, static_cast<DrawingPolygon*>(shape));
         default:
-            return QDomElement(); // 处理未知类型
+            qDebug() << "未知的图形类型，无法导出:" << shape->shapeType();
+            return QDomElement();
     }
 }
 
@@ -1323,9 +1375,13 @@ QDomElement SvgHandler::exportRectangleToSvgElement(QDomDocument &doc, DrawingRe
 {
     QDomElement rectElement = doc.createElement("rect");
     
+    // 获取图形的位置和本地边界
+    QPointF pos = rect->pos();
     QRectF bounds = rect->localBounds();
-    rectElement.setAttribute("x", QString::number(bounds.x()));
-    rectElement.setAttribute("y", QString::number(bounds.y()));
+    
+    // 计算实际位置（位置 + 本地边界）
+    rectElement.setAttribute("x", QString::number(pos.x() + bounds.x()));
+    rectElement.setAttribute("y", QString::number(pos.y() + bounds.y()));
     rectElement.setAttribute("width", QString::number(bounds.width()));
     rectElement.setAttribute("height", QString::number(bounds.height()));
     
@@ -1384,17 +1440,20 @@ QDomElement SvgHandler::exportEllipseToSvgElement(QDomDocument &doc, DrawingElli
 {
     QDomElement ellipseElement;
     
+    // 获取图形的位置和本地边界
+    QPointF pos = ellipse->pos();
     QRectF bounds = ellipse->localBounds();
     
-    // 检查是否是完整的椭圆（360度）
+    // 检查是否是完整的椭圆（360度或接近360度）
     qreal startAngle = ellipse->startAngle();
     qreal spanAngle = ellipse->spanAngle();
     
-    if (qFuzzyCompare(qAbs(spanAngle), 360.0) || qFuzzyCompare(spanAngle, 0.0)) {
+    // 如果跨度接近360度（允许一些误差），则认为是完整椭圆
+    if (qFuzzyCompare(qAbs(spanAngle), 360.0) || qFuzzyCompare(spanAngle, 0.0) || qAbs(spanAngle) > 350) {
         // 完整椭圆
         ellipseElement = doc.createElement("ellipse");
-        qreal cx = bounds.x() + bounds.width() / 2;
-        qreal cy = bounds.y() + bounds.height() / 2;
+        qreal cx = pos.x() + bounds.x() + bounds.width() / 2;
+        qreal cy = pos.y() + bounds.y() + bounds.height() / 2;
         qreal rx = bounds.width() / 2;
         qreal ry = bounds.height() / 2;
         
@@ -1407,8 +1466,8 @@ QDomElement SvgHandler::exportEllipseToSvgElement(QDomDocument &doc, DrawingElli
         ellipseElement = doc.createElement("path");
         
         // 使用椭圆弧路径
-        qreal cx = bounds.x() + bounds.width() / 2;
-        qreal cy = bounds.y() + bounds.height() / 2;
+        qreal cx = pos.x() + bounds.x() + bounds.width() / 2;
+        qreal cy = pos.y() + bounds.y() + bounds.height() / 2;
         qreal rx = bounds.width() / 2;
         qreal ry = bounds.height() / 2;
         
@@ -2463,4 +2522,111 @@ QDomElement SvgHandler::exportTextToSvgElement(QDomDocument &doc, DrawingText *t
     }
     
     return textElement;
+}
+
+QDomElement SvgHandler::exportLineToSvgElement(QDomDocument &doc, DrawingLine *line)
+{
+    if (!line) {
+        return QDomElement();
+    }
+    
+    QDomElement lineElement = doc.createElement("line");
+    
+    // 获取线条的位置和线条本身
+    QPointF pos = line->pos();
+    QLineF l = line->line();
+    
+    // 计算实际位置（位置 + 线条坐标）
+    lineElement.setAttribute("x1", QString::number(pos.x() + l.x1()));
+    lineElement.setAttribute("y1", QString::number(pos.y() + l.y1()));
+    lineElement.setAttribute("x2", QString::number(pos.x() + l.x2()));
+    lineElement.setAttribute("y2", QString::number(pos.y() + l.y2()));
+    
+    // 导出样式
+    if (line->strokePen() != Qt::NoPen) {
+        lineElement.setAttribute("stroke", line->strokePen().color().name());
+        lineElement.setAttribute("stroke-width", QString::number(line->strokePen().widthF()));
+    }
+    
+    if (line->fillBrush() != Qt::NoBrush) {
+        lineElement.setAttribute("fill", line->fillBrush().color().name());
+    } else {
+        lineElement.setAttribute("fill", "none");
+    }
+    
+    return lineElement;
+}
+
+QDomElement SvgHandler::exportPolylineToSvgElement(QDomDocument &doc, DrawingPolyline *polyline)
+{
+    if (!polyline) {
+        return QDomElement();
+    }
+    
+    QDomElement polylineElement = doc.createElement("polyline");
+    
+    // 构建点字符串
+    QString pointsStr;
+    QPointF pos = polyline->pos();
+    QVector<QPointF> points = polyline->getNodePoints();
+    for (int i = 0; i < points.size(); ++i) {
+        const QPointF &p = points[i];
+        // 计算实际位置（位置 + 点坐标）
+        pointsStr += QString("%1,%2").arg(pos.x() + p.x()).arg(pos.y() + p.y());
+        if (i < points.size() - 1) {
+            pointsStr += " ";
+        }
+    }
+    polylineElement.setAttribute("points", pointsStr);
+    
+    // 导出样式
+    if (polyline->strokePen() != Qt::NoPen) {
+        polylineElement.setAttribute("stroke", polyline->strokePen().color().name());
+        polylineElement.setAttribute("stroke-width", QString::number(polyline->strokePen().widthF()));
+    }
+    
+    if (polyline->fillBrush() != Qt::NoBrush) {
+        polylineElement.setAttribute("fill", polyline->fillBrush().color().name());
+    } else {
+        polylineElement.setAttribute("fill", "none");
+    }
+    
+    return polylineElement;
+}
+
+QDomElement SvgHandler::exportPolygonToSvgElement(QDomDocument &doc, DrawingPolygon *polygon)
+{
+    if (!polygon) {
+        return QDomElement();
+    }
+    
+    QDomElement polygonElement = doc.createElement("polygon");
+    
+    // 构建点字符串
+    QString pointsStr;
+    QPointF pos = polygon->pos();
+    QVector<QPointF> points = polygon->getNodePoints();
+    for (int i = 0; i < points.size(); ++i) {
+        const QPointF &p = points[i];
+        // 计算实际位置（位置 + 点坐标）
+        pointsStr += QString("%1,%2").arg(pos.x() + p.x()).arg(pos.y() + p.y());
+        if (i < points.size() - 1) {
+            pointsStr += " ";
+        }
+    }
+    polygonElement.setAttribute("points", pointsStr);
+    
+    // 导出样式
+    if (polygon->strokePen() != Qt::NoPen) {
+        polygonElement.setAttribute("stroke", polygon->strokePen().color().name());
+        polygonElement.setAttribute("stroke-width", QString::number(polygon->strokePen().widthF()));
+    }
+    
+    if (polygon->fillBrush() != Qt::NoBrush) {
+        polygonElement.setAttribute("fill", polygon->fillBrush().color().name());
+    } else {
+        polygonElement.setAttribute("fill", "none");
+    }
+    
+    return polygonElement;
 }

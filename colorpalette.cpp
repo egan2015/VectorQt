@@ -45,7 +45,7 @@ void ColorPalette::setupUI()
     
     // 填充色标签和当前颜色按钮
     m_fillColorLabel = new QLabel("填充");
-    m_fillColorLabel->setStyleSheet("font-weight: bold; font-size: 10px;");
+    m_fillColorLabel->setStyleSheet("font-weight: bold; font-size: 10px; padding: 0 8px;");
     fillLayout->addWidget(m_fillColorLabel);
     
     m_fillColorButton = new QPushButton();
@@ -90,7 +90,7 @@ void ColorPalette::setupUI()
     
     // 边框色标签和当前颜色按钮
     m_strokeColorLabel = new QLabel("边框");
-    m_strokeColorLabel->setStyleSheet("font-weight: bold; font-size: 10px;");
+    m_strokeColorLabel->setStyleSheet("font-weight: bold; font-size: 10px; padding: 0 8px;");
     strokeLayout->addWidget(m_strokeColorLabel);
     
     m_strokeColorButton = new QPushButton();
@@ -168,6 +168,43 @@ void ColorPalette::createColorActions()
     // 为填充色创建颜色按钮
     QHBoxLayout *fillColorLayout = qobject_cast<QHBoxLayout*>(m_fillColorArea->layout());
     if (fillColorLayout) {
+        // 添加无填充选项（第一个位置）
+        QPushButton *noFillButton = new QPushButton();
+        noFillButton->setFixedSize(18, 18);
+        noFillButton->setStyleSheet(
+            "QPushButton {"
+            "  background-color: white;"
+            "  border: 2px solid red;"
+            "  background-image: none;"
+            "}"
+            "QPushButton::before {"
+            "  content: 'X';"
+            "  position: absolute;"
+            "  top: 2px;"
+            "  left: 2px;"
+            "  right: 2px;"
+            "  bottom: 2px;"
+            "  color: red;"
+            "  font-weight: bold;"
+            "  font-size: 10px;"
+            "}"
+        );
+        noFillButton->setToolTip("无填充");
+        
+        connect(noFillButton, &QPushButton::clicked, [this]() {
+            selectFillColor(QColor(Qt::transparent));
+        });
+        
+        fillColorLayout->addWidget(noFillButton);
+        
+        // 添加分隔线
+        QFrame *separator = new QFrame();
+        separator->setFrameShape(QFrame::VLine);
+        separator->setFrameShadow(QFrame::Sunken);
+        separator->setFixedWidth(1);
+        separator->setStyleSheet("background-color: palette(mid);");
+        fillColorLayout->addWidget(separator);
+        
         for (const NamedColor &namedColor : m_w3cColors) {
             QPushButton *colorButton = new QPushButton();
             colorButton->setFixedSize(18, 18);
@@ -181,13 +218,48 @@ void ColorPalette::createColorActions()
             fillColorLayout->addWidget(colorButton);
         }
         
-        // 设置填充色区域的最小宽度，确保颜色按钮可见
-        m_fillColorArea->setMinimumWidth(m_w3cColors.size() * 20); // 每个按钮18px + 2px间距
+        // 设置填充色区域的最小宽度，确保颜色按钮可见（包括无填充按钮和分隔线）
+        m_fillColorArea->setMinimumWidth((m_w3cColors.size() + 2) * 20); // 额外2个位置：无填充按钮和分隔线
     }
     
     // 为边框色创建颜色按钮
     QHBoxLayout *strokeColorLayout = qobject_cast<QHBoxLayout*>(m_strokeColorArea->layout());
     if (strokeColorLayout) {
+        // 添加无边框选项（第一个位置）
+        QPushButton *noStrokeButton = new QPushButton();
+        noStrokeButton->setFixedSize(18, 18);
+        noStrokeButton->setStyleSheet(
+            "QPushButton {"
+            "  background-color: white;"
+            "  border: 2px solid blue;"
+            "  background-image: none;"
+            "}"
+            "QPushButton::before {"
+            "  content: 'X';"
+            "  position: absolute;"
+            "  top: 2px;"
+            "  left: 2px;"
+            "  color: blue;"
+            "  font-weight: bold;"
+            "  font-size: 10px;"
+            "}"
+        );
+        noStrokeButton->setToolTip("无边框");
+        
+        connect(noStrokeButton, &QPushButton::clicked, [this]() {
+            selectStrokeColor(QColor(Qt::transparent));
+        });
+        
+        strokeColorLayout->addWidget(noStrokeButton);
+        
+        // 添加分隔线
+        QFrame *separator = new QFrame();
+        separator->setFrameShape(QFrame::VLine);
+        separator->setFrameShadow(QFrame::Sunken);
+        separator->setFixedWidth(1);
+        separator->setStyleSheet("background-color: palette(mid);");
+        strokeColorLayout->addWidget(separator);
+        
         for (const NamedColor &namedColor : m_w3cColors) {
             QPushButton *colorButton = new QPushButton();
             colorButton->setFixedSize(18, 18);
@@ -201,8 +273,8 @@ void ColorPalette::createColorActions()
             strokeColorLayout->addWidget(colorButton);
         }
         
-        // 设置边框色区域的最小宽度，确保颜色按钮可见
-        m_strokeColorArea->setMinimumWidth(m_w3cColors.size() * 20); // 每个按钮18px + 2px间距
+        // 设置边框色区域的最小宽度，确保颜色按钮可见（包括无边框按钮和分隔线）
+        m_strokeColorArea->setMinimumWidth((m_w3cColors.size() + 2) * 20); // 额外2个位置：无边框按钮和分隔线
     }
 }
 
@@ -363,6 +435,7 @@ void ColorPalette::selectFillColor(const QColor &color)
     m_currentFillColor = color;
     updateColorButton(m_fillColorButton, color);
     emit fillColorChanged(color);
+    emit applyColorToSelection(color, true); // 应用填充色到选中对象
 }
 
 void ColorPalette::selectStrokeColor(const QColor &color)
@@ -370,6 +443,7 @@ void ColorPalette::selectStrokeColor(const QColor &color)
     m_currentStrokeColor = color;
     updateColorButton(m_strokeColorButton, color);
     emit strokeColorChanged(color);
+    emit applyColorToSelection(color, false); // 应用边框色到选中对象
 }
 
 void ColorPalette::onFillColorButtonClicked()

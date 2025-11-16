@@ -674,8 +674,8 @@ void DrawingEllipse::setNodePoint(int index, const QPointF &pos)
             
             qreal centerX = m_rect.center().x();
             qreal centerY = m_rect.center().y();
-            qreal dx = pos.x() - centerX;
-            qreal dy = pos.y() - centerY;
+            qreal dx = localPos.x() - centerX;
+            qreal dy = localPos.y() - centerY;
             // 使用与../qdraw相同的角度计算方式
             qreal angle = -qAtan2(dy, dx) * 180.0 / M_PI;
             
@@ -1282,6 +1282,7 @@ QVector<QPointF> DrawingText::getNodePoints() const
 
 void DrawingText::setNodePoint(int index, const QPointF &pos)
 {
+    // 将场景坐标转换为本地坐标
     QPointF localPos = mapFromScene(pos);
     
     switch (index) {
@@ -1346,7 +1347,17 @@ void DrawingText::endNodeDrag(int index)
 void DrawingText::paintShape(QPainter *painter)
 {
     painter->setFont(m_font);
-    painter->setPen(m_strokePen.color());
+    
+    // 文本颜色应该使用填充色而不是描边色
+    if (m_fillBrush != Qt::NoBrush) {
+        painter->setPen(QPen(m_fillBrush.color()));
+    } else if (m_strokePen.style() != Qt::NoPen) {
+        // 如果没有填充色，使用描边色
+        painter->setPen(m_strokePen.color());
+    } else {
+        // 默认使用黑色
+        painter->setPen(QPen(Qt::black));
+    }
     painter->setBrush(Qt::NoBrush);
     
     // 使用正确的文本绘制位置

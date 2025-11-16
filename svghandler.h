@@ -23,6 +23,9 @@ class DrawingEllipse;
 class DrawingText;
 class DrawingLayer;
 class DrawingGroup;
+class DrawingLine;
+class DrawingPolyline;
+class DrawingPolygon;
 
 /**
  * SVG处理类 - 负责导入和导出SVG文件
@@ -138,6 +141,15 @@ private:
     
     // 导出文本到SVG文本元素
     static QDomElement exportTextToSvgElement(QDomDocument &doc, DrawingText *text);
+    
+    // 导出线条到SVG线条元素
+    static QDomElement exportLineToSvgElement(QDomDocument &doc, DrawingLine *line);
+    
+    // 导出折线到SVG折线元素
+    static QDomElement exportPolylineToSvgElement(QDomDocument &doc, DrawingPolyline *polyline);
+    
+    // 导出多边形到SVG多边形元素
+    static QDomElement exportPolygonToSvgElement(QDomDocument &doc, DrawingPolygon *polygon);
     
     // 辅助函数
     static void parseSvgPathData(const QString &data, QPainterPath &path);

@@ -63,6 +63,10 @@ MainWindow::MainWindow(QWidget *parent)
     m_colorPalette = new ColorPalette(this);
     m_colorPalette->setScene(m_scene);
     
+    // 连接调色板的颜色应用信号
+    connect(m_colorPalette, &ColorPalette::applyColorToSelection,
+            this, &MainWindow::onApplyColorToSelection);
+    
     // Create a dock widget to contain the color palette
     QDockWidget *colorPaletteDock = new QDockWidget("", this);  // 空标题
     colorPaletteDock->setWidget(m_colorPalette);
@@ -1083,7 +1087,7 @@ void MainWindow::newFile()
 void MainWindow::openFile()
 {
     QString fileName = QFileDialog::getOpenFileName(this,
-                                                    "打开文档", QDir::homePath(), "SVG Files (*.svg);;QDrawPro Files (*.qdp)");
+                                                    "打开文档", QDir::homePath(), "SVG Files (*.svg);;VectorFlow Files (*.vfp)");
 
     if (!fileName.isEmpty())
     {
@@ -1092,6 +1096,9 @@ void MainWindow::openFile()
         {
             // SVG导入
             if (SvgHandler::importFromSvg(m_scene, fileName)) {
+                m_currentFile = fileName;
+                m_isModified = false;
+                updateUI(); // 更新窗口标题
                 m_statusLabel->setText(QString("SVG文件已导入: %1").arg(fileInfo.fileName()));
                 
                 // 加载完成后重置视图到100%而不是自动适应
@@ -1120,19 +1127,37 @@ void MainWindow::saveFile()
     }
     else
     {
-        m_statusLabel->setText("文件保存功能尚未实现");
+        // 保存为 SVG 文件
+        if (SvgHandler::exportToSvg(m_scene, m_currentFile)) {
+            m_isModified = false;
+            m_statusLabel->setText(QString("文档已保存: %1").arg(QFileInfo(m_currentFile).fileName()));
+        } else {
+            QMessageBox::warning(this, "保存错误", "无法保存SVG文件");
+        }
     }
 }
 
 void MainWindow::saveFileAs()
 {
     QString fileName = QFileDialog::getSaveFileName(this,
-                                                    "保存文档", QDir::homePath(), "QDrawPro Files (*.qdp)");
+                                                    "保存文档", QDir::homePath(), "SVG Files (*.svg)");
 
     if (!fileName.isEmpty())
     {
+        // 确保文件有 .svg 扩展名
+        if (!fileName.endsWith(".svg", Qt::CaseInsensitive)) {
+            fileName += ".svg";
+        }
+        
         m_currentFile = fileName;
-        m_statusLabel->setText("文件保存功能尚未实现");
+        
+        // 保存为 SVG 文件
+        if (SvgHandler::exportToSvg(m_scene, m_currentFile)) {
+            m_isModified = false;
+            m_statusLabel->setText(QString("文档已保存: %1").arg(QFileInfo(m_currentFile).fileName()));
+        } else {
+            QMessageBox::warning(this, "保存错误", "无法保存SVG文件");
+        }
     }
 }
 
@@ -1334,7 +1359,7 @@ void MainWindow::copySelected()
     
     jsonData += "]";
     
-    mimeData->setData("application/qdrawpro/shapes", jsonData.toUtf8());
+    mimeData->setData("application/vectorflow/shapes", jsonData.toUtf8());
     
     // 放到剪贴板 - 剪贴板会接管mimeData的所有权
     QClipboard *clipboard = QApplication::clipboard();
@@ -1363,11 +1388,11 @@ void MainWindow::paste()
         return;
     }
     
-    if (!mimeData->hasFormat("application/qdrawpro/shapes")) {
+    if (!mimeData->hasFormat("application/vectorflow/shapes")) {
         return;
     }
 
-    QByteArray copyData = mimeData->data("application/qdrawpro/shapes");
+    QByteArray copyData = mimeData->data("application/vectorflow/shapes");
     QString jsonData = QString::fromUtf8(copyData);
     
     // 简单的JSON解析（基础实现）
@@ -1826,7 +1851,7 @@ void MainWindow::updateZoomLabel()
 void MainWindow::about()
 {
     QMessageBox::about(this, "关于 QDrawPro",
-                       "QDrawPro - 矢量绘图应用\\n\\n"
+                       "VectorFlow - 矢量绘图应用\n\n"
                        "一个基于Qt的矢量绘图应用程序，灵感来自Inkscape。\\n\\n"
                        "功能：\\n"
                        "• 基本绘图工具（矩形、椭圆）\\n"
@@ -1846,6 +1871,140 @@ void MainWindow::onSelectionChanged()
     
     // 更新标尺显示
     updateRulerSelection();
+}
+
+void MainWindow::onApplyColorToSelection(const QColor &color, bool isFill)
+{
+    if (!m_scene) return;
+    
+    // 获取当前选中的所有图形
+    QList<QGraphicsItem*> selectedItems = m_scene->selectedItems();
+    if (selectedItems.isEmpty()) return;
+    
+    // 创建撤销命令
+    class ColorChangeCommand : public QUndoCommand
+    {
+    public:
+        ColorChangeCommand(DrawingScene *scene, const QList<DrawingShape*> &shapes, 
+                           const QList<QColor> &oldFillColors, const QList<QColor> &oldStrokeColors,
+                           const QColor &newColor, bool isFill, QUndoCommand *parent = nullptr)
+            : QUndoCommand(isFill ? "修改填充色" : "修改边框色", parent)
+            , m_scene(scene), m_shapes(shapes), m_oldFillColors(oldFillColors)
+            , m_oldStrokeColors(oldStrokeColors), m_newColor(newColor), m_isFill(isFill)
+        {}
+        
+        void undo() override {
+            for (int i = 0; i < m_shapes.size() && i < m_oldFillColors.size(); ++i) {
+                if (m_isFill) {
+                    // 检查原始颜色是否为透明
+                    if (m_oldFillColors[i] == Qt::transparent) {
+                        m_shapes[i]->setFillBrush(QBrush(Qt::NoBrush));
+                    } else {
+                        m_shapes[i]->setFillBrush(QBrush(m_oldFillColors[i]));
+                    }
+                } else {
+                    // 检查原始颜色是否为透明
+                    if (m_oldStrokeColors[i] == Qt::transparent) {
+                        m_shapes[i]->setStrokePen(QPen(Qt::NoPen));
+                    } else {
+                        m_shapes[i]->setStrokePen(QPen(m_oldStrokeColors[i]));
+                    }
+                }
+            }
+            if (m_scene) {
+                m_scene->update();
+                for (DrawingShape *shape : m_shapes) {
+                    emit m_scene->objectStateChanged(shape);
+                }
+            }
+        }
+        
+        void redo() override {
+            for (DrawingShape *shape : m_shapes) {
+                if (m_isFill) {
+                    // 检查新颜色是否为透明
+                    if (m_newColor == Qt::transparent) {
+                        shape->setFillBrush(QBrush(Qt::NoBrush));
+                    } else {
+                        shape->setFillBrush(QBrush(m_newColor));
+                    }
+                } else {
+                    // 检查新颜色是否为透明（无边框）
+                    if (m_newColor == Qt::transparent) {
+                        shape->setStrokePen(QPen(Qt::NoPen));
+                    } else {
+                        shape->setStrokePen(QPen(m_newColor));
+                    }
+                }
+            }
+            if (m_scene) {
+                m_scene->update();
+                for (DrawingShape *shape : m_shapes) {
+                    emit m_scene->objectStateChanged(shape);
+                }
+            }
+        }
+        
+    private:
+        DrawingScene *m_scene;
+        QList<DrawingShape*> m_shapes;
+        QList<QColor> m_oldFillColors;
+        QList<QColor> m_oldStrokeColors;
+        QColor m_newColor;
+        bool m_isFill;
+    };
+    
+    // 收集选中的DrawingShape对象和原始颜色
+    QList<DrawingShape*> shapes;
+    QList<QColor> oldFillColors;
+    QList<QColor> oldStrokeColors;
+    
+    for (QGraphicsItem *item : selectedItems) {
+        DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(item);
+        if (shape) {
+            shapes.append(shape);
+            // 检查当前填充样式
+            if (shape->fillBrush() == Qt::NoBrush) {
+                oldFillColors.append(Qt::transparent);
+            } else {
+                oldFillColors.append(shape->fillBrush().color());
+            }
+            // 检查当前边框样式
+            if (shape->strokePen() == Qt::NoPen) {
+                oldStrokeColors.append(Qt::transparent);
+            } else {
+                oldStrokeColors.append(shape->strokePen().color());
+            }
+        }
+    }
+    
+    if (shapes.isEmpty()) return;
+    
+    // 立即应用颜色变化
+    for (DrawingShape *shape : shapes) {
+        if (isFill) {
+            // 检查是否为透明色（无填充）
+            if (color == Qt::transparent) {
+                shape->setFillBrush(QBrush(Qt::NoBrush));
+            } else {
+                shape->setFillBrush(QBrush(color));
+            }
+        } else {
+            // 检查是否为透明色（无边框）
+            if (color == Qt::transparent) {
+                shape->setStrokePen(QPen(Qt::NoPen));
+            } else {
+                shape->setStrokePen(QPen(color));
+            }
+        }
+    }
+    
+    // 创建并推送撤销命令
+    ColorChangeCommand *command = new ColorChangeCommand(m_scene, shapes, oldFillColors, oldStrokeColors, color, isFill);
+    m_scene->undoStack()->push(command);
+    
+    // 更新场景
+    m_scene->update();
 }
 
 void MainWindow::updateRulerSelection()
@@ -1882,6 +2041,7 @@ void MainWindow::updateRulerSelection()
 void MainWindow::onSceneChanged()
 {
     m_isModified = true;
+    updateUI(); // 更新窗口标题显示修改状态
 }
 
 void MainWindow::mouseMoveEvent(QMouseEvent *event)
@@ -1900,7 +2060,7 @@ void MainWindow::mouseMoveEvent(QMouseEvent *event)
 void MainWindow::updateUI()
 {
     // Update window title
-    QString title = "QDrawPro - 矢量绘图应用";
+    QString title = "VectorFlow - 矢量绘图应用";
     if (!m_currentFile.isEmpty())
     {
         title += " - " + QFileInfo(m_currentFile).fileName();
@@ -1987,7 +2147,7 @@ void MainWindow::closeEvent(QCloseEvent *event)
 {
     if (m_isModified)
     {
-        QMessageBox::StandardButton reply = QMessageBox::question(this, "QDrawPro",
+        QMessageBox::StandardButton reply = QMessageBox::question(this, "VectorFlow",
                                                                   "文档已修改，是否保存？",
                                                                   QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
 

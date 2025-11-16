@@ -1,5 +1,6 @@
 # Build directory
 build/
+demo-build/
 *.o
 *.a
 *.so
@@ -17,6 +18,22 @@ Makefile
 *-build-release/
 *.autosave
 
+# Qt MOC and build directories
+*_autogen/
+*.moc
+moc_*.cpp
+*.qrc.cpp
+*.rcc
+
+# Build artifacts
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.ninja
+.ninja_deps
+.ninja_log
+
 # IDE
 .vscode/
 *.code-workspace
@@ -29,20 +46,12 @@ Thumbs.db
 *.log
 debug.log
 
-# CMake
-CMakeCache.txt
-CMakeFiles/
-cmake_install.cmake
-Makefile
-*.ninja
-.ninja_deps
-.ninja_log
+# Test files
+test_color_parse.cpp
+test_svg_colors.svg
 
-# Qt MOC and build files
-QDrawPro_autogen/
-*.moc
-moc_*.cpp
-*.qrc.cpp
+# Temporary files
+temp-repo/
 
 # Data directory (keep structure but ignore contents)
 /data/svg-tests/*.log

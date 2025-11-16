@@ -75,6 +75,9 @@ public:
     // 获取工具光标类型
     CursorManager::CursorType getCursorType() const override { return CursorManager::SelectCursor; }
 
+private slots:
+    void onObjectStateChanged(DrawingShape* shape); // 处理对象状态变化
+
 private:
     bool m_dragging;
     QPointF m_startPos;

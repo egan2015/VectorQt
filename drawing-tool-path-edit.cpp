@@ -40,6 +40,11 @@ void DrawingToolPathEdit::activate(DrawingScene *scene, DrawingView *view)
     if (view) {
         view->setDragMode(QGraphicsView::RubberBandDrag);
     }
+    
+    // 连接对象状态变化信号
+    if (scene) {
+        connect(scene, &DrawingScene::objectStateChanged, this, &DrawingToolPathEdit::onObjectStateChanged, Qt::UniqueConnection);
+    }
 }
 
 void DrawingToolPathEdit::deactivate()
@@ -59,6 +64,11 @@ void DrawingToolPathEdit::deactivate()
     // 恢复视图的拖动模式
     if (m_view) {
         m_view->setDragMode(QGraphicsView::NoDrag);
+    }
+    
+    // 断开对象状态变化信号
+    if (m_scene) {
+        disconnect(m_scene, &DrawingScene::objectStateChanged, this, &DrawingToolPathEdit::onObjectStateChanged);
     }
     
     ToolBase::deactivate();
@@ -590,6 +600,18 @@ void DrawingToolPathEdit::updateSelectedPathsFromScene()
             if (auto shape = qgraphicsitem_cast<DrawingShape*>(item)) {
                 m_selectedPaths.append(shape);
             }
+        }
+    }
+}
+
+void DrawingToolPathEdit::onObjectStateChanged(DrawingShape* shape)
+{
+    // 如果状态变化的路径是当前选中的路径之一，更新路径编辑器
+    if (m_selectedPaths.contains(shape)) {
+        // 路径编辑器会自动更新显示
+        // 这里不需要显式调用update，因为场景会自动重绘
+        if (m_scene) {
+            m_scene->update();
         }
     }
 }

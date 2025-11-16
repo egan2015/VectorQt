@@ -116,6 +116,11 @@ void DrawingBezierEditTool::activate(DrawingScene *scene, DrawingView *view)
     ToolBase::activate(scene, view);
     qDebug() << "Bezier edit tool activated";
     
+    // 连接对象状态变化信号
+    if (scene) {
+        connect(scene, &DrawingScene::objectStateChanged, this, &DrawingBezierEditTool::onObjectStateChanged, Qt::UniqueConnection);
+    }
+    
     // 检查当前是否有选中的路径
     if (scene) {
         QList<QGraphicsItem*> selectedItems = scene->selectedItems();
@@ -143,8 +148,12 @@ void DrawingBezierEditTool::deactivate()
         m_selectedPath = nullptr;
     }
     
+    // 断开对象状态变化信号
+    if (m_scene) {
+        disconnect(m_scene, &DrawingScene::objectStateChanged, this, &DrawingBezierEditTool::onObjectStateChanged);
+    }
+    
     ToolBase::deactivate();
-    qDebug() << "Bezier edit tool deactivated";
 }
 
 void DrawingBezierEditTool::createControlPointHandles()
@@ -203,4 +212,12 @@ void DrawingBezierEditTool::cleanupControlPointHandles()
     }
     m_controlPointHandles.clear();
     m_activeHandle = nullptr;
+}
+
+void DrawingBezierEditTool::onObjectStateChanged(DrawingShape* shape)
+{
+    // 如果状态变化的路径是当前正在编辑的路径，更新控制点把手
+    if (shape == m_selectedPath) {
+        updateControlPointHandles();
+    }
 }

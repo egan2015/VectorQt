@@ -48,6 +48,10 @@ private:
     void hideTemporaryMessage();
     void updateSelectedPathsFromScene();
     
+private slots:
+    void onObjectStateChanged(DrawingShape* shape); // 处理对象状态变化
+
+private:
     EditMode m_editMode;
     PathEditor::BooleanOperation m_booleanOp;
     PathEditor *m_pathEditor;

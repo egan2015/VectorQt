@@ -40,6 +40,10 @@ private:
     // 清理控制点把手
     void cleanupControlPointHandles();
     
+private slots:
+    void onObjectStateChanged(DrawingShape* shape); // 处理对象状态变化
+
+private:
     // 状态变量
     DrawingPath *m_selectedPath;  // 当前选中的路径
     QVector<EditHandle*> m_controlPointHandles;  // 控制点把手

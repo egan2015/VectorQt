@@ -10,15 +10,38 @@
 #include <QPainterPath>
 #include <QGraphicsSceneMouseEvent>
 #include <QFont>
+#include <QUndoCommand>
 #include <memory>
 #include "drawing-transform.h"
 
 class DrawingDocument;
 class EditHandleManager;
 class SelectionIndicator;
+class DrawingScene;
+class DrawingPath;
 
 // 添加EditHandle的前向声明以避免循环包含
 class EditHandle;
+
+/**
+ * 贝塞尔曲线控制点编辑撤销命令
+ */
+class BezierControlPointCommand : public QUndoCommand
+{
+public:
+    BezierControlPointCommand(DrawingScene *scene, DrawingPath *path, int pointIndex, 
+                            const QPointF &oldPos, const QPointF &newPos, QUndoCommand *parent = nullptr);
+    
+    void undo() override;
+    void redo() override;
+    
+private:
+    DrawingScene *m_scene;
+    DrawingPath *m_path;
+    int m_pointIndex;
+    QPointF m_oldPos;
+    QPointF m_newPos;
+};
 
 /**
  * 几何形状基类 - 参考Inkscape的SPShape设计
@@ -175,7 +198,7 @@ public:
         m_fRatioY = ratioY; 
         // 更新实际的圆角半径
         m_cornerRadius = qMin(m_rect.width() * m_fRatioX, m_rect.height() * m_fRatioY);
-        update(); 
+        update(); // 直接赋值需要手动调用update()
     }
     qreal cornerRadiusRatioX() const { return m_fRatioX; }
     qreal cornerRadiusRatioY() const { return m_fRatioY; }
@@ -316,6 +339,7 @@ private:
     bool m_showControlPolygon = false; // 是否显示控制点连线
     int m_activeControlPoint = -1;     // 当前活动的控制点索引
     QPointF m_dragStartPos;           // 拖动开始位置
+    QVector<QPointF> m_originalControlPoints; // 原始控制点位置（用于撤销）
 };
 
 /**

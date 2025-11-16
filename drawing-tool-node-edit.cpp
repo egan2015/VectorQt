@@ -7,6 +7,61 @@
 #include <QGraphicsItem>
 #include <QDebug>
 
+// NodeEditCommand 实现
+NodeEditCommand::NodeEditCommand(DrawingScene *scene, DrawingShape *shape, int nodeIndex, 
+                               const QPointF &oldPos, const QPointF &newPos, 
+                               qreal oldCornerRadius, qreal newCornerRadius, QUndoCommand *parent)
+    : QUndoCommand("编辑节点", parent), m_scene(scene), m_shape(shape), m_nodeIndex(nodeIndex), 
+      m_oldPos(oldPos), m_newPos(newPos), m_oldCornerRadius(oldCornerRadius), m_newCornerRadius(newCornerRadius)
+{
+}
+
+void NodeEditCommand::undo()
+{
+    if (m_shape && m_shape->scene() == m_scene) {
+        // 恢复到旧位置
+        m_shape->setNodePoint(m_nodeIndex, m_oldPos);
+        
+        // 如果是矩形且编辑的是圆角，恢复圆角半径（在setNodePoint之后）
+        if (m_oldCornerRadius >= 0.0 && m_shape->shapeType() == DrawingShape::Rectangle && m_nodeIndex == 0) {
+            DrawingRectangle *rect = static_cast<DrawingRectangle*>(m_shape);
+            if (rect) {
+                rect->setCornerRadius(m_oldCornerRadius);
+            }
+        }
+        
+        // 更新场景
+        if (m_scene) {
+            m_scene->update();
+            // 通知所有工具对象状态已变化
+            emit m_scene->objectStateChanged(m_shape);
+        }
+    }
+}
+
+void NodeEditCommand::redo()
+{
+    if (m_shape && m_shape->scene() == m_scene) {
+        // 应用到新位置
+        m_shape->setNodePoint(m_nodeIndex, m_newPos);
+        
+        // 如果是矩形且编辑的是圆角，应用新的圆角半径（在setNodePoint之后）
+        if (m_newCornerRadius >= 0.0 && m_shape->shapeType() == DrawingShape::Rectangle && m_nodeIndex == 0) {
+            DrawingRectangle *rect = static_cast<DrawingRectangle*>(m_shape);
+            if (rect) {
+                rect->setCornerRadius(m_newCornerRadius);
+            }
+        }
+        
+        // 更新场景
+        if (m_scene) {
+            m_scene->update();
+            // 通知所有工具对象状态已变化
+            emit m_scene->objectStateChanged(m_shape);
+        }
+    }
+}
+
 DrawingNodeEditTool::DrawingNodeEditTool(QObject *parent)
     : ToolBase(parent)
     , m_selectedShape(nullptr)
@@ -70,6 +125,15 @@ bool DrawingNodeEditTool::mousePressEvent(QMouseEvent *event, const QPointF &sce
                 QVector<QPointF> nodePoints = m_selectedShape->getNodePoints();
                 if (nodeIndex < nodePoints.size()) {
                     m_originalValue = m_selectedShape->mapToScene(nodePoints[nodeIndex]);
+                    
+                    // 如果是矩形且编辑的是圆角（第一个节点），保存原始圆角半径
+                    m_originalCornerRadius = -1.0;
+                    if (m_selectedShape->shapeType() == DrawingShape::Rectangle && nodeIndex == 0) {
+                        DrawingRectangle *rect = static_cast<DrawingRectangle*>(m_selectedShape);
+                        if (rect) {
+                            m_originalCornerRadius = rect->cornerRadius();
+                        }
+                    }
                 }
             }
             
@@ -92,9 +156,10 @@ bool DrawingNodeEditTool::mousePressEvent(QMouseEvent *event, const QPointF &sce
             if (shape) {
                 // 如果之前有选中的图形且是路径类型，隐藏其控制点连线
                 if (m_selectedShape) {
-                    if (DrawingPath *oldPath = qgraphicsitem_cast<DrawingPath*>(m_selectedShape)) {
-                        oldPath->setShowControlPolygon(false);
-                    }
+                    if (m_selectedShape && m_selectedShape->shapeType() == DrawingShape::Path) {
+                    DrawingPath *oldPath = static_cast<DrawingPath*>(m_selectedShape);
+                    oldPath->setShowControlPolygon(false);
+                }
                 }
                 
                 // 禁用之前图形的几何变换手柄
@@ -115,7 +180,8 @@ bool DrawingNodeEditTool::mousePressEvent(QMouseEvent *event, const QPointF &sce
                 shape->setFlag(QGraphicsItem::ItemIsMovable, false);
                 
                 // 如果是路径类型，启用控制点连线显示
-                if (DrawingPath *path = qgraphicsitem_cast<DrawingPath*>(shape)) {
+                if (shape->shapeType() == DrawingShape::Path) {
+                    DrawingPath *path = static_cast<DrawingPath*>(shape);
                     path->setShowControlPolygon(true);
                 }
                 
@@ -125,7 +191,8 @@ bool DrawingNodeEditTool::mousePressEvent(QMouseEvent *event, const QPointF &sce
                 // 点击了空白区域，清除选择
                 if (m_selectedShape) {
                     // 如果之前选中的图形是路径类型，隐藏其控制点连线
-                    if (DrawingPath *path = qgraphicsitem_cast<DrawingPath*>(m_selectedShape)) {
+                    if (m_selectedShape->shapeType() == DrawingShape::Path) {
+                        DrawingPath *path = static_cast<DrawingPath*>(m_selectedShape);
                         path->setShowControlPolygon(false);
                     }
                     // 恢复图形的移动功能
@@ -242,8 +309,43 @@ bool DrawingNodeEditTool::mouseReleaseEvent(QMouseEvent *event, const QPointF &s
             }
         }
         
-        // 通知图形结束拖动节点
-        if (m_selectedShape && nodeIndex != -1) {
+        // 创建撤销命令
+        if (m_selectedShape && nodeIndex != -1 && m_scene) {
+            // 获取当前节点位置
+            QVector<QPointF> nodePoints = m_selectedShape->getNodePoints();
+            if (nodeIndex < nodePoints.size()) {
+                QPointF currentPos = m_selectedShape->mapToScene(nodePoints[nodeIndex]);
+                
+                // 只有当位置真正发生变化时才创建撤销命令
+                if (currentPos != m_originalValue) {
+                    qreal oldCornerRadius = -1.0;
+                    qreal newCornerRadius = -1.0;
+                    
+                    // 如果是矩形且编辑的是圆角（第一个节点），保存圆角信息
+                    if (m_selectedShape->shapeType() == DrawingShape::Rectangle && nodeIndex == 0) {
+                        oldCornerRadius = m_originalCornerRadius;
+                        
+                        // 计算新的圆角半径
+                        DrawingRectangle *rect = static_cast<DrawingRectangle*>(m_selectedShape);
+                        if (rect) {
+                            QPointF localPos = m_selectedShape->mapFromScene(currentPos);
+                            DrawingTransform transform = m_selectedShape->transform();
+                            localPos = transform.transform().inverted().map(localPos);
+                            
+                            qreal distance = localPos.x() - rect->rectangle().left();
+                            qreal maxRadius = qMin(rect->rectangle().width(), rect->rectangle().height()) / 2.0;
+                            newCornerRadius = qBound(0.0, distance, maxRadius);
+                        }
+                    }
+                    
+                    NodeEditCommand *command = new NodeEditCommand(m_scene, m_selectedShape, 
+                                                                  nodeIndex, m_originalValue, currentPos,
+                                                                  oldCornerRadius, newCornerRadius);
+                    m_scene->undoStack()->push(command);
+                }
+            }
+            
+            // 通知图形结束拖动节点
             m_selectedShape->endNodeDrag(nodeIndex);
         }
         
@@ -254,11 +356,6 @@ bool DrawingNodeEditTool::mouseReleaseEvent(QMouseEvent *event, const QPointF &s
         // 如果有选中的图形，更新其显示
         if (m_selectedShape) {
             m_selectedShape->update();
-        }
-        
-        // 标记场景已修改
-        if (m_scene) {
-            m_scene->setModified(true);
         }
         
         return true;
@@ -309,7 +406,8 @@ void DrawingNodeEditTool::activate(DrawingScene *scene, DrawingView *view)
                 m_selectedShape = shape;
                 
                 // 如果是路径类型，启用控制点连线显示
-                if (DrawingPath *path = qgraphicsitem_cast<DrawingPath*>(shape)) {
+                if (shape->shapeType() == DrawingShape::Path) {
+                    DrawingPath *path = static_cast<DrawingPath*>(shape);
                     path->setShowControlPolygon(true);
                 }
                 
@@ -337,7 +435,8 @@ void DrawingNodeEditTool::activate(DrawingScene *scene, DrawingView *view)
                     shape->setShowSelectionIndicator(false);
                     
                     // 如果是路径类型，启用控制点连线显示
-                    if (DrawingPath *path = qgraphicsitem_cast<DrawingPath*>(shape)) {
+                    if (shape->shapeType() == DrawingShape::Path) {
+                        DrawingPath *path = static_cast<DrawingPath*>(shape);
                         path->setShowControlPolygon(true);
                     }
                     
@@ -365,6 +464,8 @@ void DrawingNodeEditTool::activate(DrawingScene *scene, DrawingView *view)
     // 连接场景的选择变化信号，以便在选择变化时更新节点手柄
     if (m_scene) {
         connect(m_scene, &DrawingScene::selectionChanged, this, &DrawingNodeEditTool::onSceneSelectionChanged, Qt::UniqueConnection);
+        // 连接对象状态变化信号，以便在撤销/重做时更新手柄位置
+        connect(m_scene, &DrawingScene::objectStateChanged, this, &DrawingNodeEditTool::onObjectStateChanged, Qt::UniqueConnection);
     }
 }
 
@@ -414,7 +515,8 @@ void DrawingNodeEditTool::deactivate()
         // 检查图形是否仍然存在于场景中
         if (shape && shape->scene()) {
             // 如果是路径类型，隐藏控制点连线
-            if (DrawingPath *path = qgraphicsitem_cast<DrawingPath*>(shape)) {
+            if (shape->shapeType() == DrawingShape::Path) {
+                DrawingPath *path = static_cast<DrawingPath*>(shape);
                 if (path->showControlPolygon()) {
                     path->setShowControlPolygon(false);
                 }
@@ -434,6 +536,7 @@ void DrawingNodeEditTool::deactivate()
     // 断开场景的选择变化信号连接
     if (m_scene) {
         disconnect(m_scene, &DrawingScene::selectionChanged, this, &DrawingNodeEditTool::onSceneSelectionChanged);
+        disconnect(m_scene, &DrawingScene::objectStateChanged, this, &DrawingNodeEditTool::onObjectStateChanged);
     }
     
     m_selectedShape = nullptr;
@@ -469,7 +572,8 @@ void DrawingNodeEditTool::onSceneSelectionChanged()
         // 如果之前有选中的图形，隐藏其编辑状态但不恢复选择边框
         if (m_selectedShape) {
             // 如果是路径类型，隐藏控制点连线
-            if (DrawingPath *path = qgraphicsitem_cast<DrawingPath*>(m_selectedShape)) {
+            if (m_selectedShape->shapeType() == DrawingShape::Path) {
+                DrawingPath *path = static_cast<DrawingPath*>(m_selectedShape);
                 path->setShowControlPolygon(false);
             }
             
@@ -489,7 +593,8 @@ void DrawingNodeEditTool::onSceneSelectionChanged()
             m_selectedShape->setEditHandlesEnabled(false);
             
             // 如果是路径类型，启用控制点连线显示
-            if (DrawingPath *path = qgraphicsitem_cast<DrawingPath*>(m_selectedShape)) {
+            if (m_selectedShape->shapeType() == DrawingShape::Path) {
+                DrawingPath *path = static_cast<DrawingPath*>(m_selectedShape);
                 path->setShowControlPolygon(true);
             }
             
@@ -498,6 +603,14 @@ void DrawingNodeEditTool::onSceneSelectionChanged()
         }
     } else if (m_selectedShape) {
         // 如果当前选中的图形没有变化，但可能其节点点发生了变化，更新手柄位置
+        updateNodeHandles();
+    }
+}
+
+void DrawingNodeEditTool::onObjectStateChanged(DrawingShape* shape)
+{
+    // 如果状态变化的图形是当前正在编辑的图形，更新手柄位置
+    if (shape == m_selectedShape) {
         updateNodeHandles();
     }
 }

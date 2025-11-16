@@ -90,6 +90,8 @@ void LegacySelectTool::activate(DrawingScene *scene, DrawingView *view)
     // 激活选择工具时创建选择层
     if (scene) {
         scene->activateSelectionTool();
+        // 连接对象状态变化信号
+        connect(scene, &DrawingScene::objectStateChanged, this, &LegacySelectTool::onObjectStateChanged, Qt::UniqueConnection);
     }
 }
 
@@ -101,6 +103,8 @@ void LegacySelectTool::deactivate()
     // 停用选择工具时销毁选择层
     if (m_scene) {
         m_scene->deactivateSelectionTool();
+        // 断开对象状态变化信号
+        disconnect(m_scene, &DrawingScene::objectStateChanged, this, &LegacySelectTool::onObjectStateChanged);
     }
     ToolBase::deactivate();
 }
@@ -129,6 +133,17 @@ bool LegacySelectTool::mouseDoubleClickEvent(QMouseEvent *event, const QPointF &
     Q_UNUSED(event)
     Q_UNUSED(scenePos)
     return false;
+}
+
+void LegacySelectTool::onObjectStateChanged(DrawingShape* shape)
+{
+    // 选择工具需要更新选择层以反映对象状态变化
+    if (m_scene && shape) {
+        // 如果对象当前被选中，更新选择层
+        if (shape->isSelected()) {
+            m_scene->updateSelection();
+        }
+    }
 }
 
 // LegacyRectangleTool
@@ -269,7 +284,10 @@ bool LegacyRectangleTool::mouseMoveEvent(QMouseEvent *event, const QPointF &scen
             m_currentItem->setPos(alignedPos);
         }
         
-        m_currentItem->setRectangle(newRect);
+        // 只有当矩形真正发生变化时才设置
+        if (m_currentItem->rectangle() != newRect) {
+            m_currentItem->setRectangle(newRect);
+        }
         return true;
     }
     return false;

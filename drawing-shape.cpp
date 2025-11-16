@@ -8,6 +8,56 @@
 #include <QPainter>
 #include <QStyleOptionGraphicsItem>
 #include <QDebug>
+
+// BezierControlPointCommand 实现
+BezierControlPointCommand::BezierControlPointCommand(DrawingScene *scene, DrawingPath *path, int pointIndex, 
+                                                   const QPointF &oldPos, const QPointF &newPos, QUndoCommand *parent)
+    : QUndoCommand("编辑贝塞尔控制点", parent), m_scene(scene), m_path(path), m_pointIndex(pointIndex), 
+      m_oldPos(oldPos), m_newPos(newPos)
+{
+}
+
+void BezierControlPointCommand::undo()
+{
+    if (m_path && m_path->scene() == m_scene) {
+        // 恢复到旧位置
+        QVector<QPointF> controlPoints = m_path->controlPoints();
+        if (m_pointIndex < controlPoints.size()) {
+            controlPoints[m_pointIndex] = m_oldPos;
+            m_path->setControlPoints(controlPoints);
+            m_path->updatePathFromControlPoints();
+            m_path->update();
+        }
+        
+        // 更新场景
+        if (m_scene) {
+            m_scene->update();
+            // 通知所有工具对象状态已变化
+            emit m_scene->objectStateChanged(m_path);
+        }
+    }
+}
+
+void BezierControlPointCommand::redo()
+{
+    if (m_path && m_path->scene() == m_scene) {
+        // 应用到新位置
+        QVector<QPointF> controlPoints = m_path->controlPoints();
+        if (m_pointIndex < controlPoints.size()) {
+            controlPoints[m_pointIndex] = m_newPos;
+            m_path->setControlPoints(controlPoints);
+            m_path->updatePathFromControlPoints();
+            m_path->update();
+        }
+        
+        // 更新场景
+        if (m_scene) {
+            m_scene->update();
+            // 通知所有工具对象状态已变化
+            emit m_scene->objectStateChanged(m_path);
+        }
+    }
+}
 #include <QGraphicsScene>
 #include <QTimer>
 #include <QPointer>
@@ -368,10 +418,20 @@ QPainterPath DrawingRectangle::transformedShape() const
 
 void DrawingRectangle::setRectangle(const QRectF &rect)
 {
+    // 只有当矩形真正发生变化时才更新
     if (m_rect != rect) {
         prepareGeometryChange();
         m_rect = rect;
-        update();
+        update(); // 直接赋值需要手动调用update()
+    }
+}
+
+void DrawingRectangle::setCornerRadius(qreal radius)
+{
+    // 只有当圆角半径真正发生变化时才更新
+    if (qAbs(m_cornerRadius - radius) > 0.001) {
+        m_cornerRadius = radius;
+        update(); // 直接赋值需要手动调用update()
     }
 }
 
@@ -871,6 +931,8 @@ void DrawingPath::mousePressEvent(QGraphicsSceneMouseEvent *event)
         if (nearestPoint != -1) {
             m_activeControlPoint = nearestPoint;
             m_dragStartPos = event->scenePos();
+            // 保存原始控制点位置
+            m_originalControlPoints = m_controlPoints;
             event->accept();
             return;
         }
@@ -912,6 +974,22 @@ void DrawingPath::mouseMoveEvent(QGraphicsSceneMouseEvent *event)
 void DrawingPath::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
 {
     if (event->button() == Qt::LeftButton && m_activeControlPoint != -1) {
+        // 创建撤销命令
+        if (m_activeControlPoint < m_controlPoints.size() && m_activeControlPoint < m_originalControlPoints.size()) {
+            // 获取场景引用
+            DrawingScene *scene = qobject_cast<DrawingScene*>(this->scene());
+            if (scene) {
+                // 只有当位置真正发生变化时才创建撤销命令
+                if (m_controlPoints[m_activeControlPoint] != m_originalControlPoints[m_activeControlPoint]) {
+                    BezierControlPointCommand *command = new BezierControlPointCommand(
+                        scene, this, m_activeControlPoint, 
+                        m_originalControlPoints[m_activeControlPoint], 
+                        m_controlPoints[m_activeControlPoint]);
+                    scene->undoStack()->push(command);
+                }
+            }
+        }
+        
         // 结束拖动
         m_activeControlPoint = -1;
         event->accept();
@@ -1599,8 +1677,9 @@ void DrawingPolyline::mousePressEvent(QGraphicsSceneMouseEvent *event)
                 }
             }
             
-            // 如果没有点击现有点，添加新点
-            addPoint(event->pos());
+            // 节点编辑模式下，如果没有点击现有点，不添加新点
+            // 只编辑现有点，不创建新点
+            return;
         }
     }
     
@@ -1813,8 +1892,9 @@ void DrawingPolygon::mousePressEvent(QGraphicsSceneMouseEvent *event)
                 }
             }
             
-            // 如果没有点击现有点，添加新点
-            addPoint(event->pos());
+            // 节点编辑模式下，如果没有点击现有点，不添加新点
+            // 只编辑现有点，不创建新点
+            return;
         }
     }
     

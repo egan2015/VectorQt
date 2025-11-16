@@ -216,6 +216,12 @@ public:
         }
         if (m_scene) {
             m_scene->update();
+            // 通知所有工具对象状态已变化
+            for (DrawingShape *shape : m_shapes) {
+                if (shape) {
+                    emit m_scene->objectStateChanged(shape);
+                }
+            }
         }
     }
     
@@ -245,6 +251,12 @@ public:
         }
         if (m_scene) {
             m_scene->update();
+            // 通知所有工具对象状态已变化
+            for (DrawingShape *shape : m_shapes) {
+                if (shape) {
+                    emit m_scene->objectStateChanged(shape);
+                }
+            }
         }
     }
     
@@ -1166,8 +1178,21 @@ void DrawingScene::drawSnapIndicators(QPainter *painter)
 {
     // 🌟 在前景绘制对象吸附指示器，确保在最上层不被遮挡
     if (m_snapIndicatorsVisible && m_hasActiveSnap && m_lastSnapResult.snappedToObject) {
-        // 再次检查目标对象是否仍然有效
-        if (m_lastSnapResult.targetShape && m_lastSnapResult.targetShape->scene()) {
+        // 安全检查目标对象是否仍然有效
+        bool targetValid = false;
+        if (m_lastSnapResult.targetShape) {
+            // 首先检查场景中是否还存在这个对象
+            QList<QGraphicsItem*> items = this->items();
+            for (QGraphicsItem* item : items) {
+                if (item == m_lastSnapResult.targetShape) {
+                    // 对象仍在场景中，进一步检查其有效性
+                    targetValid = true;
+                    break;
+                }
+            }
+        }
+        
+        if (targetValid) {
             // 绘制指示器
             drawSnapIndicators(painter);
         } else {

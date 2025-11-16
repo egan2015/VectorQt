@@ -163,6 +163,7 @@ private:
 
 signals:
     void sceneModified(bool modified);
+    void objectStateChanged(DrawingShape* shape); // 对象状态变化通知
 
 protected:
     void mousePressEvent(QGraphicsSceneMouseEvent *event) override;

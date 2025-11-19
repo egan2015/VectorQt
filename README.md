@@ -82,6 +82,10 @@ make -j4
 - `Ctrl+-`：缩小
 - `Ctrl+0`：适合窗口
 
+## 界面预览
+
+![VectorFlow界面](screenshots/vectorflow.png)
+
 ## 许可证
 
 本项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件。

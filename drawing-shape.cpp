@@ -133,6 +133,15 @@ void DrawingShape::setTransform(const DrawingTransform &transform)
     }
 }
 
+void DrawingShape::bakeTransform(const QTransform &transform)
+{
+    // 默认实现：将变换应用到当前的DrawingTransform中
+    DrawingTransform currentTransform = m_transform;
+    QTransform newMatrix = transform * currentTransform.transform();
+    currentTransform.setTransform(newMatrix);
+    setTransform(currentTransform);
+}
+
 void DrawingShape::rotateAroundAnchor(double angle, DrawingTransform::AnchorPoint anchor)
 {
     QPointF center = m_transform.getAnchorPoint(anchor, localBounds());
@@ -156,6 +165,7 @@ void DrawingShape::shearAroundAnchor(double sh, double sv, DrawingTransform::Anc
 
 QRectF DrawingShape::boundingRect() const
 {
+    // 使用自定义的边界框计算，已经修复了镜像问题
     QRectF localBoundsRect = localBounds();
     QRectF transformedBounds = m_transform.transformedBounds(localBoundsRect);
     return transformedBounds;
@@ -166,7 +176,29 @@ QPainterPath DrawingShape::shape() const
     QPainterPath path;
     // 创建本地边界的路径
     path.addRect(localBounds());
-    return m_transform.transform().map(path);
+    
+    QPainterPath transformedPath = m_transform.transform().map(path);
+    
+    // 确保路径有效（处理镜像情况）
+    if (transformedPath.isEmpty()) {
+        // 如果变换后路径为空，返回边界矩形
+        QRectF bounds = boundingRect();
+        QPainterPath fallbackPath;
+        fallbackPath.addRect(bounds);
+        return fallbackPath;
+    }
+    
+    // 验证路径的边界框是否有效
+    QRectF pathBounds = transformedPath.boundingRect();
+    if (pathBounds.width() < 0 || pathBounds.height() < 0 || pathBounds.isNull()) {
+        // 如果路径边界无效，使用计算出的边界框
+        QRectF bounds = boundingRect();
+        QPainterPath fallbackPath;
+        fallbackPath.addRect(bounds);
+        return fallbackPath;
+    }
+    
+    return transformedPath;
 }
 
 QPainterPath DrawingShape::transformedShape() const
@@ -383,18 +415,18 @@ QRectF DrawingRectangle::localBounds() const
     return m_rect;
 }
 
-QPainterPath DrawingRectangle::shape() const
-{
-    QPainterPath path;
-    if (m_cornerRadius > 0) {
-        // 创建圆角矩形路径
-        path.addRoundedRect(m_rect, m_cornerRadius, m_cornerRadius);
-    } else {
-        // 创建普通矩形路径
-        path.addRect(m_rect);
-    }
-    return path;
-}
+// QPainterPath DrawingRectangle::shape() const
+// {
+//     QPainterPath path;
+//     if (m_cornerRadius > 0) {
+//         // 创建圆角矩形路径
+//         path.addRoundedRect(m_rect, m_cornerRadius, m_cornerRadius);
+//     } else {
+//         // 创建普通矩形路径
+//         path.addRect(m_rect);
+//     }
+//     return path;
+// }
 
 QPainterPath DrawingRectangle::transformedShape() const
 {
@@ -558,6 +590,29 @@ void DrawingRectangle::paintShape(QPainter *painter)
     }
 }
 
+void DrawingRectangle::bakeTransform(const QTransform &transform)
+{
+    // 先重置变换矩阵，避免重复应用
+    setTransform(DrawingTransform());
+    
+    // 将变换应用到矩形的内部几何结构中
+    QRectF newRect = transform.mapRect(m_rect);
+    
+    // 更新几何结构
+    m_rect = newRect;
+    
+    // 同时更新圆角半径
+    if (m_cornerRadius > 0) {
+        // 计算变换后的圆角半径（取缩放因子的平均值）
+        qreal scaleX = qSqrt(transform.m11() * transform.m11() + transform.m12() * transform.m12());
+        qreal scaleY = qSqrt(transform.m21() * transform.m21() + transform.m22() * transform.m22());
+        m_cornerRadius *= qAbs((scaleX + scaleY) / 2.0);
+    }
+    
+    // 更新显示
+    update();
+}
+
 // DrawingEllipse
 DrawingEllipse::DrawingEllipse(QGraphicsItem *parent)
     : DrawingShape(Ellipse, parent)
@@ -576,12 +631,12 @@ QRectF DrawingEllipse::localBounds() const
     return m_rect;
 }
 
-QPainterPath DrawingEllipse::shape() const
-{
-    QPainterPath path;
-    path.addEllipse(m_rect);
-    return path;
-}
+// QPainterPath DrawingEllipse::shape() const
+// {
+//     QPainterPath path;
+//     path.addEllipse(m_rect);
+//     return path;
+// }
 
 QPainterPath DrawingEllipse::transformedShape() const
 {
@@ -809,6 +864,21 @@ void DrawingEllipse::paintShape(QPainter *painter)
         // 绘制椭圆弧
         painter->drawArc(m_rect, qRound(startAngle * 16), qRound((endAngle - startAngle) * 16));
     }
+}
+
+void DrawingEllipse::bakeTransform(const QTransform &transform)
+{
+    // 先重置变换矩阵，避免重复应用
+    setTransform(DrawingTransform());
+    
+    // 将变换应用到椭圆的内部几何结构中
+    QRectF newRect = transform.mapRect(m_rect);
+    
+    // 更新几何结构
+    m_rect = newRect;
+    
+    // 更新显示
+    update();
 }
 
 // DrawingPath
@@ -1499,28 +1569,28 @@ QRectF DrawingPolyline::localBounds() const
     return QRectF(minX, minY, maxX - minX, maxY - minY);
 }
 
-QPainterPath DrawingPolyline::shape() const
-{
-    QPainterPath path;
-    if (m_points.size() < 2) {
-        return path;
-    }
+// QPainterPath DrawingPolyline::shape() const
+// {
+//     QPainterPath path;
+//     if (m_points.size() < 2) {
+//         return path;
+//     }
     
-    // 创建一个稍宽的路径用于选择
-    path.moveTo(m_points.first());
-    for (int i = 1; i < m_points.size(); ++i) {
-        path.lineTo(m_points[i]);
-    }
+//     // 创建一个稍宽的路径用于选择
+//     path.moveTo(m_points.first());
+//     for (int i = 1; i < m_points.size(); ++i) {
+//         path.lineTo(m_points[i]);
+//     }
     
-    if (m_closed) {
-        path.closeSubpath();
-    }
+//     if (m_closed) {
+//         path.closeSubpath();
+//     }
     
-    // 使用笔宽创建描边路径，以便更容易选择
-    QPainterPathStroker stroker;
-    stroker.setWidth(qMax(m_lineWidth + 5.0, 8.0)); // 至少8像素宽
-    return stroker.createStroke(path);
-}
+//     // 使用笔宽创建描边路径，以便更容易选择
+//     QPainterPathStroker stroker;
+//     stroker.setWidth(qMax(m_lineWidth + 5.0, 8.0)); // 至少8像素宽
+//     return stroker.createStroke(path);
+// }
 
 QPainterPath DrawingPolyline::transformedShape() const
 {
@@ -1746,22 +1816,22 @@ QRectF DrawingPolygon::localBounds() const
     return QRectF(minX, minY, maxX - minX, maxY - minY);
 }
 
-QPainterPath DrawingPolygon::shape() const
-{
-    QPainterPath path;
-    if (m_points.size() < 3) {
-        return path;
-    }
+// QPainterPath DrawingPolygon::shape() const
+// {
+//     QPainterPath path;
+//     if (m_points.size() < 3) {
+//         return path;
+//     }
     
-    // 创建多边形路径
-    path.moveTo(m_points.first());
-    for (int i = 1; i < m_points.size(); ++i) {
-        path.lineTo(m_points[i]);
-    }
-    path.closeSubpath(); // 多边形总是闭合的
+//     // 创建多边形路径
+//     path.moveTo(m_points.first());
+//     for (int i = 1; i < m_points.size(); ++i) {
+//         path.lineTo(m_points[i]);
+//     }
+//     path.closeSubpath(); // 多边形总是闭合的
     
-    return path;
-}
+//     return path;
+// }
 
 QPainterPath DrawingPolygon::transformedShape() const
 {

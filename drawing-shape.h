@@ -77,6 +77,7 @@ public:
     // 获取本地边界框（未变换）
     virtual QRectF localBounds() const = 0;
     
+    void updateShape(){prepareGeometryChange();}// 更新形状（重新计算边界等）
     // QGraphicsItem重写
     int type() const override { 
         if (m_type == Group) {
@@ -130,6 +131,11 @@ public:
     virtual void beginNodeDrag(int index) { Q_UNUSED(index); }
     // 结束拖动节点
     virtual void endNodeDrag(int index) { Q_UNUSED(index); }
+    // 检查图形是否有可编辑的节点
+    virtual bool hasEditableNodes() const { return getNodePointCount() > 0; }
+    
+    // 🌟 将变换烘焙到图形的内部几何结构中
+    virtual void bakeTransform(const QTransform &transform);
 
 // 渲染
     void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget) override;
@@ -181,7 +187,7 @@ public:
     explicit DrawingRectangle(const QRectF &rect, QGraphicsItem *parent = nullptr);
     
     QRectF localBounds() const override;
-    QPainterPath shape() const override;
+    //QPainterPath shape() const override;
     QPainterPath transformedShape() const override;
     
     // 矩形属性
@@ -210,6 +216,9 @@ public:
     void beginNodeDrag(int index) override;
     void endNodeDrag(int index) override;
     int getNodePointCount() const override { return 2; }
+    
+    // 🌟 将变换烘焙到矩形的内部几何结构中
+    void bakeTransform(const QTransform &transform) override;
 
 protected:
     void paintShape(QPainter *painter) override;
@@ -238,7 +247,7 @@ public:
     explicit DrawingEllipse(const QRectF &rect, QGraphicsItem *parent = nullptr);
     
     QRectF localBounds() const override;
-    QPainterPath shape() const override;
+    //QPainterPath shape() const override;
     QPainterPath transformedShape() const override;
     
     // 椭圆属性
@@ -261,6 +270,9 @@ public:
         // 基础2个尺寸控制点，如果不是完整椭圆则再加2个角度控制点
         return (m_spanAngle != 360) ? 4 : 2; 
     }
+    
+    // 🌟 将变换烘焙到椭圆的内部几何结构中
+    void bakeTransform(const QTransform &transform) override;
 
 protected:
     void paintShape(QPainter *painter) override;
@@ -429,7 +441,7 @@ public:
     explicit DrawingPolyline(QGraphicsItem *parent = nullptr);
     
     QRectF localBounds() const override;
-    QPainterPath shape() const override;
+    //QPainterPath shape() const override;
     
     // 重写变换形状方法
     QPainterPath transformedShape() const override;
@@ -489,7 +501,7 @@ public:
     explicit DrawingPolygon(QGraphicsItem *parent = nullptr);
     
     QRectF localBounds() const override;
-    QPainterPath shape() const override;
+    //QPainterPath shape() const override;
     
     // 重写变换形状方法
     QPainterPath transformedShape() const override;

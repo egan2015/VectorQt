@@ -122,6 +122,12 @@ public:
         }
     }
     
+    // 新的构造函数，接受新状态作为参数
+    TransformCommand(DrawingScene *scene, const QList<DrawingShape*>& shapes, const QList<TransformState>& oldStates, const QList<TransformState>& newStates, TransformType type = Generic, QUndoCommand *parent = nullptr)
+        : QUndoCommand(getCommandText(type, shapes), parent), m_scene(scene), m_shapes(shapes), m_transformType(type), m_oldStates(oldStates), m_newStates(newStates)
+    {
+    }
+    
     static QString getCommandText(TransformType type) {
         switch (type) {
             case Move: return "移动";
@@ -199,7 +205,7 @@ public:
             // 检查图形是否仍然有效且在正确的场景中
             if (shape && shape->scene() == m_scene) {
                 const TransformState &state = m_oldStates[i];
-                qDebug() << "  Restoring shape" << i << "to pos:" << state.position;
+                qDebug() << "  Restoring shape" << i << "to pos:" << state.position << "transform:" << state.transform.transform();
                 
                 shape->setPos(state.position);
                 shape->setTransform(state.transform);
@@ -333,7 +339,7 @@ void DrawingScene::beginTransform(TransformType type)
     
     // 从选中的项目中提取DrawingShape对象
     for (QGraphicsItem *item : selected) {
-        DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(item);
+        DrawingShape *shape = static_cast<DrawingShape*>(item);
         if (shape) {
             selectedShapes.append(shape);
         }
@@ -386,6 +392,35 @@ void DrawingScene::endTransform()
         qDebug() << "TransformCommand deleted (no actual changes)";
         delete command;
     }
+    
+    // 清理临时状态
+    m_transformOldStates.clear();
+    m_transformShapes.clear();
+}
+
+void DrawingScene::endTransformWithStates(const QList<TransformState>& newStates)
+{
+    // 如果没有保存的初始状态，直接返回
+    if (m_transformOldStates.isEmpty() || m_transformShapes.isEmpty()) {
+        return;
+    }
+    
+    // 确定变换类型
+    TransformCommand::TransformType commandType = TransformCommand::Generic;
+    switch (m_currentTransformType) {
+        case Move: commandType = TransformCommand::Move; break;
+        case Scale: commandType = TransformCommand::Scale; break;
+        case Rotate: commandType = TransformCommand::Rotate; break;
+        default: commandType = TransformCommand::Generic; break;
+    }
+    
+    // 创建变换命令，使用提供的新状态而不是当前图形状态
+    TransformCommand *command = new TransformCommand(this, m_transformShapes, m_transformOldStates, newStates, commandType);
+    
+    // 直接推送到撤销栈，不检查hasChanged（因为我们明确提供了新状态）
+    m_undoStack.push(command);
+    setModified(true);
+    qDebug() << "TransformCommand pushed with provided states. Stack size:" << m_undoStack.count();
     
     // 清理临时状态
     m_transformOldStates.clear();
@@ -508,6 +543,9 @@ void DrawingScene::updateSelection()
     
     // 恢复信号状态
     blockSignals(wasBlocked);
+    
+    // 发射选择变化信号
+    emit selectionChanged();
 }
 
 void DrawingScene::activateSelectionTool()

@@ -1,59 +1,41 @@
-# Build directory
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Qt
+*.user
+*.user.*
+*.pro.user
+*.pro.user.*
+CMakeLists.txt.user
+
+# Build directories
 build/
-demo-build/
-*.o
-*.a
-*.so
-*.dylib
-*.exe
-
-# Qt specific
-*.pro.user*
-*.qbs.user
-*.moc
-*.moc.cpp
-*.qrc.cpp
-Makefile
-*-build-debug/
-*-build-release/
-*.autosave
-
-# Qt MOC and build directories
-*_autogen/
-*.moc
-moc_*.cpp
-*.qrc.cpp
-*.rcc
-
-# Build artifacts
-CMakeFiles/
-CMakeCache.txt
-cmake_install.cmake
-Makefile
-*.ninja
-.ninja_deps
-.ninja_log
+*.build/
+_build/
 
 # IDE
 .vscode/
-*.code-workspace
-
-# OS
-.DS_Store
-Thumbs.db
+.idea/
+*.swp
+*.swo
 
 # Logs
 *.log
-debug.log
 
-# Test files
-test_color_parse.cpp
-test_svg_colors.svg
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
 
-# Temporary files
-temp-repo/
-
-# Data directory (keep structure but ignore contents)
-/data/svg-tests/*.log
-/data/temp/*
-!/data/temp/.gitkeep
+# Qt specific
+*.moc
+moc_*.cpp
+*.moc.cpp
+qrc_*.cpp
+ui_*.h

@@ -30,7 +30,7 @@
 #include <QDialog>
 #include <QDebug>
 #include <memory>
-#include "transform-system.h"
+#include "../transform-system.h"
 
 /**
  * Qt图形界面演示 - 展示新变换系统与Qt的协作

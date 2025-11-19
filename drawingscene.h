@@ -50,6 +50,7 @@ public:
     
     void beginTransform(TransformType type = Generic);
     void endTransform();
+    void endTransformWithStates(const QList<TransformState>& newStates);
     
     // 网格功能
     void setGridVisible(bool visible);
@@ -164,6 +165,7 @@ private:
 signals:
     void sceneModified(bool modified);
     void objectStateChanged(DrawingShape* shape); // 对象状态变化通知
+    void selectionChanged(); // 选择变化通知
 
 protected:
     void mousePressEvent(QGraphicsSceneMouseEvent *event) override;

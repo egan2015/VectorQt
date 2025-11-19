@@ -5,7 +5,8 @@ TARGET = transform-demo
 SOURCES += \
     transform-system.cpp \
     transform-demo.cpp \
-    main-transform-demo.cpp
+    main-transform-demo.cpp \
+    ../transform-system.cpp
 
 HEADERS += \
     transform-system.h \

@@ -1,0 +1,126 @@
+#ifndef TRANSFORM_HANDLE_H
+#define TRANSFORM_HANDLE_H
+
+#include <QObject>
+#include <QPointF>
+#include <QRectF>
+#include <QGraphicsRectItem>
+#include <QGraphicsEllipseItem>
+#include <QList>
+
+class DrawingScene;
+
+/**
+ * @brief 变换手柄类型枚举
+ */
+class TransformHandle
+{
+public:
+    enum HandleType {
+        None = 0,
+        TopLeft,
+        TopRight,
+        BottomLeft,
+        BottomRight,
+        Left,
+        Right,
+        Top,
+        Bottom,
+        Center,
+        Rotate  // 旋转手柄
+    };
+    
+    /**
+     * @brief 手柄显示模式
+     */
+    enum HandleMode {
+        Scale,  // 缩放模式：显示8个缩放手柄
+        RotateMode  // 旋转模式：显示4个旋转手柄+中心手柄
+    };
+};
+
+/**
+ * @brief 手柄管理器
+ * @details 负责创建、显示和管理变换手柄
+ */
+class HandleManager : public QObject
+{
+    Q_OBJECT
+
+public:
+    explicit HandleManager(DrawingScene *scene, QObject *parent = nullptr);
+    ~HandleManager();
+
+    // 显示/隐藏手柄
+    void showHandles();
+    void hideHandles();
+    
+    // 更新手柄位置
+    void updateHandles(const QRectF &bounds);
+    
+    // 模式管理
+    void setHandleMode(TransformHandle::HandleMode mode);
+    TransformHandle::HandleMode handleMode() const { return m_handleMode; }
+    
+    // 检测点击位置的手柄
+    TransformHandle::HandleType getHandleAtPosition(const QPointF &scenePos) const;
+    
+    // 设置活动手柄
+    void setActiveHandle(TransformHandle::HandleType type);
+    
+    // 获取手柄位置
+    QPointF getHandlePosition(TransformHandle::HandleType type) const;
+    
+    // 设置中心手柄位置（用于自定义旋转中心）
+    void setCenterHandlePosition(const QPointF &pos);
+    
+    // 🌟 检查并确保手柄被添加到场景中
+    void ensureHandlesInScene();
+    
+    // 更新手柄可见性（根据模式）
+    void updateHandlesVisibility();
+    
+    // 控制手柄显示/隐藏的公共方法
+    void setShowHandles(bool show) { m_shouldShowHandles = show; }
+    bool shouldShowHandles() const { return m_shouldShowHandles; }
+    
+private:
+    // 更新旋转角点手柄位置
+    void updateRotateCornerHandle(int index, const QPointF &pos);
+
+private:
+    // 创建手柄
+    void createHandles();
+    void destroyHandles();
+    
+    // 更新单个手柄位置
+    void updateHandlePosition(TransformHandle::HandleType type, const QPointF &pos);
+    
+    // 获取手柄的视觉大小
+    qreal getHandleSize() const { return 8.0; }
+    
+    DrawingScene *m_scene;
+    QRectF m_bounds;
+    TransformHandle::HandleMode m_handleMode;
+    
+    // 手柄图形项
+    QList<QGraphicsRectItem*> m_cornerHandles;  // 角点手柄
+    QList<QGraphicsRectItem*> m_edgeHandles;    // 边缘手柄
+    QGraphicsEllipseItem* m_centerHandle;       // 中心手柄
+    QGraphicsEllipseItem* m_rotateHandle;       // 旋转手柄
+    
+    // 旋转模式专用手柄（4个角点的旋转手柄）
+    QList<QGraphicsEllipseItem*> m_rotateCornerHandles;
+    
+    TransformHandle::HandleType m_activeHandle;
+    
+    // 控制手柄是否应该显示
+    bool m_shouldShowHandles = true;
+    
+    // 手柄颜色
+    static const QColor HANDLE_COLOR;
+    static const QColor ACTIVE_HANDLE_COLOR;
+    static const QColor ROTATE_HANDLE_COLOR;
+};
+
+#endif // TRANSFORM_HANDLE_H

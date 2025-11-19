@@ -174,16 +174,16 @@ void ColorPalette::createColorActions()
         noFillButton->setStyleSheet(
             "QPushButton {"
             "  background-color: white;"
-            "  border: 2px solid red;"
+            "  border: 1px solid red;"
             "  background-image: none;"
             "}"
             "QPushButton::before {"
             "  content: 'X';"
             "  position: absolute;"
-            "  top: 2px;"
-            "  left: 2px;"
-            "  right: 2px;"
-            "  bottom: 2px;"
+            "  top: 1px;"
+            "  left: 1px;"
+            "  right: 1px;"
+            "  bottom: 1px;"
             "  color: red;"
             "  font-weight: bold;"
             "  font-size: 10px;"
@@ -219,7 +219,7 @@ void ColorPalette::createColorActions()
         }
         
         // 设置填充色区域的最小宽度，确保颜色按钮可见（包括无填充按钮和分隔线）
-        m_fillColorArea->setMinimumWidth((m_w3cColors.size() + 2) * 20); // 额外2个位置：无填充按钮和分隔线
+        m_fillColorArea->setMinimumWidth((m_w3cColors.size() + 1) * 20); // 额外2个位置：无填充按钮和分隔线
     }
     
     // 为边框色创建颜色按钮
@@ -231,14 +231,14 @@ void ColorPalette::createColorActions()
         noStrokeButton->setStyleSheet(
             "QPushButton {"
             "  background-color: white;"
-            "  border: 2px solid blue;"
+            "  border: 1px solid blue;"
             "  background-image: none;"
             "}"
             "QPushButton::before {"
             "  content: 'X';"
             "  position: absolute;"
-            "  top: 2px;"
-            "  left: 2px;"
+            "  top: 1px;"
+            "  left: 1px;"
             "  color: blue;"
             "  font-weight: bold;"
             "  font-size: 10px;"
@@ -274,14 +274,14 @@ void ColorPalette::createColorActions()
         }
         
         // 设置边框色区域的最小宽度，确保颜色按钮可见（包括无边框按钮和分隔线）
-        m_strokeColorArea->setMinimumWidth((m_w3cColors.size() + 2) * 20); // 额外2个位置：无边框按钮和分隔线
+        m_strokeColorArea->setMinimumWidth((m_w3cColors.size() + 1) * 20); // 额外2个位置：无边框按钮和分隔线
     }
 }
 
 QList<ColorPalette::NamedColor> ColorPalette::getW3CColors() const
 {
     // W3C标准颜色名称和颜色值
-    return {
+    QList<NamedColor> colors = {
         {"AliceBlue", QColor(240, 248, 255)},
         {"AntiqueWhite", QColor(250, 235, 215)},
         {"Aqua", QColor(0, 255, 255)},
@@ -423,6 +423,46 @@ QList<ColorPalette::NamedColor> ColorPalette::getW3CColors() const
         {"Yellow", QColor(255, 255, 0)},
         {"YellowGreen", QColor(154, 205, 50)}
     };
+    
+    // 按HSL色彩空间排序，创建类似Inkscape的渐变效果
+    std::sort(colors.begin(), colors.end(), [](const NamedColor &a, const NamedColor &b) {
+        // 将颜色转换为HSL
+        QColor colorA = a.color.toHsl();
+        QColor colorB = b.color.toHsl();
+        
+        // 获取HSL值
+        int hA = colorA.hslHue();
+        int sA = colorA.hslSaturation();
+        int lA = colorA.lightness();
+        int hB = colorB.hslHue();
+        int sB = colorB.hslSaturation();
+        int lB = colorB.lightness();
+        
+        // 处理色相值为-1的情况（黑白灰的色相值为-1）
+        // 将黑白灰放在最前面
+        if (hA < 0 && hB < 0) {
+            // 对于黑白灰，按亮度从深到浅排序
+            return lA < lB;
+        }
+        if (hA < 0) return true;  // 黑白灰排在前面
+        if (hB < 0) return false; // 彩色排在后面
+        
+        // 优先按色相排序，创建光谱渐变效果
+        if (hA != hB) {
+            return hA < hB;
+        }
+        
+        // 在相同色相内，按亮度从深到浅排序，创建渐变效果
+        // 这是关键：相同色相的颜色按亮度排序，形成渐变
+        if (lA != lB) {
+            return lA < lB; // 深色在前，浅色在后
+        }
+        
+        // 在相同亮度内，按饱和度排序
+        return sA < sB;
+    });
+    
+    return colors;
 }
 
 void ColorPalette::updateColorButton(QPushButton *button, const QColor &color)

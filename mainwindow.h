@@ -25,6 +25,7 @@ class PropertyPanel;
 class Ruler;
 class ColorPalette;
 class PathEditor;
+class ScrollableToolBar;
 
 class MainWindow : public QMainWindow
 {
@@ -59,6 +60,9 @@ private slots:
     void polygonTool();
     void brushTool();
     void fillTool();
+    void gradientFillTool();
+    void penTool();
+    void eraserTool();
     void lineTool();
     void pathEditTool();
     // void textTool()  // Not implemented yet
@@ -128,7 +132,8 @@ private:
     PropertyPanel *m_propertyPanel;
     QUndoView *m_undoView;
     ToolBase *m_currentTool;
-    ToolBase *m_selectTool;
+    ToolBase *m_outlinePreviewTool;      // 选择工具（轮廓预览变换）
+    
     ToolBase *m_rectangleTool;
     ToolBase *m_ellipseTool;
     ToolBase *m_bezierTool;        // 贝塞尔曲线工具
@@ -138,6 +143,9 @@ private:
     ToolBase *m_polygonTool;     // 多边形工具
     ToolBase *m_brushTool;       // 画笔工具
     ToolBase *m_fillTool;        // 填充工具
+    ToolBase *m_gradientFillTool; // 渐进填充工具
+    ToolBase *m_penTool;         // 钢笔工具
+    ToolBase *m_eraserTool;      // 橡皮擦工具
     ToolBase *m_lineTool;        // 直线工具
     ToolBase *m_pathEditTool;    // 路径编辑工具
     
@@ -154,7 +162,7 @@ private:
     QAction *m_exitAction;
     QAction *m_undoAction;
     QAction *m_redoAction;
-    QAction *m_selectToolAction;
+    QAction *m_outlinePreviewToolAction;
     QAction *m_rectangleToolAction;
     QAction *m_ellipseToolAction;
     QAction *m_bezierToolAction;
@@ -164,6 +172,9 @@ private:
     QAction *m_polygonToolAction;
     QAction *m_brushToolAction;
     QAction *m_fillToolAction;
+    QAction *m_gradientFillToolAction;
+    QAction *m_penToolAction;
+    QAction *m_eraserToolAction;
     QAction *m_lineToolAction;
     QAction *m_pathEditToolAction;
     QAction *m_pathUnionAction;
@@ -200,6 +211,9 @@ private:
     
     // Color palette
     ColorPalette *m_colorPalette;
+    
+    // Scrollable toolbar
+    ScrollableToolBar *m_scrollableToolBar;
     
     QLabel *m_statusLabel;
     QLabel *m_zoomLabel;

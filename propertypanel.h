@@ -13,6 +13,7 @@
 #include <QGroupBox>
 
 class DrawingScene;
+class DrawingShape;
 
 class PropertyPanel : public QWidget
 {
@@ -30,7 +31,10 @@ private slots:
     void onPositionChanged();
     void onSizeChanged();
     void onRotationChanged();
-    void onColorChanged();
+    void onFillColorChanged();
+    void onStrokeColorChanged();
+    void onStrokeWidthChanged();
+    void onStrokeStyleChanged();
     void onOpacityChanged();
     void onApplyClicked();
 
@@ -54,6 +58,7 @@ private:
     QPushButton *m_fillColorButton;
     QPushButton *m_strokeColorButton;
     QSpinBox *m_strokeWidthSpinBox;
+    QComboBox *m_strokeStyleComboBox;
     QDoubleSpinBox *m_opacitySpinBox;
     
     QPushButton *m_applyButton;

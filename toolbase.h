@@ -57,31 +57,7 @@ protected:
     DrawingView *m_view;
 };
 
-class LegacySelectTool : public ToolBase
-{
-    Q_OBJECT
 
-public:
-    explicit LegacySelectTool(QObject *parent = nullptr);
-    
-    void activate(DrawingScene *scene, DrawingView *view) override;
-    void deactivate() override;
-    
-    bool mousePressEvent(QMouseEvent *event, const QPointF &scenePos) override;
-    bool mouseMoveEvent(QMouseEvent *event, const QPointF &scenePos) override;
-    bool mouseReleaseEvent(QMouseEvent *event, const QPointF &scenePos) override;
-    bool mouseDoubleClickEvent(QMouseEvent *event, const QPointF &scenePos) override;
-    
-    // 获取工具光标类型
-    CursorManager::CursorType getCursorType() const override { return CursorManager::SelectCursor; }
-
-private slots:
-    void onObjectStateChanged(DrawingShape* shape); // 处理对象状态变化
-
-private:
-    bool m_dragging;
-    QPointF m_startPos;
-};
 
 class LegacyRectangleTool : public ToolBase
 {

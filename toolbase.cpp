@@ -74,77 +74,7 @@ bool ToolBase::mouseDoubleClickEvent(QMouseEvent *event, const QPointF &scenePos
     return false;
 }
 
-// LegacySelectTool
-LegacySelectTool::LegacySelectTool(QObject *parent)
-    : ToolBase(parent)
-    , m_dragging(false)
-{
-}
 
-void LegacySelectTool::activate(DrawingScene *scene, DrawingView *view)
-{
-    ToolBase::activate(scene, view);
-    if (view) {
-        view->setDragMode(QGraphicsView::RubberBandDrag);
-    }
-    // 激活选择工具时创建选择层
-    if (scene) {
-        scene->activateSelectionTool();
-        // 连接对象状态变化信号
-        connect(scene, &DrawingScene::objectStateChanged, this, &LegacySelectTool::onObjectStateChanged, Qt::UniqueConnection);
-    }
-}
-
-void LegacySelectTool::deactivate()
-{
-    if (m_view) {
-        m_view->setDragMode(QGraphicsView::NoDrag);
-    }
-    // 停用选择工具时销毁选择层
-    if (m_scene) {
-        m_scene->deactivateSelectionTool();
-        // 断开对象状态变化信号
-        disconnect(m_scene, &DrawingScene::objectStateChanged, this, &LegacySelectTool::onObjectStateChanged);
-    }
-    ToolBase::deactivate();
-}
-
-bool LegacySelectTool::mousePressEvent(QMouseEvent *event, const QPointF &scenePos)
-{
-    // 让场景处理选择和拖动，不消费事件
-    // 这样QGraphicsView的默认行为会被执行，包括选择和拖动
-    return false;
-}
-
-bool LegacySelectTool::mouseMoveEvent(QMouseEvent *event, const QPointF &scenePos)
-{
-    // 让场景处理移动，不消费事件
-    return false;
-}
-
-bool LegacySelectTool::mouseReleaseEvent(QMouseEvent *event, const QPointF &scenePos)
-{
-    // 让场景处理释放，不消费事件
-    return false;
-}
-
-bool LegacySelectTool::mouseDoubleClickEvent(QMouseEvent *event, const QPointF &scenePos)
-{
-    Q_UNUSED(event)
-    Q_UNUSED(scenePos)
-    return false;
-}
-
-void LegacySelectTool::onObjectStateChanged(DrawingShape* shape)
-{
-    // 选择工具需要更新选择层以反映对象状态变化
-    if (m_scene && shape) {
-        // 如果对象当前被选中，更新选择层
-        if (shape->isSelected()) {
-            m_scene->updateSelection();
-        }
-    }
-}
 
 // LegacyRectangleTool
 LegacyRectangleTool::LegacyRectangleTool(QObject *parent)

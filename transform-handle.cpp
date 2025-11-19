@@ -495,18 +495,8 @@ TransformHandle::HandleType HandleManager::getHandleAtPosition(const QPointF &sc
             QPointF handlePos = m_rotateCornerHandles[i]->sceneBoundingRect().center();
             if (QLineF(scenePos, handlePos).length() <= tolerance)
             {
-                // 根据索引返回对应角点的HandleType
-                switch (i)
-                {
-                case 0:
-                    return TransformHandle::Rotate;
-                case 1:
-                    return TransformHandle::Rotate;
-                case 2:
-                    return TransformHandle::Rotate;
-                case 3:
-                    return TransformHandle::Rotate;
-                }
+                // 旋转模式下的角点手柄返回Rotate类型
+                return TransformHandle::Rotate;
             }
         }
     }

@@ -259,8 +259,23 @@ bool OutlinePreviewTransformTool::mouseMoveEvent(QMouseEvent *event, const QPoin
 
     if (m_state == STATE_DRAG_CENTER)
     {
-        // 实时更新旋转中心位置
-        setRotationCenter(scenePos);
+        // 🌟 应用智能吸附到旋转中心位置
+        QPointF alignedPos = scenePos;
+        if (m_scene && m_scene->isGridAlignmentEnabled()) {
+            // 使用智能网格吸附
+            DrawingScene::SnapResult gridSnap = m_scene->smartAlignToGrid(scenePos);
+            alignedPos = gridSnap.snappedPos;
+            
+            // 尝试对象吸附
+            DrawingScene::ObjectSnapResult objectSnap = m_scene->snapToObjects(scenePos, nullptr);
+            if (objectSnap.snappedToObject) {
+                // 对象吸附优先级更高
+                alignedPos = objectSnap.snappedPos;
+            }
+        }
+        
+        // 实时更新旋转中心位置（使用对齐后的位置）
+        setRotationCenter(alignedPos);
         return true;
     }
     else if (m_state == STATE_GRABBED)
@@ -276,8 +291,23 @@ bool OutlinePreviewTransformTool::mouseReleaseEvent(QMouseEvent *event, const QP
 {
     if (m_state == STATE_DRAG_CENTER)
     {
-        // 完成旋转中心设置
-        setRotationCenter(scenePos);
+        // 🌟 应用智能吸附到旋转中心最终位置
+        QPointF alignedPos = scenePos;
+        if (m_scene && m_scene->isGridAlignmentEnabled()) {
+            // 使用智能网格吸附
+            DrawingScene::SnapResult gridSnap = m_scene->smartAlignToGrid(scenePos);
+            alignedPos = gridSnap.snappedPos;
+            
+            // 尝试对象吸附
+            DrawingScene::ObjectSnapResult objectSnap = m_scene->snapToObjects(scenePos, nullptr);
+            if (objectSnap.snappedToObject) {
+                // 对象吸附优先级更高
+                alignedPos = objectSnap.snappedPos;
+            }
+        }
+        
+        // 完成旋转中心设置（使用对齐后的位置）
+        setRotationCenter(alignedPos);
         m_state = STATE_IDLE;
         return true;
     }
@@ -420,6 +450,21 @@ void OutlinePreviewTransformTool::transform(const QPointF &mousePos, Qt::Keyboar
         return;
     }
 
+    // 🌟 应用智能吸附到鼠标位置
+    QPointF alignedPos = mousePos;
+    if (m_scene && m_scene->isGridAlignmentEnabled()) {
+        // 使用智能网格吸附
+        DrawingScene::SnapResult gridSnap = m_scene->smartAlignToGrid(mousePos);
+        alignedPos = gridSnap.snappedPos;
+        
+        // 尝试对象吸附（排除当前选中的图形）
+        DrawingScene::ObjectSnapResult objectSnap = m_scene->snapToObjects(mousePos, nullptr);
+        if (objectSnap.snappedToObject) {
+            // 对象吸附优先级更高
+            alignedPos = objectSnap.snappedPos;
+        }
+    }
+
     // 预先声明变换参数
     qreal sx = 1.0, sy = 1.0;
 
@@ -432,36 +477,36 @@ void OutlinePreviewTransformTool::transform(const QPointF &mousePos, Qt::Keyboar
         switch (m_activeHandle)
         {
         case TransformHandle::Right:
-            sx = safeDiv(mousePos.x() - m_scaleAnchor.x(), m_grabMousePos.x() - m_scaleAnchor.x());
+            sx = safeDiv(alignedPos.x() - m_scaleAnchor.x(), m_grabMousePos.x() - m_scaleAnchor.x());
             sy = 1.0;
             break;
         case TransformHandle::Left:
-            sx = safeDiv(m_scaleAnchor.x() - mousePos.x(), m_scaleAnchor.x() - m_grabMousePos.x());
+            sx = safeDiv(m_scaleAnchor.x() - alignedPos.x(), m_scaleAnchor.x() - m_grabMousePos.x());
             sy = 1.0;
             break;
         case TransformHandle::Bottom:
             sx = 1.0;
-            sy = safeDiv(mousePos.y() - m_scaleAnchor.y(), m_grabMousePos.y() - m_scaleAnchor.y());
+            sy = safeDiv(alignedPos.y() - m_scaleAnchor.y(), m_grabMousePos.y() - m_scaleAnchor.y());
             break;
         case TransformHandle::Top:
             sx = 1.0;
-            sy = safeDiv(m_scaleAnchor.y() - mousePos.y(), m_scaleAnchor.y() - m_grabMousePos.y());
+            sy = safeDiv(m_scaleAnchor.y() - alignedPos.y(), m_scaleAnchor.y() - m_grabMousePos.y());
             break;
         case TransformHandle::BottomRight:
-            sx = safeDiv(mousePos.x() - m_scaleAnchor.x(), m_grabMousePos.x() - m_scaleAnchor.x());
-            sy = safeDiv(mousePos.y() - m_scaleAnchor.y(), m_grabMousePos.y() - m_scaleAnchor.y());
+            sx = safeDiv(alignedPos.x() - m_scaleAnchor.x(), m_grabMousePos.x() - m_scaleAnchor.x());
+            sy = safeDiv(alignedPos.y() - m_scaleAnchor.y(), m_grabMousePos.y() - m_scaleAnchor.y());
             break;
         case TransformHandle::TopLeft:
-            sx = safeDiv(m_scaleAnchor.x() - mousePos.x(), m_scaleAnchor.x() - m_grabMousePos.x());
-            sy = safeDiv(m_scaleAnchor.y() - mousePos.y(), m_scaleAnchor.y() - m_grabMousePos.y());
+            sx = safeDiv(m_scaleAnchor.x() - alignedPos.x(), m_scaleAnchor.x() - m_grabMousePos.x());
+            sy = safeDiv(m_scaleAnchor.y() - alignedPos.y(), m_scaleAnchor.y() - m_grabMousePos.y());
             break;
         case TransformHandle::TopRight:
-            sx = safeDiv(mousePos.x() - m_scaleAnchor.x(), m_grabMousePos.x() - m_scaleAnchor.x());
-            sy = safeDiv(m_scaleAnchor.y() - mousePos.y(), m_scaleAnchor.y() - m_grabMousePos.y());
+            sx = safeDiv(alignedPos.x() - m_scaleAnchor.x(), m_grabMousePos.x() - m_scaleAnchor.x());
+            sy = safeDiv(m_scaleAnchor.y() - alignedPos.y(), m_scaleAnchor.y() - m_grabMousePos.y());
             break;
         case TransformHandle::BottomLeft:
-            sx = safeDiv(m_scaleAnchor.x() - mousePos.x(), m_scaleAnchor.x() - m_grabMousePos.x());
-            sy = safeDiv(mousePos.y() - m_scaleAnchor.y(), m_grabMousePos.y() - m_scaleAnchor.y());
+            sx = safeDiv(m_scaleAnchor.x() - alignedPos.x(), m_scaleAnchor.x() - m_grabMousePos.x());
+            sy = safeDiv(alignedPos.y() - m_scaleAnchor.y(), m_grabMousePos.y() - m_scaleAnchor.y());
             break;
         default:
             return;
@@ -489,8 +534,8 @@ void OutlinePreviewTransformTool::transform(const QPointF &mousePos, Qt::Keyboar
             QPointF center = m_useCustomRotationCenter ? m_customRotationCenter : m_transformOrigin;
             qreal initialAngle = qAtan2(m_grabMousePos.y() - center.y(),
                                         m_grabMousePos.x() - center.x());
-            qreal currentAngle = qAtan2(mousePos.y() - center.y(),
-                                        mousePos.x() - center.x());
+            qreal currentAngle = qAtan2(alignedPos.y() - center.y(),
+                                        alignedPos.x() - center.x());
             qreal rotation = (currentAngle - initialAngle) * 180.0 / M_PI;
 
             // 将旋转中心转换为该图形的本地坐标
@@ -520,8 +565,8 @@ void OutlinePreviewTransformTool::transform(const QPointF &mousePos, Qt::Keyboar
         shape->updateShape(); // 刷新图形的边界和碰撞检测 
     }
 
-    // 更新视觉辅助元素
-    updateVisualHelpers(mousePos);
+    // 更新视觉辅助元素（使用对齐后的位置）
+    updateVisualHelpers(alignedPos);
 
     if (m_scene)
         m_scene->update();

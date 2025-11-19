@@ -4,11 +4,11 @@
 #include <QApplication>
 #include <QMainWindow>
 
-class VectorFlow
+class VectorQt
 {
 public:
-    VectorFlow();
-    ~VectorFlow();
+    VectorQt();
+    ~VectorQt();
     
     int run(int argc, char *argv[]);
     

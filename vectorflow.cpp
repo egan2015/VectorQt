@@ -2,23 +2,23 @@
 #include "mainwindow.h"
 #include <QApplication>
 
-VectorFlow::VectorFlow()
+VectorQt::VectorQt()
 {
 }
 
-VectorFlow::~VectorFlow()
+VectorQt::~VectorQt()
 {
 }
 
-void VectorFlow::setupApplication()
+void VectorQt::setupApplication()
 {
 }
 
-void VectorFlow::setupMainWindow()
+void VectorQt::setupMainWindow()
 {
 }
 
-int VectorFlow::run(int argc, char *argv[])
+int VectorQt::run(int argc, char *argv[])
 {
     m_application = new QApplication(argc, argv);
     

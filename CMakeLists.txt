@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(VectorFlow)
+project(VectorQt)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -126,29 +126,29 @@ set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 
 # 生成可执行文件
-add_executable(VectorFlow ${SOURCES} ${HEADERS} ${RESOURCES})
+add_executable(VectorQt ${SOURCES} ${HEADERS} ${RESOURCES})
 
 # 链接Qt6库
-target_link_libraries(VectorFlow
+target_link_libraries(VectorQt
     Qt6::Widgets
     Qt6::SvgWidgets
     Qt6::Xml
 )
 
 # 设置包含目录
-target_include_directories(VectorFlow PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(VectorQt PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 
 
 # 编译器特定设置
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-    target_compile_options(VectorFlow PRIVATE -Wall -Wextra -Wno-deprecated-builtins)
+    target_compile_options(VectorQt PRIVATE -Wall -Wextra -Wno-deprecated-builtins)
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-    target_compile_options(VectorFlow PRIVATE /W4)
+    target_compile_options(VectorQt PRIVATE /W4)
 endif()
 
 # 调试信息
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    target_compile_definitions(VectorFlow PRIVATE DEBUG)
+    target_compile_definitions(VectorQt PRIVATE DEBUG)
 endif()
 

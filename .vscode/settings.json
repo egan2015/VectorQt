@@ -1,9 +1,0 @@
-{
-    "files.associations": {
-        "qwidget": "cpp",
-        "qvboxlayout": "cpp",
-        "qgraphicsitem": "cpp",
-        "qsvgwidget": "cpp"
-    },
-    "C_Cpp.errorSquiggles": "enabled"
-}

@@ -94,3 +94,5 @@ make -j4
 ## 致谢
 
 VectorFlow 项目受到 Inkscape 的启发，旨在提供一个现代化的矢量图形编辑体验。
+
+本项目由 Firebolt 开发维护。

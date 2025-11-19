@@ -14,6 +14,9 @@
         <!-- 新增的绘图工具图标 -->
         <file>icons/brush-tool-new.svg</file>
         <file>icons/fill-tool-new.svg</file>
+        <file>icons/gradient-fill-tool.svg</file>
+        <file>icons/pen-tool.svg</file>
+        <file>icons/eraser-tool.svg</file>
         <file>icons/line-tool-new.svg</file>
         <file>icons/polyline-tool-new.svg</file>
         <file>icons/polygon-tool-new.svg</file>

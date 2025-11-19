@@ -11,11 +11,16 @@
 #include "drawing-tool-polygon.h"
 #include "drawing-tool-brush.h"
 #include "drawing-tool-fill.h"
+#include "drawing-tool-gradient-fill.h"
+#include "drawing-tool-pen.h"
+#include "drawing-tool-eraser.h"
 #include "drawing-tool-line.h"
 #include "drawing-tool-path-edit.h"
+#include "drawing-tool-outline-preview.h"
 #include "patheditor.h"
 #include "selection-layer.h"
 #include "ruler.h"
+#include "scrollable-toolbar.h"
 // #include "layermanager.h"  // Not implemented yet
 // #include "layerpanel.h"    // Not implemented yet
 // #include "advancedtools.h" // Not implemented yet
@@ -46,8 +51,8 @@
 #include <QIcon>
 
 MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent), m_scene(nullptr), m_canvas(nullptr), m_propertyPanel(nullptr), m_undoView(nullptr), m_currentTool(nullptr), m_selectTool(nullptr), m_rectangleTool(nullptr), m_ellipseTool(nullptr), m_bezierTool(nullptr),
-      m_colorPalette(nullptr),
+    : QMainWindow(parent), m_scene(nullptr), m_canvas(nullptr), m_propertyPanel(nullptr), m_undoView(nullptr), m_currentTool(nullptr), m_outlinePreviewTool(nullptr), m_rectangleTool(nullptr), m_ellipseTool(nullptr), m_bezierTool(nullptr),
+      m_colorPalette(nullptr), m_scrollableToolBar(nullptr),
       m_horizontalRuler(nullptr), m_verticalRuler(nullptr), m_cornerWidget(nullptr), m_isModified(false)
 {
     createActions();
@@ -131,9 +136,16 @@ MainWindow::~MainWindow()
         m_rectangleTool = nullptr;
     }
     
-    if (m_selectTool) {
-        delete m_selectTool;
-        m_selectTool = nullptr;
+    
+    
+    if (m_outlinePreviewTool) {
+        delete m_outlinePreviewTool;
+        m_outlinePreviewTool = nullptr;
+    }
+    
+    if (m_legacySelectTool) {
+        delete m_legacySelectTool;
+        m_legacySelectTool = nullptr;
     }
     
     // 清理场景
@@ -154,7 +166,7 @@ void MainWindow::setupUI()
     m_scene->setObjectSnapEnabled(true); // 启用对象吸附
     m_scene->setSnapTolerance(3); // 设置吸附容差（降低灵敏度）
     m_scene->setObjectSnapTolerance(3); // 设置对象吸附容差（降低灵敏度）
-
+    
     // Create rulers
     m_horizontalRuler = new Ruler(Ruler::Horizontal, this);
     m_verticalRuler = new Ruler(Ruler::Vertical, this);
@@ -255,7 +267,8 @@ void MainWindow::setupUI()
     setupStatusBar();
 
     // Create tools
-    m_selectTool = new LegacySelectTool(this);
+    m_outlinePreviewTool = new OutlinePreviewTransformTool(this);
+    m_legacySelectTool = new LegacySelectTool(this);
     m_rectangleTool = new LegacyRectangleTool(this);
     m_ellipseTool = new LegacyEllipseTool(this);
     m_bezierTool = new DrawingBezierTool(this);
@@ -264,6 +277,9 @@ void MainWindow::setupUI()
     m_polygonTool = new DrawingToolPolygon(this);
     m_brushTool = new DrawingToolBrush(this);
     m_fillTool = new DrawingToolFill(this);
+    m_gradientFillTool = new DrawingToolGradientFill(this);
+    m_penTool = new DrawingToolPen(this);
+    m_eraserTool = new DrawingToolEraser(this);
     m_lineTool = new DrawingToolLine(this);
     m_pathEditTool = new DrawingToolPathEdit(this);
     // m_textTool = new TextTool(this);  // Not implemented yet
@@ -296,6 +312,20 @@ void MainWindow::setupUI()
     if (m_colorPalette && m_fillTool) {
         connect(m_colorPalette, SIGNAL(fillColorChanged(QColor)), 
                 m_fillTool, SLOT(onFillColorChanged(QColor)));
+    }
+    
+    // Connect color palette signals to gradient fill tool (after all objects are created)
+    if (m_colorPalette && m_gradientFillTool) {
+        connect(m_colorPalette, SIGNAL(fillColorChanged(QColor)), 
+                m_gradientFillTool, SLOT(onFillColorChanged(QColor)));
+    }
+    
+    // Connect color palette signals to pen tool (after all objects are created)
+    if (m_colorPalette && m_penTool) {
+        connect(m_colorPalette, SIGNAL(strokeColorChanged(QColor)), 
+                m_penTool, SLOT(onStrokeColorChanged(QColor)));
+        connect(m_colorPalette, SIGNAL(fillColorChanged(QColor)), 
+                m_penTool, SLOT(onFillColorChanged(QColor)));
     }
     
     // Connect undo stack signals to update menu states
@@ -356,7 +386,7 @@ void MainWindow::setupUI()
     }
 
     // 设置默认工具为选择工具
-    setCurrentTool(m_selectTool);
+    setCurrentTool(m_outlinePreviewTool);
 }
 
 void MainWindow::setupMenus()
@@ -416,7 +446,7 @@ void MainWindow::setupMenus()
 
     // Tools menu
     QMenu *toolsMenu = menuBar()->addMenu("&工具");
-    toolsMenu->addAction(m_selectToolAction);
+    toolsMenu->addAction(m_outlinePreviewToolAction);
     toolsMenu->addAction(m_rectangleToolAction);
     toolsMenu->addAction(m_ellipseToolAction);
     toolsMenu->addAction(m_bezierToolAction);
@@ -424,6 +454,9 @@ void MainWindow::setupMenus()
     toolsMenu->addAction(m_polygonToolAction);
     toolsMenu->addAction(m_brushToolAction);
     toolsMenu->addAction(m_fillToolAction);
+    toolsMenu->addAction(m_gradientFillToolAction);
+    toolsMenu->addAction(m_penToolAction);
+    toolsMenu->addAction(m_eraserToolAction);
     toolsMenu->addAction(m_lineToolAction);
     // toolsMenu->addAction(m_textToolAction);  // Not implemented yet
 
@@ -512,24 +545,39 @@ void MainWindow::setupToolbars()
     m_undoAction->setIcon(style()->standardIcon(QStyle::SP_ArrowBack));
     m_redoAction->setIcon(style()->standardIcon(QStyle::SP_ArrowForward));
 
-    // Tools toolbar - moved to left side
-    QToolBar *toolsToolBar = addToolBar("绘图工具");
-    addToolBar(Qt::LeftToolBarArea, toolsToolBar);
-    toolsToolBar->setOrientation(Qt::Vertical);
-    toolsToolBar->setToolButtonStyle(Qt::ToolButtonIconOnly); // 只显示图标
-    toolsToolBar->setIconSize(QSize(32, 32)); // 工具图标稍大一些
-    toolsToolBar->addAction(m_selectToolAction);
-    toolsToolBar->addAction(m_rectangleToolAction);
-    toolsToolBar->addAction(m_ellipseToolAction);
-    toolsToolBar->addAction(m_bezierToolAction);
-    toolsToolBar->addAction(m_nodeEditToolAction);
-    toolsToolBar->addAction(m_pathEditToolAction);
-    toolsToolBar->addAction(m_polylineToolAction);
-    toolsToolBar->addAction(m_polygonToolAction);
-    toolsToolBar->addAction(m_brushToolAction);
-    toolsToolBar->addAction(m_fillToolAction);
-    toolsToolBar->addAction(m_lineToolAction);
-    // toolsToolBar->addAction(m_textToolAction);  // Not implemented yet
+    // Tools toolbar - moved to left side with scrolling support
+    m_scrollableToolBar = new ScrollableToolBar("绘图工具", this);
+    addToolBar(Qt::LeftToolBarArea, m_scrollableToolBar);
+    m_scrollableToolBar->setOrientation(Qt::Vertical);
+    m_scrollableToolBar->setToolButtonStyle(Qt::ToolButtonIconOnly); // 只显示图标
+    m_scrollableToolBar->setIconSize(QSize(32, 32)); // 工具图标稍大一些
+    m_scrollableToolBar->addAction(m_outlinePreviewToolAction);
+    m_scrollableToolBar->addSeparator();
+    
+    // 基础形状工具
+    m_scrollableToolBar->addAction(m_rectangleToolAction);
+    m_scrollableToolBar->addAction(m_ellipseToolAction);
+    m_scrollableToolBar->addAction(m_lineToolAction);
+    m_scrollableToolBar->addSeparator();
+    
+    // 路径工具
+    m_scrollableToolBar->addAction(m_bezierToolAction);
+    m_scrollableToolBar->addAction(m_nodeEditToolAction);
+    m_scrollableToolBar->addAction(m_pathEditToolAction);
+    m_scrollableToolBar->addAction(m_polylineToolAction);
+    m_scrollableToolBar->addAction(m_polygonToolAction);
+    m_scrollableToolBar->addSeparator();
+    
+    // 绘制工具
+    m_scrollableToolBar->addAction(m_brushToolAction);
+    m_scrollableToolBar->addAction(m_penToolAction);
+    m_scrollableToolBar->addSeparator();
+    
+    // 填充工具
+    m_scrollableToolBar->addAction(m_fillToolAction);
+    m_scrollableToolBar->addAction(m_gradientFillToolAction);
+    m_scrollableToolBar->addAction(m_eraserToolAction);
+    // m_scrollableToolBar->addAction(m_textToolAction);  // Not implemented yet
 
     // View toolbar - 包含视图、组合和对齐操作
     QToolBar *viewToolBar = addToolBar("视图");
@@ -753,12 +801,12 @@ void MainWindow::createActions()
     // Tool actions
     m_toolGroup = new QActionGroup(this);
 
-    m_selectToolAction = new QAction("&选择工具", this);
-    m_selectToolAction->setCheckable(true);
-    m_selectToolAction->setShortcut(QKeySequence("V"));
-    m_selectToolAction->setStatusTip("选择和变换项目");
-    m_selectToolAction->setIcon(QIcon(":/icons/icons/select-tool-new.svg"));
-    m_toolGroup->addAction(m_selectToolAction);
+    m_outlinePreviewToolAction = new QAction("&选择工具", this);
+    m_outlinePreviewToolAction->setCheckable(true);
+    m_outlinePreviewToolAction->setShortcut(QKeySequence("V"));
+    m_outlinePreviewToolAction->setStatusTip("选择和变换项目");
+    m_outlinePreviewToolAction->setIcon(QIcon(":/icons/icons/select-tool-new.svg"));
+    m_toolGroup->addAction(m_outlinePreviewToolAction);
 
     m_rectangleToolAction = new QAction("&矩形工具", this);
     m_rectangleToolAction->setCheckable(true);
@@ -817,6 +865,27 @@ void MainWindow::createActions()
     m_fillToolAction->setStatusTip("填充区域");
     m_fillToolAction->setIcon(QIcon(":/icons/icons/fill-tool-new.svg"));
     m_toolGroup->addAction(m_fillToolAction);
+
+    m_gradientFillToolAction = new QAction("&渐进填充工具", this);
+    m_gradientFillToolAction->setCheckable(true);
+    m_gradientFillToolAction->setShortcut(QKeySequence("G"));
+    m_gradientFillToolAction->setStatusTip("渐进填充区域");
+    m_gradientFillToolAction->setIcon(QIcon(":/icons/icons/gradient-fill-tool.svg"));
+    m_toolGroup->addAction(m_gradientFillToolAction);
+
+    m_penToolAction = new QAction("&钢笔工具", this);
+    m_penToolAction->setCheckable(true);
+    m_penToolAction->setShortcut(QKeySequence("P"));
+    m_penToolAction->setStatusTip("绘制贝塞尔曲线路径");
+    m_penToolAction->setIcon(QIcon(":/icons/icons/pen-tool.svg"));
+    m_toolGroup->addAction(m_penToolAction);
+
+    m_eraserToolAction = new QAction("&橡皮擦工具", this);
+    m_eraserToolAction->setCheckable(true);
+    m_eraserToolAction->setShortcut(QKeySequence("E"));
+    m_eraserToolAction->setStatusTip("擦除图形或图形的部分区域");
+    m_eraserToolAction->setIcon(QIcon(":/icons/icons/eraser-tool.svg"));
+    m_toolGroup->addAction(m_eraserToolAction);
 
     m_lineToolAction = new QAction("&线条工具", this);
     m_lineToolAction->setCheckable(true);
@@ -908,7 +977,8 @@ void MainWindow::connectActions()
     connect(m_distributeVerticalAction, &QAction::triggered, this, &MainWindow::distributeVertical);
 
     // Tool connections
-    connect(m_selectToolAction, &QAction::triggered, this, &MainWindow::selectTool);
+    
+    connect(m_outlinePreviewToolAction, &QAction::triggered, this, &MainWindow::selectTool);
     connect(m_rectangleToolAction, &QAction::triggered, this, &MainWindow::rectangleTool);
     connect(m_ellipseToolAction, &QAction::triggered, this, &MainWindow::ellipseTool);
     connect(m_bezierToolAction, &QAction::triggered, this, &MainWindow::bezierTool);
@@ -918,6 +988,9 @@ void MainWindow::connectActions()
     connect(m_polygonToolAction, &QAction::triggered, this, &MainWindow::polygonTool);
     connect(m_brushToolAction, &QAction::triggered, this, &MainWindow::brushTool);
     connect(m_fillToolAction, &QAction::triggered, this, &MainWindow::fillTool);
+    connect(m_gradientFillToolAction, &QAction::triggered, this, &MainWindow::gradientFillTool);
+    connect(m_penToolAction, &QAction::triggered, this, &MainWindow::penTool);
+    connect(m_eraserToolAction, &QAction::triggered, this, &MainWindow::eraserTool);
     connect(m_lineToolAction, &QAction::triggered, this, &MainWindow::lineTool);
     connect(m_pathEditToolAction, &QAction::triggered, this, &MainWindow::pathEditTool);
     // connect(m_textToolAction, &QAction::triggered, this, &MainWindow::textTool);  // Not implemented yet
@@ -961,8 +1034,8 @@ void MainWindow::setCurrentTool(ToolBase *tool)
         }
     }
     
-    // 如果切换到非选择工具且不是节点编辑工具，在工具激活后清除场景中的选择
-    if (m_scene && tool != m_selectTool && tool != m_nodeEditTool) {
+    // 如果切换到非选择工具且不是节点编辑工具或轮廓预览工具，在工具激活后清除场景中的选择
+    if (m_scene && tool != m_nodeEditTool && tool != m_outlinePreviewTool) {
         qDebug() << "Clearing selection after switching to non-select tool";
         qDebug() << "Selected items count before clearing:" << m_scene->selectedItems().count();
         
@@ -1020,9 +1093,9 @@ void MainWindow::setCurrentTool(ToolBase *tool)
 
 
     // Update tool actions
-    if (tool == m_selectTool)
+    if (tool == m_outlinePreviewTool)
     {
-        m_selectToolAction->setChecked(true);
+        m_outlinePreviewToolAction->setChecked(true);
     }
     else if (tool == m_rectangleTool)
     {
@@ -1043,7 +1116,7 @@ void MainWindow::setCurrentTool(ToolBase *tool)
     }
 
     m_statusLabel->setText(QString("工具已更改: %1")
-    .arg(tool == m_selectTool ? "选择" : tool == m_rectangleTool ? "矩形"
+    .arg(tool == m_outlinePreviewTool ? "选择" : tool == m_rectangleTool ? "矩形"
                                     : tool == m_ellipseTool     ? "椭圆"
                                     : tool == m_bezierTool      ? "贝塞尔"
                                     
@@ -1188,8 +1261,10 @@ void MainWindow::redo()
 
 void MainWindow::selectTool()
 {
-    setCurrentTool(m_selectTool);
+    setCurrentTool(m_outlinePreviewTool);
 }
+
+
 
 void MainWindow::rectangleTool()
 {
@@ -1233,6 +1308,21 @@ void MainWindow::brushTool()
 void MainWindow::fillTool()
 {
     setCurrentTool(m_fillTool);
+}
+
+void MainWindow::gradientFillTool()
+{
+    setCurrentTool(m_gradientFillTool);
+}
+
+void MainWindow::penTool()
+{
+    setCurrentTool(m_penTool);
+}
+
+void MainWindow::eraserTool()
+{
+    setCurrentTool(m_eraserTool);
 }
 
 void MainWindow::lineTool()
@@ -1709,10 +1799,15 @@ void MainWindow::groupSelected()
     // 将组添加到场景中
     m_scene->addItem(group);
     
-    // 将选中的项目添加到组中（现在addItem会正确计算相对位置）
-    for (int i = 0; i < shapesToGroup.size(); ++i) {
-        DrawingShape *shape = shapesToGroup[i];
-        group->addItem(shape);
+    // 将所有形状添加到组中
+    for (DrawingShape *shape : shapesToGroup) {
+        if (shape) {
+            // 清除形状的选择状态
+            shape->setSelected(false);
+            // 将形状添加到组合中
+            group->addItem(shape);
+            // qDebug() << "groupSelected: added shape to group, shape type:" << shape->type();
+        }
     }
     // qDebug() << "groupSelected: added group to scene, group type:" << group->type();
     

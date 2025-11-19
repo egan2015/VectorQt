@@ -165,6 +165,7 @@ void DrawingShape::shearAroundAnchor(double sh, double sv, DrawingTransform::Anc
 
 QRectF DrawingShape::boundingRect() const
 {
+    // 使用自定义的边界框计算，已经修复了镜像问题
     QRectF localBoundsRect = localBounds();
     QRectF transformedBounds = m_transform.transformedBounds(localBoundsRect);
     return transformedBounds;
@@ -175,7 +176,29 @@ QPainterPath DrawingShape::shape() const
     QPainterPath path;
     // 创建本地边界的路径
     path.addRect(localBounds());
-    return m_transform.transform().map(path);
+    
+    QPainterPath transformedPath = m_transform.transform().map(path);
+    
+    // 确保路径有效（处理镜像情况）
+    if (transformedPath.isEmpty()) {
+        // 如果变换后路径为空，返回边界矩形
+        QRectF bounds = boundingRect();
+        QPainterPath fallbackPath;
+        fallbackPath.addRect(bounds);
+        return fallbackPath;
+    }
+    
+    // 验证路径的边界框是否有效
+    QRectF pathBounds = transformedPath.boundingRect();
+    if (pathBounds.width() < 0 || pathBounds.height() < 0 || pathBounds.isNull()) {
+        // 如果路径边界无效，使用计算出的边界框
+        QRectF bounds = boundingRect();
+        QPainterPath fallbackPath;
+        fallbackPath.addRect(bounds);
+        return fallbackPath;
+    }
+    
+    return transformedPath;
 }
 
 QPainterPath DrawingShape::transformedShape() const

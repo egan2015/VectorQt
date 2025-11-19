@@ -1,9 +1,11 @@
 #include "propertypanel.h"
 #include "drawingscene.h"
+#include "drawing-shape.h"
 #include <QGraphicsItem>
 #include <QColorDialog>
 #include <QFrame>
 #include <QScrollArea>
+#include <QtMath>
 
 PropertyPanel::PropertyPanel(QWidget *parent)
     : QWidget(parent)
@@ -168,7 +170,17 @@ void PropertyPanel::setupUI()
     m_strokeWidthSpinBox->setMinimumWidth(70);
     appearanceLayout->addWidget(m_strokeWidthSpinBox, 2, 1);
     
-    appearanceLayout->addWidget(new QLabel("不透明度:"), 3, 0);
+    appearanceLayout->addWidget(new QLabel("线型:"), 3, 0);
+    m_strokeStyleComboBox = new QComboBox();
+    m_strokeStyleComboBox->addItem("实线", static_cast<int>(Qt::SolidLine));
+    m_strokeStyleComboBox->addItem("虚线", static_cast<int>(Qt::DashLine));
+    m_strokeStyleComboBox->addItem("点线", static_cast<int>(Qt::DotLine));
+    m_strokeStyleComboBox->addItem("点划线", static_cast<int>(Qt::DashDotLine));
+    m_strokeStyleComboBox->addItem("双点划线", static_cast<int>(Qt::DashDotDotLine));
+    m_strokeStyleComboBox->setMinimumWidth(70);
+    appearanceLayout->addWidget(m_strokeStyleComboBox, 3, 1);
+    
+    appearanceLayout->addWidget(new QLabel("不透明度:"), 4, 0);
     m_opacitySpinBox = new QDoubleSpinBox();
     m_opacitySpinBox->setRange(0, 1);
     m_opacitySpinBox->setDecimals(2);
@@ -222,11 +234,13 @@ void PropertyPanel::setupUI()
     connect(m_rotationSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
             this, &PropertyPanel::onRotationChanged);
     connect(m_fillColorButton, &QPushButton::clicked,
-            this, &PropertyPanel::onColorChanged);
+            this, &PropertyPanel::onFillColorChanged);
     connect(m_strokeColorButton, &QPushButton::clicked,
-            this, &PropertyPanel::onColorChanged);
+            this, &PropertyPanel::onStrokeColorChanged);
     connect(m_strokeWidthSpinBox, QOverload<int>::of(&QSpinBox::valueChanged),
-            this, &PropertyPanel::onColorChanged);
+            this, &PropertyPanel::onStrokeWidthChanged);
+    connect(m_strokeStyleComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &PropertyPanel::onStrokeStyleChanged);
     connect(m_opacitySpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
             this, &PropertyPanel::onOpacityChanged);
     connect(m_applyButton, &QPushButton::clicked,
@@ -261,6 +275,8 @@ void PropertyPanel::updateValues()
     QList<QGraphicsItem*> selected = m_scene->selectedItems();
     if (selected.size() == 1) {
         QGraphicsItem *item = selected.first();
+        DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(item);
+        
         QRectF bounds = item->boundingRect();
         QPointF pos = item->pos();
         
@@ -268,7 +284,44 @@ void PropertyPanel::updateValues()
         m_ySpinBox->setValue(pos.y());
         m_widthSpinBox->setValue(bounds.width());
         m_heightSpinBox->setValue(bounds.height());
-        m_rotationSpinBox->setValue(item->rotation());
+        
+        // 获取旋转角度
+        if (shape) {
+            qreal rotationRad = shape->transform().rotation();
+            qreal rotationDeg = rotationRad * 180.0 / M_PI;
+            m_rotationSpinBox->setValue(rotationDeg);
+        } else {
+            m_rotationSpinBox->setValue(item->rotation());
+        }
+        
+        if (shape) {
+            // 更新DrawingShape特有的属性
+            QBrush fillBrush = shape->fillBrush();
+            QPen strokePen = shape->strokePen();
+            
+            // 设置填充颜色按钮
+            QString fillColorStyle = QString("background-color: %1").arg(fillBrush.color().name());
+            m_fillColorButton->setStyleSheet(fillColorStyle);
+            
+            // 设置描边颜色按钮
+            QString strokeColorStyle = QString("background-color: %1").arg(strokePen.color().name());
+            m_strokeColorButton->setStyleSheet(strokeColorStyle);
+            
+            // 设置描边宽度
+            m_strokeWidthSpinBox->setValue(qRound(strokePen.widthF()));
+            
+            // 设置线型
+            int styleValue = static_cast<int>(strokePen.style());
+            for (int i = 0; i < m_strokeStyleComboBox->count(); ++i) {
+                if (m_strokeStyleComboBox->itemData(i).toInt() == styleValue) {
+                    m_strokeStyleComboBox->setCurrentIndex(i);
+                    break;
+                }
+            }
+            
+            // 设置不透明度
+            m_opacitySpinBox->setValue(item->opacity());
+        }
     }
     
     m_updating = false;
@@ -320,15 +373,107 @@ void PropertyPanel::onRotationChanged()
     QList<QGraphicsItem*> selected = m_scene->selectedItems();
     if (selected.size() == 1) {
         QGraphicsItem *item = selected.first();
-        item->setRotation(m_rotationSpinBox->value());
+        DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(item);
+        
+        if (shape) {
+            // 对于DrawingShape，使用DrawingTransform设置旋转
+            DrawingTransform transform = shape->transform();
+            QPointF center = shape->boundingRect().center();
+            qreal angleDeg = m_rotationSpinBox->value();
+            qreal angleRad = angleDeg * M_PI / 180.0;
+            transform.rotate(angleRad, center);
+            shape->setTransform(transform);
+        } else {
+            // 对于其他图形项，使用标准旋转
+            item->setRotation(m_rotationSpinBox->value());
+        }
+        
         m_scene->setModified(true);
     }
 }
 
-void PropertyPanel::onColorChanged()
+void PropertyPanel::onFillColorChanged()
 {
     if (m_updating || !m_scene) {
         return;
+    }
+    
+    QList<QGraphicsItem*> selected = m_scene->selectedItems();
+    if (selected.size() == 1) {
+        QGraphicsItem *item = selected.first();
+        DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(item);
+        if (shape) {
+            QColor color = QColorDialog::getColor(shape->fillBrush().color(), this, "选择填充颜色");
+            if (color.isValid()) {
+                shape->setFillBrush(QBrush(color));
+                QString colorStyle = QString("background-color: %1").arg(color.name());
+                m_fillColorButton->setStyleSheet(colorStyle);
+                m_scene->setModified(true);
+            }
+        }
+    }
+}
+
+void PropertyPanel::onStrokeColorChanged()
+{
+    if (m_updating || !m_scene) {
+        return;
+    }
+    
+    QList<QGraphicsItem*> selected = m_scene->selectedItems();
+    if (selected.size() == 1) {
+        QGraphicsItem *item = selected.first();
+        DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(item);
+        if (shape) {
+            QColor color = QColorDialog::getColor(shape->strokePen().color(), this, "选择描边颜色");
+            if (color.isValid()) {
+                QPen pen = shape->strokePen();
+                pen.setColor(color);
+                shape->setStrokePen(pen);
+                QString colorStyle = QString("background-color: %1").arg(color.name());
+                m_strokeColorButton->setStyleSheet(colorStyle);
+                m_scene->setModified(true);
+            }
+        }
+    }
+}
+
+void PropertyPanel::onStrokeWidthChanged()
+{
+    if (m_updating || !m_scene) {
+        return;
+    }
+    
+    QList<QGraphicsItem*> selected = m_scene->selectedItems();
+    if (selected.size() == 1) {
+        QGraphicsItem *item = selected.first();
+        DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(item);
+        if (shape) {
+            QPen pen = shape->strokePen();
+            pen.setWidth(m_strokeWidthSpinBox->value());
+            shape->setStrokePen(pen);
+            m_scene->setModified(true);
+        }
+    }
+}
+
+void PropertyPanel::onStrokeStyleChanged()
+{
+    if (m_updating || !m_scene) {
+        return;
+    }
+    
+    QList<QGraphicsItem*> selected = m_scene->selectedItems();
+    if (selected.size() == 1) {
+        QGraphicsItem *item = selected.first();
+        DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(item);
+        if (shape) {
+            Qt::PenStyle style = static_cast<Qt::PenStyle>(m_strokeStyleComboBox->currentData().toInt());
+            QPen pen = shape->strokePen();
+            pen.setStyle(style);
+            shape->setStrokePen(pen);
+            m_scene->setModified(true);
+        }
     }
 }
 

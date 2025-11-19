@@ -77,6 +77,7 @@ public:
     // 获取本地边界框（未变换）
     virtual QRectF localBounds() const = 0;
     
+    void updateShape(){prepareGeometryChange();}// 更新形状（重新计算边界等）
     // QGraphicsItem重写
     int type() const override { 
         if (m_type == Group) {

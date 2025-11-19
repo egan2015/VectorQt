@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE QtCreatorProject>
-<!-- Written by QtCreator 17.0.1, 2025-09-21T18:32:42. -->
+<!-- Written by QtCreator 18.0.0, 2025-11-17T21:15:47. -->
 <qtcreator>
  <data>
   <variable>EnvironmentId</variable>
@@ -86,6 +86,7 @@
     <valuelist type="QVariantList" key="ClangTools.SuppressedDiagnostics"/>
     <value type="bool" key="ClangTools.UseGlobalSettings">true</value>
    </valuemap>
+   <value type="int" key="RcSync">0</value>
   </valuemap>
  </data>
  <data>
@@ -104,16 +105,16 @@
     <value type="int" key="CMake.Configure.BaseEnvironment">2</value>
     <value type="bool" key="CMake.Configure.ClearSystemEnvironment">false</value>
     <valuelist type="QVariantList" key="CMake.Configure.UserEnvironmentChanges"/>
-    <value type="QString" key="CMake.Initial.Parameters">-DCMAKE_C_COMPILER:FILEPATH=%{Compiler:Executable:C}
--DQT_QMAKE_EXECUTABLE:FILEPATH=%{Qt:qmakeExecutable}
--DCMAKE_BUILD_TYPE:STRING=Debug
+    <value type="QString" key="CMake.Initial.Parameters">-DQT_QMAKE_EXECUTABLE:FILEPATH=%{Qt:qmakeExecutable}
 -DCMAKE_COLOR_DIAGNOSTICS:BOOL=ON
--DCMAKE_GENERATOR:STRING=Ninja
--DCMAKE_PREFIX_PATH:PATH=%{Qt:QT_INSTALL_PREFIX}
--DQT_MAINTENANCE_TOOL:FILEPATH=/Users/firebolt/Qt/MaintenanceTool.app/Contents/MacOS/MaintenanceTool
+-DCMAKE_CXX_COMPILER:FILEPATH=%{Compiler:Executable:Cxx}
 -DCMAKE_CXX_FLAGS_INIT:STRING=%{Qt:QML_DEBUG_FLAG}
+-DCMAKE_BUILD_TYPE:STRING=Debug
+-DQT_MAINTENANCE_TOOL:FILEPATH=/Users/firebolt/Qt/MaintenanceTool.app/Contents/MacOS/MaintenanceTool
+-DCMAKE_PREFIX_PATH:PATH=%{Qt:QT_INSTALL_PREFIX}
 -DCMAKE_PROJECT_INCLUDE_BEFORE:FILEPATH=%{BuildConfig:BuildDirectory:NativeFilePath}/.qtc/package-manager/auto-setup.cmake
--DCMAKE_CXX_COMPILER:FILEPATH=%{Compiler:Executable:Cxx}</value>
+-DCMAKE_GENERATOR:STRING=Ninja
+-DCMAKE_C_COMPILER:FILEPATH=%{Compiler:Executable:C}</value>
     <value type="QString" key="CMake.Source.Directory">/Users/firebolt/workspaces/qdrawpro</value>
     <value type="QString" key="ProjectExplorer.BuildConfiguration.BuildDirectory">/Users/firebolt/workspaces/qdrawpro/build</value>
     <valuemap type="QVariantMap" key="ProjectExplorer.BuildConfiguration.BuildStepList.0">
@@ -206,6 +207,11 @@
      <value type="QString" key="ProjectExplorer.ProjectConfiguration.Id">ApplicationManagerPlugin.Deploy.Configuration</value>
     </valuemap>
     <value type="qlonglong" key="ProjectExplorer.Target.DeployConfigurationCount">2</value>
+    <valuemap type="QVariantMap" key="ProjectExplorer.Target.PluginSettings">
+     <value type="bool" key="AndroidBuildTargetDirSupport">false</value>
+     <valuelist type="QVariantList" key="ApplicationmanagerPackageTargets"/>
+     <value type="bool" key="UseAndroidBuildTargetDir">false</value>
+    </valuemap>
     <valuemap type="QVariantMap" key="ProjectExplorer.Target.RunConfiguration.0">
      <value type="bool" key="Analyzer.Perf.Settings.UseGlobalSettings">true</value>
      <value type="bool" key="Analyzer.QmlProfiler.Settings.UseGlobalSettings">true</value>
@@ -221,6 +227,7 @@
      <value type="QString" key="ProjectExplorer.ProjectConfiguration.Id">CMakeProjectManager.CMakeRunConfiguration.</value>
      <value type="QString" key="ProjectExplorer.RunConfiguration.BuildKey">qt6_svg_test</value>
      <value type="bool" key="ProjectExplorer.RunConfiguration.Customized">false</value>
+     <value type="QString" key="ProjectExplorer.RunConfiguration.UniqueId"></value>
      <value type="bool" key="RunConfiguration.UseCppDebuggerAuto">true</value>
      <value type="bool" key="RunConfiguration.UseLibrarySearchPath">true</value>
      <value type="bool" key="RunConfiguration.UseQmlDebuggerAuto">true</value>
@@ -291,6 +298,7 @@
     <value type="QString" key="ProjectExplorer.ProjectConfiguration.Id">CMakeProjectManager.CMakeRunConfiguration.</value>
     <value type="QString" key="ProjectExplorer.RunConfiguration.BuildKey">qt6_svg_test</value>
     <value type="bool" key="ProjectExplorer.RunConfiguration.Customized">false</value>
+    <value type="QString" key="ProjectExplorer.RunConfiguration.UniqueId"></value>
     <value type="bool" key="RunConfiguration.UseCppDebuggerAuto">true</value>
     <value type="bool" key="RunConfiguration.UseLibrarySearchPath">true</value>
     <value type="bool" key="RunConfiguration.UseQmlDebuggerAuto">true</value>
@@ -302,10 +310,6 @@
  <data>
   <variable>ProjectExplorer.Project.TargetCount</variable>
   <value type="qlonglong">1</value>
- </data>
- <data>
-  <variable>ProjectExplorer.Project.Updater.FileVersion</variable>
-  <value type="int">22</value>
  </data>
  <data>
   <variable>Version</variable>

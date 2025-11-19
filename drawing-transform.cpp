@@ -114,7 +114,13 @@ QRectF DrawingTransform::transformedBounds(const QRectF &localBounds) const
         maxY = qMax(maxY, corners[i].y());
     }
     
-    return QRectF(minX, minY, maxX - minX, maxY - minY);
+    // 确保边界框有效（处理镜像情况）
+    double width = maxX - minX;
+    double height = maxY - minY;
+    if (width < 0) width = -width;
+    if (height < 0) height = -height;
+    
+    return QRectF(minX, minY, width, height);
 }
 
 QPointF DrawingTransform::mapToScene(const QPointF &localPos, const QRectF &localBounds) const

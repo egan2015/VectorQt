@@ -37,10 +37,19 @@ set(SOURCES
     # 新增的绘图工具
     drawing-tool-brush.cpp
     drawing-tool-fill.cpp
+    drawing-tool-gradient-fill.cpp
+    drawing-tool-pen.cpp
+    drawing-tool-eraser.cpp
     drawing-tool-line.cpp
     drawing-tool-polyline.cpp
     drawing-tool-polygon.cpp
     drawing-tool-path-edit.cpp
+    # 选择工具
+    drawing-tool-outline-preview.cpp
+    # 变换手柄
+    transform-handle.cpp
+    # 滚动工具栏
+    scrollable-toolbar.cpp
     # 图层系统
     drawing-layer.cpp
     # SVG处理
@@ -79,10 +88,19 @@ set(HEADERS
     # 新增的绘图工具
     drawing-tool-brush.h
     drawing-tool-fill.h
+    drawing-tool-gradient-fill.h
+    drawing-tool-pen.h
+    drawing-tool-eraser.h
     drawing-tool-line.h
     drawing-tool-polyline.h
     drawing-tool-polygon.h
     drawing-tool-path-edit.h
+    # 选择工具
+    drawing-tool-outline-preview.h
+    # 变换手柄
+    transform-handle.h
+    # 滚动工具栏
+    scrollable-toolbar.h
     # 图层系统
     drawing-layer.h
     # SVG处理

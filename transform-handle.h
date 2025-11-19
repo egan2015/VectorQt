@@ -29,6 +29,14 @@ public:
         Center,
         Rotate  // 旋转手柄
     };
+    
+    /**
+     * @brief 手柄显示模式
+     */
+    enum HandleMode {
+        Scale,  // 缩放模式：显示8个缩放手柄
+        RotateMode  // 旋转模式：显示4个旋转手柄+中心手柄
+    };
 };
 
 /**
@@ -50,6 +58,10 @@ public:
     // 更新手柄位置
     void updateHandles(const QRectF &bounds);
     
+    // 模式管理
+    void setHandleMode(TransformHandle::HandleMode mode);
+    TransformHandle::HandleMode handleMode() const { return m_handleMode; }
+    
     // 检测点击位置的手柄
     TransformHandle::HandleType getHandleAtPosition(const QPointF &scenePos) const;
     
@@ -64,6 +76,17 @@ public:
     
     // 🌟 检查并确保手柄被添加到场景中
     void ensureHandlesInScene();
+    
+    // 更新手柄可见性（根据模式）
+    void updateHandlesVisibility();
+    
+    // 控制手柄显示/隐藏的公共方法
+    void setShowHandles(bool show) { m_shouldShowHandles = show; }
+    bool shouldShowHandles() const { return m_shouldShowHandles; }
+    
+private:
+    // 更新旋转角点手柄位置
+    void updateRotateCornerHandle(int index, const QPointF &pos);
 
 private:
     // 创建手柄
@@ -78,6 +101,7 @@ private:
     
     DrawingScene *m_scene;
     QRectF m_bounds;
+    TransformHandle::HandleMode m_handleMode;
     
     // 手柄图形项
     QList<QGraphicsRectItem*> m_cornerHandles;  // 角点手柄
@@ -85,7 +109,13 @@ private:
     QGraphicsEllipseItem* m_centerHandle;       // 中心手柄
     QGraphicsEllipseItem* m_rotateHandle;       // 旋转手柄
     
+    // 旋转模式专用手柄（4个角点的旋转手柄）
+    QList<QGraphicsEllipseItem*> m_rotateCornerHandles;
+    
     TransformHandle::HandleType m_activeHandle;
+    
+    // 控制手柄是否应该显示
+    bool m_shouldShowHandles = true;
     
     // 手柄颜色
     static const QColor HANDLE_COLOR;

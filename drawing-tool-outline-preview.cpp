@@ -109,6 +109,8 @@ void OutlinePreviewTransformTool::activate(DrawingScene *scene, DrawingView *vie
     if (scene)
     {
         m_handleManager = new HandleManager(scene, this);
+        // 设置默认模式
+        m_handleManager->setHandleMode(m_currentMode);
     }
 
     // 连接选择变化信号
@@ -185,10 +187,43 @@ bool OutlinePreviewTransformTool::mousePressEvent(QMouseEvent *event, const QPoi
         }
     }
 
-    // 注释掉自定义点选逻辑，让Qt系统自己处理
     QGraphicsItem *item = m_scene->itemAt(scenePos, QTransform());
 
-    // 注释掉自定义点选逻辑，让Qt系统自己处理
+    // 检查是否点击了手柄
+    TransformHandle::HandleType handle = TransformHandle::None;
+    if (m_handleManager) {
+        handle = m_handleManager->getHandleAtPosition(scenePos);
+    }
+
+    if (handle != TransformHandle::None) {
+        // 如果点击了手柄，处理手柄操作
+        if (handle == TransformHandle::Center)
+        {
+            // 开始拖动旋转中心
+            m_state = STATE_DRAG_CENTER;
+            m_grabMousePos = scenePos;
+            return true;
+        }
+        else
+        {
+            grab(handle, scenePos, event->modifiers());
+            return true;
+        }
+    }
+
+    // 记录初始点击位置
+    m_initialClickPos = scenePos;
+    m_isDragging = false;
+
+    // 检查当前是否为多选状态
+    m_wasMultiSelected = m_scene->selectedItems().size() > 1;
+    
+    // 记录点击时图形的初始选择状态
+    m_wasItemInitiallySelected = (item != nullptr) ? item->isSelected() : false;
+    
+    // 保存当前选择状态
+    m_previousSelection = m_scene->selectedItems();
+
     if (item)
     {
         // 如果点击了图形
@@ -210,7 +245,14 @@ bool OutlinePreviewTransformTool::mousePressEvent(QMouseEvent *event, const QPoi
             m_scene->clearSelection();
             item->setSelected(true);
         }
-        // 如果图形已经被选中且没有按Ctrl，不做操作（可能准备拖动）
+        else if (m_wasMultiSelected)
+        {
+            // 在多选状态下点击已选中的图形：稍后可能需要恢复选择状态
+        }
+        else
+        {
+            // 单选状态下点击已选中的图形
+        }
 
         // 立即禁用内部选择框
         disableInternalSelectionIndicators();
@@ -218,20 +260,6 @@ bool OutlinePreviewTransformTool::mousePressEvent(QMouseEvent *event, const QPoi
         // 延迟更新手柄
         QTimer::singleShot(10, this, [this]()
                            { updateHandlePositions(); });
-    }
-
-    else
-
-    {
-        // 点击空白区域
-        if (!(event->modifiers() & Qt::ControlModifier))
-        {
-            // 没有按Ctrl：清除选择
-            m_scene->clearSelection();
-        }
-        // 确保禁用内部选择框（即使没有选中项）
-        disableInternalSelectionIndicators();
-        updateHandlePositions();
     }
 
     // 不消费事件，让场景处理框选
@@ -254,6 +282,12 @@ bool OutlinePreviewTransformTool::mouseMoveEvent(QMouseEvent *event, const QPoin
                 m_view->setCursor(Qt::ArrowCursor);
         }
         return false;
+    }
+
+    // 检查是否开始拖拽
+    if (!m_isDragging && (scenePos - m_initialClickPos).manhattanLength() > 3.0) // 使用曼哈顿距离检测拖拽
+    {
+        m_isDragging = true;
     }
 
     if (m_state == STATE_DRAG_CENTER)
@@ -320,6 +354,24 @@ bool OutlinePreviewTransformTool::mouseReleaseEvent(QMouseEvent *event, const QP
         return true;
     }
 
+    // 检查是否在原本已选中的图形上点击（非拖拽），如果是则切换模式
+    if (!m_isDragging)
+    {
+        QGraphicsItem *item = m_scene->itemAt(m_initialClickPos, QTransform());
+        if (item && item->isSelected() && m_wasItemInitiallySelected)
+        {
+            // 无论是否多选，只要点击原本就选中的图形，就切换模式
+            toggleMode();
+        }
+    }
+    
+    // 重置拖拽状态
+    m_isDragging = false;
+    m_initialClickPos = QPointF();
+    m_wasItemInitiallySelected = false;
+    m_wasMultiSelected = false;
+    m_previousSelection.clear();
+
     // 框选完成后更新手柄和禁用内部选择框
     if (m_scene)
     {
@@ -369,8 +421,15 @@ void OutlinePreviewTransformTool::grab(TransformHandle::HandleType handleType,
         return;
     }
 
-    // 使用场景的变换记录机制
-    DrawingScene::TransformType transformType = (handleType == TransformHandle::Rotate) ? DrawingScene::Rotate : DrawingScene::Scale;
+    // 确定变换类型：如果是旋转模式下的角点手柄，或旋转手柄，则为旋转；否则为缩放
+    DrawingScene::TransformType transformType = DrawingScene::Scale;
+    if (m_activeHandle == TransformHandle::Rotate || 
+        (m_handleManager && m_handleManager->handleMode() == TransformHandle::RotateMode && 
+         (m_activeHandle == TransformHandle::TopLeft || m_activeHandle == TransformHandle::TopRight || 
+          m_activeHandle == TransformHandle::BottomLeft || m_activeHandle == TransformHandle::BottomRight)))
+    {
+        transformType = DrawingScene::Rotate;
+    }
     m_scene->beginTransform(transformType);
 
     // 保存所有选中的图形和它们的初始变换
@@ -599,6 +658,7 @@ void OutlinePreviewTransformTool::ungrab(bool apply, const QPointF &finalMousePo
 
     destroyVisualHelpers();
 
+    // 重置状态，在更新手柄之前
     resetState();
 
     // 清除活动手柄状态
@@ -764,16 +824,14 @@ void OutlinePreviewTransformTool::updateHandlePositions()
 
     QRectF bounds = calculateInitialSelectionBounds();
 
-    // 如果有选中的图形，就显示手柄
+    // 如果有选中的图形，就更新手柄位置
     if (bounds.isEmpty())
     {
-
         m_handleManager->hideHandles();
     }
     else
     {
         // 手柄基于边界
-
         m_handleManager->updateHandles(bounds);
 
         // 如果有自定义旋转中心，更新中心手柄位置
@@ -782,8 +840,15 @@ void OutlinePreviewTransformTool::updateHandlePositions()
             m_handleManager->setCenterHandlePosition(m_customRotationCenter);
         }
 
-        if (m_state != STATE_GRABBED)
+        // 根据当前状态决定显示或隐藏手柄
+        if (m_state == STATE_GRABBED)
+        {
+            m_handleManager->hideHandles();
+        }
+        else
+        {
             m_handleManager->showHandles();
+        }
     }
 }
 
@@ -1014,4 +1079,43 @@ void OutlinePreviewTransformTool::enableInternalSelectionIndicators()
             shape->setShowSelectionIndicator(true);
         }
     }
+}
+
+void OutlinePreviewTransformTool::toggleMode()
+{
+    if (!m_handleManager)
+        return;
+    
+    // 切换模式
+    if (m_currentMode == TransformHandle::Scale)
+    {
+        m_currentMode = TransformHandle::RotateMode;
+    }
+    else
+    {
+        m_currentMode = TransformHandle::Scale;
+    }
+    
+    // 设置手柄管理器的新模式
+    m_handleManager->setHandleMode(m_currentMode);
+    
+    // 更新手柄显示
+    updateHandlePositions();
+}
+
+void OutlinePreviewTransformTool::setMode(TransformHandle::HandleMode mode)
+{
+    if (!m_handleManager || m_currentMode == mode)
+        return;
+    
+    m_currentMode = mode;
+    m_handleManager->setHandleMode(m_currentMode);
+    
+    // 更新手柄显示
+    updateHandlePositions();
+}
+
+TransformHandle::HandleMode OutlinePreviewTransformTool::currentMode() const
+{
+    return m_currentMode;
 }

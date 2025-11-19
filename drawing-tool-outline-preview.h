@@ -75,6 +75,11 @@ private:
     void setRotationCenter(const QPointF &center);
     void resetRotationCenter();
     bool hasCustomRotationCenter() const;
+    
+    // 模式管理
+    void toggleMode();
+    void setMode(TransformHandle::HandleMode mode);
+    TransformHandle::HandleMode currentMode() const;
 
     // 状态
     State m_state = STATE_IDLE;
@@ -87,9 +92,19 @@ private:
     QPointF m_transformOrigin;        // 变换矩阵原点（受修饰键影响）
     QPointF m_scaleAnchor;            // 固定的缩放锚点（场景坐标）
     
+    // 鼠标交互状态
+    QPointF m_initialClickPos;        // 初始点击位置
+    bool m_isDragging = false;        // 是否正在进行拖拽
+    bool m_wasItemInitiallySelected = false;  // 点击时图形是否已经选中
+    bool m_wasMultiSelected = false;          // 点击时是否为多选状态
+    QList<QGraphicsItem*> m_previousSelection; // 点击时的选中项列表
+    
     // 旋转中心
     bool m_useCustomRotationCenter = false;  // 是否使用自定义旋转中心
     QPointF m_customRotationCenter;          // 自定义旋转中心（场景坐标）
+    
+    // 模式管理
+    TransformHandle::HandleMode m_currentMode = TransformHandle::Scale;  // 当前模式（默认为缩放模式）
 
     
     

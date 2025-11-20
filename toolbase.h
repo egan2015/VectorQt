@@ -9,6 +9,7 @@
 // Qt命名空间中的前置声明
 QT_BEGIN_NAMESPACE
 class QMouseEvent;
+class QKeyEvent;
 QT_END_NAMESPACE
 
 class DrawingScene;
@@ -35,6 +36,7 @@ public:
     virtual bool mouseMoveEvent(QMouseEvent *event, const QPointF &scenePos);
     virtual bool mouseReleaseEvent(QMouseEvent *event, const QPointF &scenePos);
     virtual bool mouseDoubleClickEvent(QMouseEvent *event, const QPointF &scenePos);
+    virtual bool keyPressEvent(QKeyEvent *event);
     
     DrawingScene* scene() const { return m_scene; }
     DrawingView* view() const { return m_view; }

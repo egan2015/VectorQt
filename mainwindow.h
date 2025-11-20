@@ -21,6 +21,7 @@ class DrawingScene;
 class DrawingView;
 class DrawingCanvas;
 class ToolBase;
+class OutlinePreviewTransformTool;
 class PropertyPanel;
 class Ruler;
 class ColorPalette;
@@ -94,6 +95,7 @@ private slots:
     void onSceneChanged();
     void updateZoomLabel();
     void updateRulerSelection();
+    void updateStatusBar(const QString &message);
     
     // 调色板颜色应用槽函数
     void onApplyColorToSelection(const QColor &color, bool isFill);

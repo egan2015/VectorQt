@@ -265,6 +265,9 @@ void MainWindow::setupUI()
 
     // Create tools
     m_outlinePreviewTool = new OutlinePreviewTransformTool(this);
+    // 连接状态栏更新信号
+    connect(m_outlinePreviewTool, SIGNAL(statusMessageChanged(const QString&)),
+            this, SLOT(updateStatusBar(const QString&)));
     m_rectangleTool = new LegacyRectangleTool(this);
     m_ellipseTool = new LegacyEllipseTool(this);
     m_bezierTool = new DrawingBezierTool(this);
@@ -1953,6 +1956,11 @@ void MainWindow::updateZoomLabel()
         m_horizontalRuler->update();
         m_verticalRuler->update();
     }
+}
+
+void MainWindow::updateStatusBar(const QString &message)
+{
+    m_statusLabel->setText(message);
 }
 
 void MainWindow::about()

@@ -1,4 +1,4 @@
-#ifndef VECTORFLOW_H
+#ifndef VECTORQT_H
 #define VECTORQT_H
 
 #include <QApplication>
@@ -20,4 +20,4 @@ private:
     QMainWindow *m_mainWindow;
 };
 
-#endif // VECTORFLOW_H
+#endif // VECTORQT_H

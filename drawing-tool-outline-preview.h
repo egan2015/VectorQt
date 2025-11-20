@@ -10,6 +10,8 @@
 #include <QTransform>
 #include <QList>
 #include <QGraphicsPathItem>
+#include <QKeyEvent>
+#include <QString>
 
 class DrawingView;
 class DrawingShape;
@@ -33,9 +35,12 @@ public:
     bool mousePressEvent(QMouseEvent *event, const QPointF &scenePos) override;
     bool mouseMoveEvent(QMouseEvent *event, const QPointF &scenePos) override;
     bool mouseReleaseEvent(QMouseEvent *event, const QPointF &scenePos) override;
-    bool keyPressEvent(QKeyEvent *event); // 支持ESC取消
+    bool keyPressEvent(QKeyEvent *event) override; // 支持ESC取消
     
     CursorManager::CursorType getCursorType() const override { return CursorManager::SelectCursor; }
+
+signals:
+    void statusMessageChanged(const QString &message);
 
 private slots:
     void onSelectionChanged();
@@ -92,13 +97,7 @@ private:
     QPointF m_transformOrigin;        // 变换矩阵原点（受修饰键影响）
     QPointF m_scaleAnchor;            // 固定的缩放锚点（场景坐标）
     
-    // 鼠标交互状态
-    QPointF m_initialClickPos;        // 初始点击位置
-    bool m_isDragging = false;        // 是否正在进行拖拽
-    bool m_wasItemInitiallySelected = false;  // 点击时图形是否已经选中
-    bool m_wasMultiSelected = false;          // 点击时是否为多选状态
-    QList<QGraphicsItem*> m_previousSelection; // 点击时的选中项列表
-    
+
     // 旋转中心
     bool m_useCustomRotationCenter = false;  // 是否使用自定义旋转中心
     QPointF m_customRotationCenter;          // 自定义旋转中心（场景坐标）

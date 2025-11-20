@@ -3,6 +3,7 @@
 #include <QWheelEvent>
 #include <QMouseEvent>
 #include <QResizeEvent>
+#include <QKeyEvent>
 #include <QPainter>
 
 DrawingView::DrawingView(QGraphicsScene *scene, QWidget *parent)
@@ -112,6 +113,14 @@ void DrawingView::mouseReleaseEvent(QMouseEvent *event)
         return;
     }
     QGraphicsView::mouseReleaseEvent(event);
+}
+
+void DrawingView::keyPressEvent(QKeyEvent *event)
+{
+    if (m_currentTool && m_currentTool->keyPressEvent(event)) {
+        return;
+    }
+    QGraphicsView::keyPressEvent(event);
 }
 
 void DrawingView::scrollContentsBy(int dx, int dy)

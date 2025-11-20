@@ -33,7 +33,7 @@ public:
     bool mousePressEvent(QMouseEvent *event, const QPointF &scenePos) override;
     bool mouseMoveEvent(QMouseEvent *event, const QPointF &scenePos) override;
     bool mouseReleaseEvent(QMouseEvent *event, const QPointF &scenePos) override;
-    bool keyPressEvent(QKeyEvent *event);
+    bool keyPressEvent(QKeyEvent *event) override;
     bool keyReleaseEvent(QKeyEvent *event);
     
     // 获取工具光标类型

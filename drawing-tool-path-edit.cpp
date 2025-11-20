@@ -11,6 +11,7 @@
 #include <QTimer>
 #include <QDebug>
 #include <QPointer>
+#include <QUndoCommand>
 
 DrawingToolPathEdit::DrawingToolPathEdit(QObject *parent)
     : ToolBase(parent)
@@ -108,6 +109,99 @@ bool DrawingToolPathEdit::mouseReleaseEvent(QMouseEvent *event, const QPointF &s
     Q_UNUSED(scenePos)
     return false;
 }
+
+// 路径操作撤销命令
+class PathOperationCommand : public QUndoCommand
+{
+public:
+    PathOperationCommand(DrawingScene *scene, DrawingShape *originalShape, DrawingShape *secondShape,
+                        DrawingPath *newPath, const QString &operationText, QUndoCommand *parent = nullptr)
+        : QUndoCommand(operationText, parent)
+        , m_scene(scene)
+        , m_originalShape(originalShape)
+        , m_secondShape(secondShape)
+        , m_newPath(newPath)
+        , m_originalShapeInScene(false)
+        , m_secondShapeInScene(false)
+        , m_newPathInScene(false)
+    {
+        // 记录对象初始状态
+        if (m_originalShape) {
+            m_originalShapeInScene = (m_originalShape->scene() != nullptr);
+        }
+        if (m_secondShape) {
+            m_secondShapeInScene = (m_secondShape->scene() != nullptr);
+        }
+        if (m_newPath) {
+            m_newPathInScene = (m_newPath->scene() != nullptr);
+        }
+    }
+    
+    ~PathOperationCommand()
+    {
+        // 安全删除对象，只在确定不需要时删除
+        if (m_newPath && !m_newPath->scene()) {
+            delete m_newPath;
+        }
+        // 注意：不在这里删除原始形状，因为它们可能被其他命令引用
+    }
+    
+    void undo() override
+    {
+        if (!m_scene) return;
+        
+        // 移除新创建的路径
+        if (m_newPath && m_newPath->scene()) {
+            m_scene->removeItem(m_newPath);
+            m_newPath->setSelected(false);
+        }
+        
+        // 恢复原始形状，只有在它们不在场景中时才添加
+        if (m_originalShape && !m_originalShape->scene()) {
+            m_scene->addItem(m_originalShape);
+            m_originalShape->setSelected(true);
+        }
+        if (m_secondShape && !m_secondShape->scene()) {
+            m_scene->addItem(m_secondShape);
+            m_secondShape->setSelected(true);
+        }
+        
+        m_scene->update();
+    }
+    
+    void redo() override
+    {
+        if (!m_scene) return;
+        
+        // 移除原始形状，只有在它们在场景中时才移除
+        if (m_originalShape && m_originalShape->scene()) {
+            m_scene->removeItem(m_originalShape);
+            m_originalShape->setSelected(false);
+        }
+        if (m_secondShape && m_secondShape->scene()) {
+            m_scene->removeItem(m_secondShape);
+            m_secondShape->setSelected(false);
+        }
+        
+        // 添加新路径，只有在它不在场景中时才添加
+        if (m_newPath && !m_newPath->scene()) {
+            m_scene->addItem(m_newPath);
+            m_newPath->setSelected(true);
+        }
+        
+        m_scene->update();
+        m_scene->setModified(true);
+    }
+    
+private:
+    DrawingScene *m_scene;
+    DrawingShape *m_originalShape;
+    DrawingShape *m_secondShape;
+    DrawingPath *m_newPath;
+    bool m_originalShapeInScene;
+    bool m_secondShapeInScene;
+    bool m_newPathInScene;
+};
 
 void DrawingToolPathEdit::executePathOperation()
 {
@@ -261,6 +355,17 @@ void DrawingToolPathEdit::executePathOperation()
         }
     }
     
+    // 创建撤销命令 - 在修改场景之前创建
+    QString operationText;
+    switch (m_booleanOp) {
+        case PathEditor::Union: operationText = "路径合并"; break;
+        case PathEditor::Intersection: operationText = "路径相交"; break;
+        case PathEditor::Subtraction: operationText = "路径减去"; break;
+        case PathEditor::Xor: operationText = "路径异或"; break;
+        default: operationText = "路径布尔运算"; break;
+    }
+    PathOperationCommand *command = new PathOperationCommand(m_scene, shape1, shape2, newPath, operationText);
+    
     // 先从场景中移除原始形状
     // qDebug() << "Removing original shapes";
     if (shape1 && m_scene->items().contains(shape1)) {
@@ -276,24 +381,8 @@ void DrawingToolPathEdit::executePathOperation()
         m_scene->addItem(newPath);
     }
     
-    // 安全删除原始形状 - 先从场景中移除再删除
-    // qDebug() << "Deleting original shapes";
-    if (shape1) {
-        shape1->setSelected(false);
-        if (m_scene && m_scene->items().contains(shape1)) {
-            m_scene->removeItem(shape1);
-        }
-        delete shape1;
-        shape1 = nullptr;
-    }
-    if (shape2) {
-        shape2->setSelected(false);
-        if (m_scene && m_scene->items().contains(shape2)) {
-            m_scene->removeItem(shape2);
-        }
-        delete shape2;
-        shape2 = nullptr;
-    }
+    // 推送撤销命令
+    m_scene->undoStack()->push(command);
     
     // 清空剩余的选择列表
     m_selectedPaths.clear();
@@ -305,7 +394,6 @@ void DrawingToolPathEdit::executePathOperation()
     }
     
     // qDebug() << "Path operation completed successfully";
-    m_scene->setModified(true);
 }
 
 void DrawingToolPathEdit::showContextMenu(const QPointF &scenePos)
@@ -378,6 +466,9 @@ void DrawingToolPathEdit::showContextMenu(const QPointF &scenePos)
                 newPath->setStrokePen(shape->strokePen());
                 newPath->setFillBrush(shape->fillBrush());
                 
+                // 创建撤销命令 - 在修改场景之前创建
+                PathOperationCommand *command = new PathOperationCommand(m_scene, shape, nullptr, newPath, "简化路径");
+                
                 // 安全地从场景中移除原始形状
                 shape->setSelected(false);
                 m_scene->removeItem(shape);
@@ -386,13 +477,13 @@ void DrawingToolPathEdit::showContextMenu(const QPointF &scenePos)
                 m_scene->addItem(newPath);
                 m_scene->setModified(true);
                 
+                // 推送撤销命令
+                m_scene->undoStack()->push(command);
+                
                 // 更新选择列表
                 m_selectedPaths.clear();
                 m_selectedPaths.append(newPath);
                 newPath->setSelected(true);
-                
-                // 安全删除原始形状
-                delete shape;
             }
         }
     } else if (selectedAction == smoothAction) {
@@ -415,6 +506,9 @@ void DrawingToolPathEdit::showContextMenu(const QPointF &scenePos)
                 newPath->setStrokePen(shape->strokePen());
                 newPath->setFillBrush(shape->fillBrush());
                 
+                // 创建撤销命令 - 在修改场景之前创建
+                PathOperationCommand *command = new PathOperationCommand(m_scene, shape, nullptr, newPath, "平滑路径");
+                
                 // 安全地从场景中移除原始形状
                 shape->setSelected(false);
                 m_scene->removeItem(shape);
@@ -423,13 +517,13 @@ void DrawingToolPathEdit::showContextMenu(const QPointF &scenePos)
                 m_scene->addItem(newPath);
                 m_scene->setModified(true);
                 
+                // 推送撤销命令
+                m_scene->undoStack()->push(command);
+                
                 // 更新选择列表
                 m_selectedPaths.clear();
                 m_selectedPaths.append(newPath);
                 newPath->setSelected(true);
-                
-                // 安全删除原始形状
-                delete shape;
             }
         }
     } else if (selectedAction == curveAction) {
@@ -452,6 +546,9 @@ void DrawingToolPathEdit::showContextMenu(const QPointF &scenePos)
                 newPath->setStrokePen(shape->strokePen());
                 newPath->setFillBrush(shape->fillBrush());
                 
+                // 创建撤销命令 - 在修改场景之前创建
+                PathOperationCommand *command = new PathOperationCommand(m_scene, shape, nullptr, newPath, "转换为曲线");
+                
                 // 安全地从场景中移除原始形状
                 shape->setSelected(false);
                 m_scene->removeItem(shape);
@@ -460,13 +557,13 @@ void DrawingToolPathEdit::showContextMenu(const QPointF &scenePos)
                 m_scene->addItem(newPath);
                 m_scene->setModified(true);
                 
+                // 推送撤销命令
+                m_scene->undoStack()->push(command);
+                
                 // 更新选择列表
                 m_selectedPaths.clear();
                 m_selectedPaths.append(newPath);
                 newPath->setSelected(true);
-                
-                // 安全删除原始形状
-                delete shape;
             }
         }
     } else if (selectedAction == offsetAction) {

@@ -9,6 +9,7 @@
 #include <QPainterPath>
 #include <QtMath>
 #include <QTimer>
+#include <QDebug>
 
 namespace
 {
@@ -97,7 +98,12 @@ void OutlinePreviewTransformTool::activate(DrawingScene *scene, DrawingView *vie
 {
     ToolBase::activate(scene, view);
     if (view)
+    {
         view->setDragMode(QGraphicsView::RubberBandDrag);
+        // 确保视图可以接收键盘事件
+        view->setFocusPolicy(Qt::StrongFocus);
+        view->setFocus();
+    }
 
     // 每次激活时都重新创建 HandleManager，确保场景指针正确
     if (m_handleManager)
@@ -112,6 +118,10 @@ void OutlinePreviewTransformTool::activate(DrawingScene *scene, DrawingView *vie
         // 设置默认模式
         m_handleManager->setHandleMode(m_currentMode);
     }
+
+    // 显示初始模式提示
+    QString modeText = (m_currentMode == TransformHandle::Scale) ? "缩放模式" : "旋转模式";
+    emit statusMessageChanged(modeText + " - 按空格键或Tab键切换模式");
 
     // 连接选择变化信号
     if (scene)
@@ -188,80 +198,57 @@ bool OutlinePreviewTransformTool::mousePressEvent(QMouseEvent *event, const QPoi
     }
 
     QGraphicsItem *item = m_scene->itemAt(scenePos, QTransform());
-
-    // 检查是否点击了手柄
-    TransformHandle::HandleType handle = TransformHandle::None;
-    if (m_handleManager) {
-        handle = m_handleManager->getHandleAtPosition(scenePos);
-    }
-
-    if (handle != TransformHandle::None) {
-        // 如果点击了手柄，处理手柄操作
-        if (handle == TransformHandle::Center)
-        {
-            // 开始拖动旋转中心
-            m_state = STATE_DRAG_CENTER;
-            m_grabMousePos = scenePos;
-            return true;
-        }
-        else
-        {
-            grab(handle, scenePos, event->modifiers());
-            return true;
-        }
-    }
-
-    // 记录初始点击位置
-    m_initialClickPos = scenePos;
-    m_isDragging = false;
-
-    // 检查当前是否为多选状态
-    m_wasMultiSelected = m_scene->selectedItems().size() > 1;
-    
-    // 记录点击时图形的初始选择状态
-    m_wasItemInitiallySelected = (item != nullptr) ? item->isSelected() : false;
-    
-    // 保存当前选择状态
-    m_previousSelection = m_scene->selectedItems();
-
-    if (item)
+    for (QGraphicsItem *item : m_scene->selectedItems())
     {
-        // 如果点击了图形
-        if (event->modifiers() & Qt::ControlModifier)
+        qDebug() << "Currently selected item:" << item;
+        if (item)
         {
-            // Ctrl+点击：切换选择状态
-            if (item->isSelected())
+            // 如果点击了图形
+            if (event->modifiers() & Qt::ControlModifier)
             {
-                item->setSelected(false);
+                // Ctrl+点击：切换选择状态
+                if (item->isSelected())
+                {
+                    item->setSelected(false);
+                }
+                else
+                {
+                    item->setSelected(true);
+                }
+
+                // 更新手柄位置
+                QTimer::singleShot(10, this, [this]()
+                                   { 
+                                   disableInternalSelectionIndicators();
+                                   updateHandlePositions(); });
+                return false;
+            }
+            else if (!item->isSelected())
+            {
+                // 普通点击：如果图形未被选中，清除其他选择并选中当前图形
+                m_scene->clearSelection();
+                item->setSelected(true);
+
+                // 更新手柄位置
+                QTimer::singleShot(10, this, [this]()
+                                   { 
+                                   disableInternalSelectionIndicators();
+                                   updateHandlePositions(); });
             }
             else
             {
-                item->setSelected(true);
+                qDebug() << "Clicked on item:" << item;
+                return false;
             }
         }
-        else if (!item->isSelected())
-        {
-            // 普通点击：如果图形未被选中，清除其他选择并选中当前图形
-            m_scene->clearSelection();
-            item->setSelected(true);
-        }
-        else if (m_wasMultiSelected)
-        {
-            // 在多选状态下点击已选中的图形：稍后可能需要恢复选择状态
-        }
-        else
-        {
-            // 单选状态下点击已选中的图形
-        }
-
-        // 立即禁用内部选择框
-        disableInternalSelectionIndicators();
-
-        // 延迟更新手柄
-        QTimer::singleShot(10, this, [this]()
-                           { updateHandlePositions(); });
     }
 
+    if (m_scene && m_scene->selectedItems().isEmpty())
+    {
+        // 点击空白处，清除选择
+        m_scene->clearSelection();
+        qDebug() << "Clicked on empty space";
+    }
     // 不消费事件，让场景处理框选
     return false;
 }
@@ -270,7 +257,7 @@ bool OutlinePreviewTransformTool::mouseMoveEvent(QMouseEvent *event, const QPoin
 {
     if (!m_scene || !(event->buttons() & Qt::LeftButton))
     {
-        // 悬停光标
+        // 悬停光标和手柄效果
         if (m_handleManager && m_view && m_state == STATE_IDLE)
         {
             TransformHandle::HandleType handle = m_handleManager->getHandleAtPosition(scenePos);
@@ -280,14 +267,11 @@ bool OutlinePreviewTransformTool::mouseMoveEvent(QMouseEvent *event, const QPoin
                 m_view->setCursor(Qt::CrossCursor);
             else
                 m_view->setCursor(Qt::ArrowCursor);
+
+            // 更新手柄悬停效果
+            m_handleManager->updateHandleHover(scenePos);
         }
         return false;
-    }
-
-    // 检查是否开始拖拽
-    if (!m_isDragging && (scenePos - m_initialClickPos).manhattanLength() > 3.0) // 使用曼哈顿距离检测拖拽
-    {
-        m_isDragging = true;
     }
 
     if (m_state == STATE_DRAG_CENTER)
@@ -353,45 +337,35 @@ bool OutlinePreviewTransformTool::mouseReleaseEvent(QMouseEvent *event, const QP
         ungrab(true, scenePos); // 应用变换
         return true;
     }
-
-    // 检查是否在原本已选中的图形上点击（非拖拽），如果是则切换模式
-    if (!m_isDragging)
-    {
-        QGraphicsItem *item = m_scene->itemAt(m_initialClickPos, QTransform());
-        if (item && item->isSelected() && m_wasItemInitiallySelected)
-        {
-            // 无论是否多选，只要点击原本就选中的图形，就切换模式
-            toggleMode();
-        }
-    }
-    
-    // 重置拖拽状态
-    m_isDragging = false;
-    m_initialClickPos = QPointF();
-    m_wasItemInitiallySelected = false;
-    m_wasMultiSelected = false;
-    m_previousSelection.clear();
-
-    // 框选完成后更新手柄和禁用内部选择框
-    if (m_scene)
-    {
-        QTimer::singleShot(10, this, [this]()
-                           {
-            disableInternalSelectionIndicators();
-            updateHandlePositions(); });
-    }
-
+    // 更新手柄位置
+    QTimer::singleShot(10, this, [this]()
+                       { 
+                               disableInternalSelectionIndicators();
+                               updateHandlePositions(); });
     return false;
 }
 
 bool OutlinePreviewTransformTool::keyPressEvent(QKeyEvent *event)
 {
+    // 调试输出
+    qDebug() << "OutlinePreviewTransformTool::keyPressEvent called, key:" << event->key();
+
     // ESC 取消变换
     if (event->key() == Qt::Key_Escape && m_state == STATE_GRABBED)
     {
         ungrab(false); // 不应用，直接取消
         return true;
     }
+
+    // 空格键或Tab键切换模式
+    if ((event->key() == Qt::Key_Space || event->key() == Qt::Key_Tab) &&
+        m_scene && !m_scene->selectedItems().isEmpty())
+    {
+        qDebug() << "Toggling mode due to key press";
+        toggleMode();
+        return true;
+    }
+
     return false;
 }
 
@@ -423,9 +397,9 @@ void OutlinePreviewTransformTool::grab(TransformHandle::HandleType handleType,
 
     // 确定变换类型：如果是旋转模式下的角点手柄，或旋转手柄，则为旋转；否则为缩放
     DrawingScene::TransformType transformType = DrawingScene::Scale;
-    if (m_activeHandle == TransformHandle::Rotate || 
-        (m_handleManager && m_handleManager->handleMode() == TransformHandle::RotateMode && 
-         (m_activeHandle == TransformHandle::TopLeft || m_activeHandle == TransformHandle::TopRight || 
+    if (m_activeHandle == TransformHandle::Rotate ||
+        (m_handleManager && m_handleManager->handleMode() == TransformHandle::RotateMode &&
+         (m_activeHandle == TransformHandle::TopLeft || m_activeHandle == TransformHandle::TopRight ||
           m_activeHandle == TransformHandle::BottomLeft || m_activeHandle == TransformHandle::BottomRight)))
     {
         transformType = DrawingScene::Rotate;
@@ -492,6 +466,16 @@ void OutlinePreviewTransformTool::grab(TransformHandle::HandleType handleType,
 
     // 创建视觉辅助元素
     createVisualHelpers();
+
+    // 开始变换时启动蚂蚁线效果
+    if (m_outlinePreview && m_dashTimer)
+    {
+        QPen pen = m_outlinePreview->pen();
+        pen.setDashPattern({8, 4}); // 蚂蚁线模式，加长虚线段
+        pen.setColor(Qt::black);
+        m_outlinePreview->setPen(pen);
+        m_dashTimer->start(80); // 启动动画定时器
+    }
 
     // 隐藏手柄，避免干扰预览
     if (m_handleManager)
@@ -652,11 +636,13 @@ void OutlinePreviewTransformTool::ungrab(bool apply, const QPointF &finalMousePo
             DrawingTransform drawingTransform;
             drawingTransform.setTransform(originalTransform);
             shape->setTransform(drawingTransform);
-            shape->updateShape(); // 刷新图形的边界和碰撞检测
         }
     }
 
     destroyVisualHelpers();
+
+    // 重置旋转中心位置
+    resetRotationCenter();
 
     // 重置状态，在更新手柄之前
     resetState();
@@ -786,7 +772,10 @@ QRectF OutlinePreviewTransformTool::calculateInitialSelectionBounds() const
 void OutlinePreviewTransformTool::onSelectionChanged()
 {
     // 更新UI
-    disableInternalSelectionIndicators();
+    //  disableInternalSelectionIndicators();
+
+    // 重置旋转中心位置，让它跟随新的选择
+    resetRotationCenter();
 
     // 延迟更新手柄，确保选择状态完全更新
     QTimer::singleShot(0, this, [this]()
@@ -886,28 +875,28 @@ void OutlinePreviewTransformTool::createVisualHelpers()
     m_scene->addItem(m_dragPoint);
 
     // 创建旋转中心（蓝色）
-    m_rotationCenter = new QGraphicsEllipseItem(-5, -5, 10, 10);
+    m_rotationCenter = new QGraphicsEllipseItem(-4, -4, 8, 8);
     m_rotationCenter->setBrush(QBrush(Qt::blue));
-    m_rotationCenter->setPen(QPen(Qt::darkBlue, 2));
+    m_rotationCenter->setPen(QPen(Qt::darkBlue, 1));
     m_rotationCenter->setZValue(2002);
     m_scene->addItem(m_rotationCenter);
 
     // 创建整体轮廓预览
     m_outlinePreview = new QGraphicsPathItem();
 
-    // 创建蚂蚁线画笔（黑白相间的虚线）
-    QPen outlinePen(Qt::black, 2);
+    // 创建静态虚线画笔（选中状态）
+    QPen outlinePen(Qt::black, 1);
     outlinePen.setCosmetic(true);      // 不受缩放影响
-    outlinePen.setDashPattern({4, 2}); // 虚线模式
+    outlinePen.setDashPattern({8, 4}); // 静态虚线模式，加长虚线段
+    outlinePen.setDashOffset(0);       // 固定偏移，不动画
     m_outlinePreview->setPen(outlinePen);
     m_outlinePreview->setBrush(Qt::NoBrush);
     m_outlinePreview->setZValue(1999);
     m_scene->addItem(m_outlinePreview);
 
-    // 创建动画定时器，用于实现蚂蚁线效果
+    // 创建动画定时器，用于实现蚂蚁线效果（初始不启动）
     m_dashTimer = new QTimer(this);
     connect(m_dashTimer, SIGNAL(timeout()), this, SLOT(updateDashOffset()));
-    m_dashTimer->start(80); // 每80ms更新一次，更快的动画
 
     // 构建整体轮廓
     updateOutlinePreview();
@@ -945,9 +934,7 @@ void OutlinePreviewTransformTool::destroyVisualHelpers()
 
     if (m_dashTimer)
     {
-        m_dashTimer->stop();
-        delete m_dashTimer;
-        m_dashTimer = nullptr;
+        m_dashTimer->stop(); // 只停止定时器，不删除它
     }
 }
 
@@ -996,28 +983,26 @@ void OutlinePreviewTransformTool::updateOutlinePreview()
         return;
     }
 
-    // 构建轮廓
-    QPainterPath combinedPath;
+    // 使用统一的选择包围框，而不是合并路径
+    QRectF unifiedBounds;
 
     // 如果在变换中，直接使用Group的边界
     if (m_state == STATE_GRABBED && !m_selectedShapes.isEmpty())
     {
-        // 计算所有选中图形的联合边界框
+        // 计算所有选中图形的统一边界框
         for (DrawingShape *shape : m_selectedShapes)
         {
             if (!shape)
                 continue;
             QRectF shapeBounds = shape->sceneBoundingRect();
-            QPainterPath path;
-            path.addRect(shapeBounds);
 
-            if (combinedPath.isEmpty())
+            if (unifiedBounds.isEmpty())
             {
-                combinedPath = path;
+                unifiedBounds = shapeBounds;
             }
             else
             {
-                combinedPath = combinedPath.united(path);
+                unifiedBounds = unifiedBounds.united(shapeBounds);
             }
         }
     }
@@ -1032,21 +1017,26 @@ void OutlinePreviewTransformTool::updateOutlinePreview()
                 continue;
 
             QRectF sceneBounds = shape->sceneBoundingRect();
-            QPainterPath path;
-            path.addRect(sceneBounds);
 
-            if (combinedPath.isEmpty())
+            if (unifiedBounds.isEmpty())
             {
-                combinedPath = path;
+                unifiedBounds = sceneBounds;
             }
             else
             {
-                combinedPath = combinedPath.united(path);
+                unifiedBounds = unifiedBounds.united(sceneBounds);
             }
         }
     }
 
-    m_outlinePreview->setPath(combinedPath);
+    // 创建统一边界框的路径
+    QPainterPath boundsPath;
+    if (!unifiedBounds.isEmpty())
+    {
+        boundsPath.addRect(unifiedBounds);
+    }
+
+    m_outlinePreview->setPath(boundsPath);
 }
 
 void OutlinePreviewTransformTool::disableInternalSelectionIndicators()
@@ -1085,32 +1075,43 @@ void OutlinePreviewTransformTool::toggleMode()
 {
     if (!m_handleManager)
         return;
-    
+
     // 切换模式
     if (m_currentMode == TransformHandle::Scale)
     {
         m_currentMode = TransformHandle::RotateMode;
+        emit statusMessageChanged("旋转模式 - 按空格键或Tab键切换到缩放模式");
     }
     else
     {
         m_currentMode = TransformHandle::Scale;
+        emit statusMessageChanged("缩放模式 - 按空格键或Tab键切换到旋转模式");
     }
-    
+
     // 设置手柄管理器的新模式
     m_handleManager->setHandleMode(m_currentMode);
-    
-    // 更新手柄显示
+
+    // 重置自定义旋转中心，让它跟随选择边界
+    resetRotationCenter();
+
+    // 立即更新手柄显示
     updateHandlePositions();
+
+    // 如果有视觉辅助元素，更新它们的位置
+    if (m_rotationCenter)
+    {
+        updateVisualHelpers(QPointF());
+    }
 }
 
 void OutlinePreviewTransformTool::setMode(TransformHandle::HandleMode mode)
 {
     if (!m_handleManager || m_currentMode == mode)
         return;
-    
+
     m_currentMode = mode;
     m_handleManager->setHandleMode(m_currentMode);
-    
+
     // 更新手柄显示
     updateHandlePositions();
 }

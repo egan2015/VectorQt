@@ -36,7 +36,7 @@ public:
     bool mouseMoveEvent(QMouseEvent *event, const QPointF &scenePos) override;
     bool mouseReleaseEvent(QMouseEvent *event, const QPointF &scenePos) override;
     bool mouseDoubleClickEvent(QMouseEvent *event, const QPointF &scenePos) override;
-    bool keyPressEvent(QKeyEvent *event);
+    bool keyPressEvent(QKeyEvent *event) override;
     
     // 获取工具光标类型
     CursorManager::CursorType getCursorType() const override { return CursorManager::BezierCursor; }

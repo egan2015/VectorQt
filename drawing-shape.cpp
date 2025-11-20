@@ -249,16 +249,16 @@ void DrawingShape::paint(QPainter *painter, const QStyleOptionGraphicsItem *opti
         QRectF bounds = boundingRect();
         painter->drawRect(bounds);
         
-        // 绘制选择手柄（角落的小方块）
-        qreal handleSize = 4.0;
-        painter->setPen(QPen(Qt::blue, 1));
-        painter->setBrush(QBrush(Qt::white));
+        // // 绘制选择手柄（角落的小方块）
+        // qreal handleSize = 4.0;
+        // painter->setPen(QPen(Qt::blue, 1));
+        // painter->setBrush(QBrush(Qt::white));
         
-        // 四个角的手柄
-        painter->drawRect(QRectF(bounds.left() - handleSize/2, bounds.top() - handleSize/2, handleSize, handleSize));
-        painter->drawRect(QRectF(bounds.right() - handleSize/2, bounds.top() - handleSize/2, handleSize, handleSize));
-        painter->drawRect(QRectF(bounds.left() - handleSize/2, bounds.bottom() - handleSize/2, handleSize, handleSize));
-        painter->drawRect(QRectF(bounds.right() - handleSize/2, bounds.bottom() - handleSize/2, handleSize, handleSize));
+        // // 四个角的手柄
+        // painter->drawRect(QRectF(bounds.left() - handleSize/2, bounds.top() - handleSize/2, handleSize, handleSize));
+        // painter->drawRect(QRectF(bounds.right() - handleSize/2, bounds.top() - handleSize/2, handleSize, handleSize));
+        // painter->drawRect(QRectF(bounds.left() - handleSize/2, bounds.bottom() - handleSize/2, handleSize, handleSize));
+        // painter->drawRect(QRectF(bounds.right() - handleSize/2, bounds.bottom() - handleSize/2, handleSize, handleSize));
     }
 }
 

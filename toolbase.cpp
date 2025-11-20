@@ -3,6 +3,7 @@
 #include "drawingscene.h"
 #include "drawing-shape.h"
 #include <QMouseEvent>
+#include <QKeyEvent>
 #include <QPen>
 #include <QBrush>
 
@@ -71,6 +72,12 @@ bool ToolBase::mouseDoubleClickEvent(QMouseEvent *event, const QPointF &scenePos
 {
     Q_UNUSED(event)
     Q_UNUSED(scenePos)
+    return false;
+}
+
+bool ToolBase::keyPressEvent(QKeyEvent *event)
+{
+    Q_UNUSED(event)
     return false;
 }
 

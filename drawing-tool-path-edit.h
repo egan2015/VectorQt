@@ -4,9 +4,11 @@
 #include "toolbase.h"
 #include "patheditor.h"
 #include <QPointF>
+#include <QUndoCommand>
 
 class DrawingPath;
 class DrawingShape;
+class PathOperationCommand;
 
 /**
  * 路径编辑工具 - 处理复杂路径操作

@@ -91,10 +91,6 @@ make -j4
 
 本项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件。
 
-## 贡献
-
-欢迎提交 Issue 和 Pull Request 来帮助改进项目。
-
 ## 关键词
 
 矢量图形, SVG编辑器, Inkscape, Qt, C++, 图形设计, 矢量绘图, 开源软件, 图形编辑器, 路径编辑, 节点编辑

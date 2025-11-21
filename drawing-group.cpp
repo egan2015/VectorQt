@@ -381,7 +381,7 @@ void DrawingGroup::applyTransformWithHandle(int handleType, const QPointF &initi
     // 1. 根据手柄类型确定锚点
     DrawingTransform::AnchorPoint anchor = DrawingTransform::Center;
     
-    // 手柄类型映射到锚点（与drawing-edit-handles一致）
+    // 手柄类型映射到锚点
     // 关键：拖动手柄时，固定对角的锚点
     switch (handleType) {
         case 1: // TopLeft

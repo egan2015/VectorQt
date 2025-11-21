@@ -2,8 +2,8 @@
 #include "drawingscene.h"
 #include "drawing-shape.h"
 #include "drawing-group.h"
-#include "selection-layer.h"
-#include "drawing-edit-handles.h"
+// #include "selection-layer.h" // 已移除 - 老的选择层系统
+
 #include <QGraphicsSceneMouseEvent>
 #include <QKeyEvent>
 #include <QUndoCommand>
@@ -211,10 +211,7 @@ public:
                 shape->setTransform(state.transform);
                 shape->setRotation(state.rotation);
                 
-                // 更新手柄位置
-                if (shape->editHandleManager()) {
-                    shape->editHandleManager()->updateHandles();
-                }
+                // 老的手柄系统已移除，不再需要更新手柄位置
             } else {
                 qDebug() << "  Shape" << i << "is invalid or not in scene (possibly deleted)";
                 // 图形可能已被删除，跳过此操作但不报错
@@ -246,10 +243,7 @@ public:
                 shape->setTransform(state.transform);
                 shape->setRotation(state.rotation);
                 
-                // 更新手柄位置
-                if (shape->editHandleManager()) {
-                    shape->editHandleManager()->updateHandles();
-                }
+                // 老的手柄系统已移除，不再需要更新手柄位置
             } else {
                 qDebug() << "  Shape" << i << "is invalid or not in scene (possibly deleted)";
                 // 图形可能已被删除，跳过此操作但不报错
@@ -277,7 +271,7 @@ private:
 DrawingScene::DrawingScene(QObject *parent)
     : QGraphicsScene(parent)
     , m_isModified(false)
-    , m_selectionLayer(nullptr)
+    // , m_selectionLayer(nullptr) // 已移除 - 老的选择层系统
     , m_gridVisible(false)
     , m_gridAlignmentEnabled(true)
     , m_gridSize(20)
@@ -529,17 +523,12 @@ void DrawingScene::updateSelection()
         if (shape && !selectedShapes.contains(shape)) {
             // 额外检查对象是否有效
             if (shape->scene() == this) {
-                shape->setEditHandlesEnabled(false);
+                // 老的手柄系统已移除，不再需要禁用编辑把手
             }
         }
     }
     
-    // 启用选中图形的编辑把手
-    for (DrawingShape *shape : selectedShapes) {
-        if (shape && shape->scene() == this) {  // 确保形状仍然在场景中
-            shape->setEditHandlesEnabled(true);
-        }
-    }
+    // 考的手柄系统已移除，不再需要启用编辑把手
     
     // 恢复信号状态
     blockSignals(wasBlocked);
@@ -559,10 +548,10 @@ void DrawingScene::activateSelectionTool()
         // qDebug() << "Connecting selectionChanged signal";
         connect(this, &DrawingScene::selectionChanged, this, &DrawingScene::onSelectionChanged);
         
-        // 立即更新一次选择状态
-        if (this->selectionLayer()) {
-            this->selectionLayer()->updateSelectionBounds();
-        }
+        // 老的选择层系统已移除，不再需要更新
+        // if (this->selectionLayer()) {
+        //     this->selectionLayer()->updateSelectionBounds();
+        // }
     }
 }
 

@@ -5,7 +5,7 @@
 #include "toolbase.h"
 #include "propertypanel.h"
 #include "drawing-tool-bezier.h"
-#include "drawing-tool-bezier-edit.h"
+// #include "drawing-tool-bezier-edit.h" // 已移除 - 待重新实现
 #include "drawing-tool-node-edit.h"
 #include "drawing-tool-polyline.h"
 #include "drawing-tool-polygon.h"
@@ -18,7 +18,7 @@
 #include "drawing-tool-path-edit.h"
 #include "drawing-tool-outline-preview.h"
 #include "patheditor.h"
-#include "selection-layer.h"
+// #include "selection-layer.h" // 已移除 - 老的选择层系统
 #include "ruler.h"
 #include "scrollable-toolbar.h"
 // #include "layermanager.h"  // Not implemented yet
@@ -1901,10 +1901,10 @@ void MainWindow::ungroupSelected()
         // 清除选择，触发选择状态更新
         m_scene->clearSelection();
         
-        // 确保选择层更新
-        if (m_scene->selectionLayer()) {
-            m_scene->selectionLayer()->updateSelectionBounds();
-        }
+        // 老的选择层系统已移除，不再需要更新
+        // if (m_scene->selectionLayer()) {
+        //     m_scene->selectionLayer()->updateSelectionBounds();
+        // }
         
         // 确保场景选择状态更新
         m_scene->update(); // 触发场景重绘

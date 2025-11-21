@@ -8,9 +8,9 @@
 #include <QPointF>
 #include <QPainter>
 #include "drawing-shape.h"
-#include "drawing-edit-handles.h"
 
-class EditHandleManager;
+
+// class EditHandleManager; // 已弃用 - 使用新的手柄系统
 
 class DrawingShape;
 class DrawingScene;

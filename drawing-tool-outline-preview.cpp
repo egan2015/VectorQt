@@ -5,7 +5,7 @@
 #include "drawing-canvas.h"
 #include "drawing-shape.h"
 #include "drawing-layer.h"
-#include "selection-layer.h"
+// #include "selection-layer.h" // 已移除 - 老的选择层系统
 #include "drawing-transform.h"
 #include "handle-item.h"
 #include "transform-handle.h"

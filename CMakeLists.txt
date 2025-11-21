@@ -29,10 +29,11 @@ set(SOURCES
     # 新增的改进绘图系统
     drawing-shape.cpp
     drawing-transform.cpp
-    drawing-edit-handles.cpp
-    selection-layer.cpp
+    # 编辑把手（已移除 - 使用新的手柄系统）
+    # drawing-edit-handles.cpp
+    # selection-layer.cpp # 已移除 - 老的选择层系统
     drawing-tool-bezier.cpp
-    drawing-tool-bezier-edit.cpp
+    # drawing-tool-bezier-edit.cpp # 已移除 - 待重新实现
     drawing-tool-node-edit.cpp
     # 新增的绘图工具
     drawing-tool-brush.cpp
@@ -50,6 +51,7 @@ set(SOURCES
     transform-handle.cpp
     handle-item.cpp
     handle-icons.cpp
+    node-handle-manager.cpp
     # 滚动工具栏
     scrollable-toolbar.cpp
     # 图层系统
@@ -83,9 +85,9 @@ set(HEADERS
     # 新增的改进绘图系统
     drawing-shape.h
     drawing-transform.h
-    selection-layer.h
+    # selection-layer.h # 已移除 - 老的选择层系统
     drawing-tool-bezier.h
-    drawing-tool-bezier-edit.h
+    # drawing-tool-bezier-edit.h # 已移除 - 待重新实现
     drawing-tool-node-edit.h
     # 新增的绘图工具
     drawing-tool-brush.h
@@ -104,6 +106,7 @@ set(HEADERS
     handle-item.h
     handle-icons.h
     handle-types.h
+    node-handle-manager.h
     # 滚动工具栏
     scrollable-toolbar.h
     # 图层系统

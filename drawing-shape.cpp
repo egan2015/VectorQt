@@ -1,14 +1,18 @@
-#include "drawing-shape.h"
-#include "drawing-document.h"
-#include "drawing-transform.h"
-#include "drawing-edit-handles.h"
-#include "drawingview.h"
-#include "toolbase.h"
-#include "drawingscene.h"
+
 #include <QPainter>
 #include <QStyleOptionGraphicsItem>
 #include <QDebug>
+#include <QGraphicsScene>
+#include <QTimer>
+#include <QPointer>
 
+#include "drawing-shape.h"
+#include "drawing-document.h"
+#include "drawing-transform.h"
+
+#include "drawingview.h"
+#include "toolbase.h"
+#include "drawingscene.h"
 // BezierControlPointCommand 实现
 BezierControlPointCommand::BezierControlPointCommand(DrawingScene *scene, DrawingPath *path, int pointIndex, 
                                                    const QPointF &oldPos, const QPointF &newPos, QUndoCommand *parent)
@@ -58,9 +62,7 @@ void BezierControlPointCommand::redo()
         }
     }
 }
-#include <QGraphicsScene>
-#include <QTimer>
-#include <QPointer>
+
 
 // DrawingShape
 DrawingShape::DrawingShape(ShapeType type, QGraphicsItem *parent)
@@ -79,23 +81,6 @@ DrawingShape::DrawingShape(ShapeType type, QGraphicsItem *parent)
 
 DrawingShape::~DrawingShape()
 {
-    // 清理编辑把手管理器
-    if (m_handleManager) {
-        // 先隐藏所有把手
-        m_handleManager->hideHandles();
-        // 从场景中移除所有把手（如果它们在场景中）
-        const QList<EditHandle*> handles = m_handleManager->handles();
-        for (EditHandle *handle : handles) {
-            if (handle && handle->scene()) {
-                handle->scene()->removeItem(handle);
-            }
-        }
-        // 清空把手列表，避免在析构函数中再次访问
-        m_handleManager->clearHandles();
-        delete m_handleManager;
-        m_handleManager = nullptr;
-    }
-    
     // 清理graphics effect
     QGraphicsEffect* effect = graphicsEffect();
     if (effect) {
@@ -140,6 +125,17 @@ void DrawingShape::bakeTransform(const QTransform &transform)
     QTransform newMatrix = transform * currentTransform.transform();
     currentTransform.setTransform(newMatrix);
     setTransform(currentTransform);
+}
+
+void DrawingShape::notifyObjectStateChanged()
+{
+    // 通知场景对象状态已变化
+    if (scene()) {
+        DrawingScene *drawingScene = qobject_cast<DrawingScene*>(scene());
+        if (drawingScene) {
+            emit drawingScene->objectStateChanged(this);
+        }
+    }
 }
 
 void DrawingShape::rotateAroundAnchor(double angle, DrawingTransform::AnchorPoint anchor)
@@ -262,45 +258,7 @@ void DrawingShape::paint(QPainter *painter, const QStyleOptionGraphicsItem *opti
     }
 }
 
-void DrawingShape::setEditHandlesEnabled(bool enabled)
-{
-    if (m_editHandlesEnabled == enabled) {
-        return;
-    }
-    
-    m_editHandlesEnabled = enabled;
-    
-    if (enabled) {
-        // qDebug() << "Enabling edit handles for shape:" << this << "type:" << type() << "in scene:" << (scene() ? "yes" : "no");
-        
-        // 确保图形已在场景中
-        if (!scene()) {
-            // qDebug() << "Shape not in scene, deferring edit handles";
-            return;
-        }
-        
-        // 创建编辑把手管理器
-        if (!m_handleManager) {
-            m_handleManager = new EditHandleManager(this);
-            // qDebug() << "Created EditHandleManager for shape:" << this;
-        }
-        
-        // 显示编辑把手
-        if (m_handleManager) {
-            m_handleManager->updateHandles(); // 先更新位置
-            m_handleManager->showHandles();   // 再显示把手
-        }
-        
-        // qDebug() << "Edit handles enabled, handle count:" << (m_handleManager ? m_handleManager->handles().count() : 0);
-    } else {
-        // qDebug() << "Disabling edit handles for shape:" << this << "type:" << type();
-        
-        // 隐藏编辑把手
-        if (m_handleManager) {
-            m_handleManager->hideHandles();
-        }
-    }
-}
+
 
 QVariant DrawingShape::itemChange(GraphicsItemChange change, const QVariant &value)
 {
@@ -327,10 +285,7 @@ QVariant DrawingShape::itemChange(GraphicsItemChange change, const QVariant &val
             }
         }
     } else if (change == ItemTransformHasChanged || change == ItemPositionHasChanged) {
-        // 更新编辑把手位置
-        if (m_handleManager) {
-            m_handleManager->updateHandles();
-        }
+        // 老的手柄系统已移除，不再需要更新把手位置
         
         // 如果形状被选中，通知场景选择已变化（这会触发标尺更新）
         if (isSelected() && scene()) {
@@ -342,10 +297,7 @@ QVariant DrawingShape::itemChange(GraphicsItemChange change, const QVariant &val
             }
         }
     } else if (change == ItemParentHasChanged) {
-        // 父项改变时更新手柄状态
-        if (m_handleManager) {
-            m_handleManager->updateHandles();
-        }
+        // 老的手柄系统已移除，不再需要更新手柄状态
     }
     
     return QGraphicsItem::itemChange(change, value);
@@ -661,6 +613,24 @@ void DrawingEllipse::setEllipse(const QRectF &rect)
     }
 }
 
+void DrawingEllipse::setStartAngle(qreal angle)
+{
+    if (m_startAngle != angle) {
+        m_startAngle = angle;
+        update();
+        notifyObjectStateChanged();
+    }
+}
+
+void DrawingEllipse::setSpanAngle(qreal angle)
+{
+    if (m_spanAngle != angle) {
+        m_spanAngle = angle;
+        update();
+        notifyObjectStateChanged();
+    }
+}
+
 QVector<QPointF> DrawingEllipse::getNodePoints() const
 {
     QVector<QPointF> points;
@@ -764,6 +734,9 @@ void DrawingEllipse::setNodePoint(int index, const QPointF &pos)
         default:
             return;
     }
+    
+    // 通知对象状态已变化
+    notifyObjectStateChanged();
 }
 
 QPointF DrawingEllipse::constrainNodePoint(int index, const QPointF &pos) const
@@ -1621,6 +1594,7 @@ void DrawingPolyline::addPoint(const QPointF &point)
     m_points.append(point);
     prepareGeometryChange();
     update();
+    notifyObjectStateChanged();
 }
 
 void DrawingPolyline::insertPoint(int index, const QPointF &point)
@@ -1629,6 +1603,7 @@ void DrawingPolyline::insertPoint(int index, const QPointF &point)
         m_points.insert(index, point);
         prepareGeometryChange();
         update();
+        notifyObjectStateChanged();
     }
 }
 
@@ -1638,6 +1613,7 @@ void DrawingPolyline::removePoint(int index)
         m_points.removeAt(index);
         prepareGeometryChange();
         update();
+        notifyObjectStateChanged();
     }
 }
 
@@ -1647,6 +1623,7 @@ void DrawingPolyline::setPoint(int index, const QPointF &point)
         m_points[index] = point;
         prepareGeometryChange();
         update();
+        notifyObjectStateChanged();
     }
 }
 
@@ -1848,6 +1825,7 @@ void DrawingPolygon::addPoint(const QPointF &point)
     m_points.append(point);
     prepareGeometryChange();
     update();
+    notifyObjectStateChanged();
 }
 
 void DrawingPolygon::insertPoint(int index, const QPointF &point)
@@ -1856,6 +1834,7 @@ void DrawingPolygon::insertPoint(int index, const QPointF &point)
         m_points.insert(index, point);
         prepareGeometryChange();
         update();
+        notifyObjectStateChanged();
     }
 }
 
@@ -1865,6 +1844,7 @@ void DrawingPolygon::removePoint(int index)
         m_points.removeAt(index);
         prepareGeometryChange();
         update();
+        notifyObjectStateChanged();
     }
 }
 
@@ -1874,6 +1854,7 @@ void DrawingPolygon::setPoint(int index, const QPointF &point)
         m_points[index] = point;
         prepareGeometryChange();
         update();
+        notifyObjectStateChanged();
     }
 }
 

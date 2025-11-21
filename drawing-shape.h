@@ -15,7 +15,7 @@
 #include "drawing-transform.h"
 
 class DrawingDocument;
-class EditHandleManager;
+
 class SelectionIndicator;
 class DrawingScene;
 class DrawingPath;
@@ -111,10 +111,9 @@ public:
     // 形状类型
     ShapeType shapeType() const { return m_type; }
     
-    // 编辑把手相关
-    void setEditHandlesEnabled(bool enabled);
-    bool isEditHandlesEnabled() const { return m_editHandlesEnabled; }
-    EditHandleManager* editHandleManager() const { return m_handleManager; }
+    // 手柄启用状态控制（已弃用，保留接口兼容性）
+    void setEditHandlesEnabled(bool enabled) { Q_UNUSED(enabled); }
+    bool isEditHandlesEnabled() const { return false; }
     
     // 选择边框显示控制
     void setShowSelectionIndicator(bool show) { m_showSelectionIndicator = show; update(); }
@@ -133,6 +132,9 @@ public:
     virtual void endNodeDrag(int index) { Q_UNUSED(index); }
     // 检查图形是否有可编辑的节点
     virtual bool hasEditableNodes() const { return getNodePointCount() > 0; }
+    
+    // 通知状态变化
+    void notifyObjectStateChanged();
     
     // 🌟 将变换烘焙到图形的内部几何结构中
     virtual void bakeTransform(const QTransform &transform);
@@ -157,9 +159,8 @@ protected:
     QPen m_strokePen;
     DrawingDocument *m_document = nullptr;
     
-    // 编辑把手系统
+    // 编辑把手系统（已弃用）
     bool m_editHandlesEnabled = false;
-    EditHandleManager *m_handleManager = nullptr;
     
     // 选择边框显示控制
     bool m_showSelectionIndicator = true;
@@ -255,9 +256,9 @@ public:
     QRectF ellipse() const { return m_rect; }
     
     // 椭圆弧度支持
-    void setStartAngle(qreal angle) { m_startAngle = angle; update(); }
+    void setStartAngle(qreal angle);
     qreal startAngle() const { return m_startAngle; }
-    void setSpanAngle(qreal angle) { m_spanAngle = angle; update(); }
+    void setSpanAngle(qreal angle);
     qreal spanAngle() const { return m_spanAngle; }
     
     // 编辑点相关 - 椭圆的控制点（尺寸控制点和角度控制点）

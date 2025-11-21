@@ -1,7 +1,8 @@
 #include "drawing-tool-node-edit.h"
 #include "drawingscene.h"
 #include "drawing-shape.h"
-#include "drawing-edit-handles.h"
+#include "node-handle-manager.h"
+#include "handle-item.h"
 #include <QMouseEvent>
 #include <QGraphicsScene>
 #include <QGraphicsItem>
@@ -56,13 +57,14 @@ DrawingNodeEditTool::DrawingNodeEditTool(QObject *parent)
     , m_selectedShape(nullptr)
     , m_activeHandle(nullptr)
     , m_dragging(false)
-    , m_nodeHandles()
+    , m_handleManager(nullptr)
 {
 }
 
 DrawingNodeEditTool::~DrawingNodeEditTool()
 {
-    clearNodeHandles();
+    delete m_handleManager;
+    m_handleManager = nullptr;
 }
 
 bool DrawingNodeEditTool::mousePressEvent(QMouseEvent *event, const QPointF &scenePos)
@@ -73,44 +75,30 @@ bool DrawingNodeEditTool::mousePressEvent(QMouseEvent *event, const QPointF &sce
     if (event->button() == Qt::LeftButton)
     {
         // 检查是否点击了节点手柄
-        QGraphicsItem *item = m_scene->itemAt(scenePos, QTransform());
-        EditHandle *handle = dynamic_cast<EditHandle *>(item);
+        CustomHandleItem *handle = nullptr;
+        if (m_handleManager) {
+            handle = m_handleManager->getHandleAt(scenePos);
+        }
 
         if (handle)
         {
-            // 额外验证：确保这个handle在我们的m_nodeHandles数组中
-            bool isOurHandle = false;
-            for (EditHandle *ourHandle : m_nodeHandles)
-            {
-                if (ourHandle == handle)
-                {
-                    isOurHandle = true;
-                    break;
-                }
-            }
-
-            if (!isOurHandle)
-            {
-                return false;
-            }
-
             // 点击了节点手柄，开始拖动
             m_activeHandle = handle;
             m_dragging = true;
             m_dragStartPos = scenePos;
-
-            // 获取手柄索引（在m_nodeHandles数组中的位置）
-            int nodeIndex = -1;
-            for (int i = 0; i < m_nodeHandles.size(); ++i)
-            {
-                if (m_nodeHandles[i] == handle)
-                {
-                    nodeIndex = i;
-                    break;
-                }
+            
+            // 设置活动手柄
+            if (m_handleManager) {
+                m_handleManager->setActiveHandle(handle);
             }
 
-            if (nodeIndex == -1)
+            // 获取手柄信息
+            NodeHandleManager::NodeHandleInfo handleInfo;
+            if (m_handleManager) {
+                handleInfo = m_handleManager->getHandleInfo(handle);
+            }
+
+            if (!handleInfo.handle)
             {
                 return false;
             }
@@ -118,17 +106,17 @@ bool DrawingNodeEditTool::mousePressEvent(QMouseEvent *event, const QPointF &sce
             // 通知图形开始拖动节点
             if (m_selectedShape)
             {
-                m_selectedShape->beginNodeDrag(nodeIndex);
+                m_selectedShape->beginNodeDrag(handleInfo.nodeIndex);
 
                 // 保存原始值用于撤销
                 QVector<QPointF> nodePoints = m_selectedShape->getNodePoints();
-                if (nodeIndex < nodePoints.size())
+                if (handleInfo.nodeIndex < nodePoints.size())
                 {
-                    m_originalValue = m_selectedShape->mapToScene(nodePoints[nodeIndex]);
+                    m_originalValue = m_selectedShape->mapToScene(nodePoints[handleInfo.nodeIndex]);
 
                     // 如果是矩形且编辑的是圆角（第一个节点），保存原始圆角半径
                     m_originalCornerRadius = -1.0;
-                    if (m_selectedShape->shapeType() == DrawingShape::Rectangle && nodeIndex == 0)
+                    if (m_selectedShape->shapeType() == DrawingShape::Rectangle && handleInfo.nodeIndex == 0)
                     {
                         DrawingRectangle *rect = static_cast<DrawingRectangle *>(m_selectedShape);
                         if (rect)
@@ -242,18 +230,13 @@ bool DrawingNodeEditTool::mouseMoveEvent(QMouseEvent *event, const QPointF &scen
             m_selectedShape = nullptr;
             return false;
         }
-        // 获取手柄索引（在m_nodeHandles数组中的位置）
-        int nodeIndex = -1;
-        for (int i = 0; i < m_nodeHandles.size(); ++i)
-        {
-            if (m_nodeHandles[i] == m_activeHandle)
-            {
-                nodeIndex = i;
-                break;
-            }
+        // 获取手柄信息
+        NodeHandleManager::NodeHandleInfo handleInfo;
+        if (m_handleManager) {
+            handleInfo = m_handleManager->getHandleInfo(m_activeHandle);
         }
 
-        if (nodeIndex == -1)
+        if (!handleInfo.handle)
         {
             return false;
         }
@@ -279,28 +262,27 @@ bool DrawingNodeEditTool::mouseMoveEvent(QMouseEvent *event, const QPointF &scen
             }
         }
 
-        // 更新正在拖动的手柄位置到鼠标位置（确保视觉上跟随鼠标）
-        m_activeHandle->setPos(alignedScenePos);
-
         // 获取图形的变换
         DrawingTransform transform = m_selectedShape->transform();
 
         // 直接传递场景坐标给setNodePoint，让图形自己处理坐标转换
-        m_selectedShape->setNodePoint(nodeIndex, alignedScenePos);
+        m_selectedShape->setNodePoint(handleInfo.nodeIndex, alignedScenePos);
 
-        // 获取更新后的节点点位置并更新手柄位置，以确保视觉和内部状态一致
-        QVector<QPointF> nodePoints = m_selectedShape->getNodePoints();
-        if (nodeIndex < nodePoints.size())
-        {
-            // 首先应用DrawingTransform变换
-            QPointF transformedPoint = transform.transform().map(nodePoints[nodeIndex]);
-            // 然后使用Qt的内置方法将结果转换为场景坐标
-            QPointF updatedScenePos = m_selectedShape->mapToScene(transformedPoint);
-            m_activeHandle->setPos(updatedScenePos);
+        // 更新正在拖动的手柄位置到鼠标位置（确保视觉上跟随鼠标）
+        if (m_handleManager) {
+            m_handleManager->updateHandlePosition(m_activeHandle, alignedScenePos);
+            
+            // 对于椭圆等图形，需要更新所有相关手柄的位置
+            if (m_selectedShape->shapeType() == DrawingShape::Ellipse) {
+                m_handleManager->updateExistingHandlePositions(m_selectedShape);
+            }
         }
 
-        // 只更新其他手柄的位置，而不是重新创建所有手柄
-        updateOtherNodeHandles(nodeIndex, alignedScenePos);
+        // 触发场景重绘
+        if (m_scene)
+        {
+            m_scene->update();
+        }
 
         // 触发场景重绘
         if (m_scene)
@@ -321,28 +303,20 @@ bool DrawingNodeEditTool::mouseReleaseEvent(QMouseEvent *event, const QPointF &s
 {
     if (event->button() == Qt::LeftButton && m_dragging)
     {
-        // 获取手柄索引（在m_nodeHandles数组中的位置）
-        int nodeIndex = -1;
-        if (m_activeHandle)
-        {
-            for (int i = 0; i < m_nodeHandles.size(); ++i)
-            {
-                if (m_nodeHandles[i] == m_activeHandle)
-                {
-                    nodeIndex = i;
-                    break;
-                }
-            }
+        // 获取手柄信息
+        NodeHandleManager::NodeHandleInfo handleInfo;
+        if (m_handleManager) {
+            handleInfo = m_handleManager->getHandleInfo(m_activeHandle);
         }
 
         // 创建撤销命令
-        if (m_selectedShape && nodeIndex != -1 && m_scene)
+        if (m_selectedShape && handleInfo.handle && m_scene)
         {
             // 获取当前节点位置
             QVector<QPointF> nodePoints = m_selectedShape->getNodePoints();
-            if (nodeIndex < nodePoints.size())
+            if (handleInfo.nodeIndex < nodePoints.size())
             {
-                QPointF currentPos = m_selectedShape->mapToScene(nodePoints[nodeIndex]);
+                QPointF currentPos = m_selectedShape->mapToScene(nodePoints[handleInfo.nodeIndex]);
 
                 // 只有当位置真正发生变化时才创建撤销命令
                 if (currentPos != m_originalValue)
@@ -351,7 +325,7 @@ bool DrawingNodeEditTool::mouseReleaseEvent(QMouseEvent *event, const QPointF &s
                     qreal newCornerRadius = -1.0;
 
                     // 如果是矩形且编辑的是圆角（第一个节点），保存圆角信息
-                    if (m_selectedShape->shapeType() == DrawingShape::Rectangle && nodeIndex == 0)
+                    if (m_selectedShape->shapeType() == DrawingShape::Rectangle && handleInfo.nodeIndex == 0)
                     {
                         oldCornerRadius = m_originalCornerRadius;
 
@@ -371,14 +345,14 @@ bool DrawingNodeEditTool::mouseReleaseEvent(QMouseEvent *event, const QPointF &s
 
                     // 简单方案：redo什么都不做，直接传递场景坐标
                     NodeEditCommand *command = new NodeEditCommand(m_scene, m_selectedShape,
-                                                                   nodeIndex, m_originalValue, currentPos,
+                                                                   handleInfo.nodeIndex, m_originalValue, currentPos,
                                                                    oldCornerRadius, newCornerRadius);
                     m_scene->undoStack()->push(command);
                 }
             }
 
             // 通知图形结束拖动节点
-            m_selectedShape->endNodeDrag(nodeIndex);
+            m_selectedShape->endNodeDrag(handleInfo.nodeIndex);
         }
 
         // 结束拖动
@@ -403,7 +377,10 @@ void DrawingNodeEditTool::activate(DrawingScene *scene, DrawingView *view)
     ToolBase::activate(scene, view);
     // qDebug() << "Node edit tool activated";
 
-    
+    // 创建手柄管理器
+    if (!m_handleManager) {
+        m_handleManager = new NodeHandleManager(scene, this);
+    }
 
     // 清除之前选中的图形
     m_selectedShape = nullptr;
@@ -530,22 +507,15 @@ void DrawingNodeEditTool::deactivate()
     if (m_dragging && m_selectedShape)
     {
         // 结束任何正在进行的节点拖动
-        int nodeIndex = -1;
-        if (m_activeHandle)
+        NodeHandleManager::NodeHandleInfo handleInfo;
+        if (m_activeHandle && m_handleManager)
         {
-            for (int i = 0; i < m_nodeHandles.size(); ++i)
-            {
-                if (m_nodeHandles[i] == m_activeHandle)
-                {
-                    nodeIndex = i;
-                    break;
-                }
-            }
+            handleInfo = m_handleManager->getHandleInfo(m_activeHandle);
         }
 
-        if (m_selectedShape && nodeIndex != -1)
+        if (handleInfo.handle)
         {
-            m_selectedShape->endNodeDrag(nodeIndex);
+            m_selectedShape->endNodeDrag(handleInfo.nodeIndex);
         }
 
         // 结束拖动状态
@@ -696,102 +666,13 @@ void DrawingNodeEditTool::onObjectStateChanged(DrawingShape *shape)
 
 void DrawingNodeEditTool::updateNodeHandles()
 {
-    if (!m_selectedShape || !m_scene)
-        return;
-
-    // 检查选中的图形是否仍然有效且在场景中
-    if (!m_selectedShape->scene())
-    {
-        // qDebug() << "Selected shape is no longer in scene, clearing selection";
-        m_selectedShape = nullptr;
-        clearNodeHandles();
-        return;
-    }
-
-    // 保存当前激活的handle信息
-    EditHandle *oldActiveHandle = m_activeHandle;
-    int oldActiveIndex = -1;
-    if (oldActiveHandle)
-    {
-        // 遍历m_nodeHandles来找到旧的激活手柄的索引
-        for (int i = 0; i < m_nodeHandles.size(); ++i)
-        {
-            if (m_nodeHandles[i] == oldActiveHandle)
-            {
-                oldActiveIndex = i;
-                break;
-            }
-        }
-    }
-
-    // 清除现有的节点手柄
-    clearNodeHandles();
-
-    // 获取图形的节点点（这些是图形内部的控制点）
-    QVector<QPointF> nodePoints = m_selectedShape->getNodePoints();
-
-    // 调试：检查图形类型
-    // qDebug() << "updateNodeHandles for shape type:" << m_selectedShape->shapeType()
-    //          << "with" << nodePoints.size() << "node points";
-
-    // 获取图形的变换
-    DrawingTransform transform = m_selectedShape->transform();
-
-    // 调试：输出图形的变换信息
-    // qDebug() << "Shape transform - rotation:" << transform.rotation()
-    //          << "position:" << m_selectedShape->pos();
-
-    // 使用shapeType()而不是类型转换来判断，避免类型转换问题
-    if (m_selectedShape->shapeType() == DrawingShape::Path)
-    {
-        // qDebug() << "Shape is Path (type 2), skipping handle creation entirely";
-        return; // 直接返回，不创建任何手柄
-    }
-
-    for (int i = 0; i < nodePoints.size(); ++i)
-    {
-        QPointF point = nodePoints[i];
-
-        // 首先应用DrawingTransform变换
-        point = transform.transform().map(point);
-
-        // 然后使用Qt的内置方法将结果转换为场景坐标（考虑图形位置）
-        point = m_selectedShape->mapToScene(point);
-
-        // 根据图形类型和索引确定手柄类型
-        EditHandle::HandleType handleType = EditHandle::Custom;
-        if (m_selectedShape->shapeType() == DrawingShape::Rectangle)
-        {
-            // 矩形：第一个点是圆角控制（圆形），第二个点是尺寸控制（方形）
-            handleType = (i == 0) ? EditHandle::CornerRadius : EditHandle::SizeControl;
-        }
-        else if (m_selectedShape->shapeType() == DrawingShape::Ellipse)
-        {
-            // 椭圆：所有点都是尺寸控制（方形）
-            handleType = EditHandle::SizeControl; // 尺寸控制点
-        }
-        else
-        {
-            // 其他类型，使用自定义类型
-            handleType = static_cast<EditHandle::HandleType>(static_cast<int>(EditHandle::Custom) + i);
-            // qDebug() << "Other shape type, creating custom handle for point" << i << "with type" << handleType;
-        }
-
-        // 创建节点手柄
-        // qDebug() << "Creating handle for point" << i << "with type" << handleType << "at position" << point;
-        EditHandle *handle = new EditHandle(handleType, static_cast<QGraphicsItem *>(nullptr));
-        handle->setPos(point);
-        m_scene->addItem(handle);
-
-        // 保存手柄引用
-        m_nodeHandles.append(handle);
-        // qDebug() << "Total handles created:" << m_nodeHandles.size();
-    }
-
-    // 恢复激活状态
-    if (oldActiveIndex >= 0 && oldActiveIndex < m_nodeHandles.size())
-    {
-        m_activeHandle = m_nodeHandles[oldActiveIndex];
+    if (!m_handleManager) return;
+    
+    m_handleManager->updateHandles(m_selectedShape);
+    
+    // 更新活动手柄
+    if (m_activeHandle) {
+        m_handleManager->setActiveHandle(m_activeHandle);
     }
 }
 
@@ -804,45 +685,22 @@ void DrawingNodeEditTool::updateOtherNodeHandles(int draggedIndex, const QPointF
     QVector<QPointF> nodePoints = m_selectedShape->getNodePoints();
     DrawingTransform transform = m_selectedShape->transform();
 
-    // 只更新其他手柄的位置，不更新正在拖动的手柄（避免干扰拖动过程）
-    for (int i = 0; i < m_nodeHandles.size() && i < nodePoints.size(); ++i)
-    {
-        // 跳过正在拖动的手柄，它的位置已由mouseMoveEvent设置
-        if (i == draggedIndex)
-        {
-            continue;
-        }
-
-        // 更新其他手柄的位置
-        if (m_nodeHandles[i])
-        {
-            QPointF point = nodePoints[i];
-            // 首先应用DrawingTransform变换
-            point = transform.transform().map(point);
-            // 然后使用Qt的内置方法将结果转换为场景坐标
-            point = m_selectedShape->mapToScene(point);
-            m_nodeHandles[i]->setPos(point);
+    // 使用手柄管理器更新所有手柄位置
+    if (m_handleManager) {
+        m_handleManager->updateHandles(m_selectedShape);
+        
+        // 重新设置活动手柄
+        if (m_activeHandle) {
+            m_handleManager->setActiveHandle(m_activeHandle);
         }
     }
 }
 
 void DrawingNodeEditTool::clearNodeHandles()
 {
-    if (!m_scene)
-        return;
-
-    // 从场景中移除所有节点手柄
-    for (int i = m_nodeHandles.size() - 1; i >= 0; --i)
-    {
-        EditHandle *handle = m_nodeHandles[i];
-        if (handle)
-        {
-            m_scene->removeItem(handle);
-            delete handle;
-        }
+    if (m_handleManager) {
+        m_handleManager->clearHandles();
     }
-
-    m_nodeHandles.clear();
     m_activeHandle = nullptr;
 }
 

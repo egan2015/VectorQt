@@ -9,7 +9,8 @@
 class DrawingScene;
 class DrawingView;
 class DrawingShape;
-class EditHandle;
+class CustomHandleItem;
+class NodeHandleManager;
 
 /**
  * 节点编辑撤销命令
@@ -69,12 +70,12 @@ private:
     
     // 状态变量
     DrawingShape *m_selectedShape;  // 当前选中的形状
-    EditHandle *m_activeHandle;     // 当前激活的编辑手柄
+    CustomHandleItem *m_activeHandle;     // 当前激活的编辑手柄
     bool m_dragging;                // 是否正在拖动
     QPointF m_dragStartPos;         // 拖动起始位置
     QPointF m_originalValue;        // 原始值（用于撤销）
     qreal m_originalCornerRadius;   // 原始圆角半径（用于撤销）
-    QList<EditHandle*> m_nodeHandles; // 节点手柄列表
+    NodeHandleManager *m_handleManager; // 节点手柄管理器
 };
 
 #endif // DRAWING_TOOL_NODE_EDIT_H

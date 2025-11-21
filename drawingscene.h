@@ -8,7 +8,7 @@
 class DrawingShape;
 class DrawingGroup;
 class QGraphicsSceneMouseEvent;
-class SelectionLayer;
+// class SelectionLayer; // 已移除 - 老的选择层系统
 class TransformCommand;
 
 class DrawingScene : public QGraphicsScene
@@ -33,7 +33,7 @@ public:
     void clearScene();
     
     // 选择层管理
-    SelectionLayer* selectionLayer() const { return m_selectionLayer; }
+    // SelectionLayer* selectionLayer() const { return m_selectionLayer; } // 已移除 - 老的选择层系统
     void updateSelection();
     
     // 激活/停用选择工具时调用
@@ -187,7 +187,7 @@ private:
     
     QUndoStack m_undoStack;
     bool m_isModified;
-    SelectionLayer *m_selectionLayer;
+    // SelectionLayer *m_selectionLayer; // 已移除 - 老的选择层系统
     
     // 网格相关
     bool m_gridVisible;

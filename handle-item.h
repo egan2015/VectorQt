@@ -1,9 +1,11 @@
 #ifndef HANDLE_ITEM_H
 #define HANDLE_ITEM_H
 
-#include <QGraphicsRectItem>
-#include <QGraphicsEllipseItem>
-#include "transform-handle.h"
+#include <QGraphicsItem>
+#include <QPainter>
+#include <QStyleOptionGraphicsItem>
+#include <QWidget>
+#include "handle-types.h"
 
 /**
  * @brief 专门的手柄图形基类
@@ -13,9 +15,12 @@ class HandleItemBase
 {
 public:
     enum HandleStyle {
-        Square,     // 方形手柄
-        Circle,     // 圆形手柄
-        Diamond     // 菱形手柄
+        Square,         // 方形手柄
+        Circle,         // 圆形手柄
+        Diamond,        // 菱形手柄
+        Cross,          // 十字手柄
+        RotateCircle,   // 带箭头的空心圆（旋转手柄专用）
+        Pixmap          // 图标手柄
     };
     
     enum HandleState {
@@ -37,8 +42,11 @@ public:
     HandleState state() const { return m_state; }
     
     // 设置手柄样式
-    void setStyle(HandleStyle style) { m_style = style; updateAppearance(); }
+    virtual void setStyle(HandleStyle style) { m_style = style; updateAppearance(); }
     HandleStyle style() const { return m_style; }
+    
+    // 设置特定颜色（用于选择工具的红色和绿色十字）
+    void setSpecificColor(const QColor &color) { m_specificColor = color; updateAppearance(); }
     
     // 设置大小
     virtual void setSize(qreal size) = 0;
@@ -65,15 +73,20 @@ protected:
     QColor m_normalColor;
     QColor m_hoverColor;
     QColor m_activeColor;
+    QColor m_specificColor;  // 特定颜色（用于红色和绿色十字）
 };
 
 /**
- * @brief 方形手柄图形项
+ * @brief 自定义绘制的手柄图形项
  */
-class SquareHandleItem : public QGraphicsRectItem, public HandleItemBase
+class CustomHandleItem : public QGraphicsItem, public HandleItemBase
 {
 public:
-    explicit SquareHandleItem(TransformHandle::HandleType type, QGraphicsItem *parent = nullptr);
+    explicit CustomHandleItem(TransformHandle::HandleType type, QGraphicsItem *parent = nullptr);
+    
+    // QGraphicsItem接口
+    QRectF boundingRect() const override;
+    void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget) override;
     
     // 重写基类方法
     void setState(HandleState state) override;
@@ -85,26 +98,14 @@ public:
 
 protected:
     void updateAppearance() override;
-};
+    void drawSquareHandle(QPainter *painter);
+    void drawCircleHandle(QPainter *painter);
+    void drawDiamondHandle(QPainter *painter);
+    void drawCrossHandle(QPainter *painter);
+    void drawRotateCircleHandle(QPainter *painter);
 
-/**
- * @brief 圆形手柄图形项
- */
-class CircleHandleItem : public QGraphicsEllipseItem, public HandleItemBase
-{
-public:
-    explicit CircleHandleItem(TransformHandle::HandleType type, QGraphicsItem *parent = nullptr);
-    
-    // 重写基类方法
-    void setState(HandleState state) override;
-    void setSize(qreal size) override;
-    
-    // 鼠标事件处理
-    void hoverEnterEvent(QGraphicsSceneHoverEvent *event) override;
-    void hoverLeaveEvent(QGraphicsSceneHoverEvent *event) override;
-
-protected:
-    void updateAppearance() override;
+private:
+    QRectF m_boundingRect;
 };
 
 #endif // HANDLE_ITEM_H

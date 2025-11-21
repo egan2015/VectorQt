@@ -10,7 +10,7 @@ const QColor HandleManager::ACTIVE_HANDLE_COLOR = QColor(41, 121, 255, 255);  //
 const QColor HandleManager::ROTATE_HANDLE_COLOR = QColor(76, 175, 80, 255);  // 鲜明的绿色
 
 HandleManager::HandleManager(DrawingScene *scene, QObject *parent)
-    : QObject(parent), m_scene(scene), m_handleMode(TransformHandle::Scale), m_activeHandle(TransformHandle::None), m_centerHandle(nullptr), m_rotateHandle(nullptr), m_selectionBorder(nullptr)
+    : QObject(parent), m_scene(scene), m_handleMode(HandleMode::Scale), m_activeHandle(TransformHandle::None), m_centerHandle(nullptr), m_rotateHandle(nullptr), m_selectionBorder(nullptr)
 {
     createHandles();
 }
@@ -27,60 +27,77 @@ void HandleManager::createHandles()
         return;
     }
 
-    // 创建角点手柄
+    // 创建角点手柄 - 方形
     for (int i = 0; i < 4; ++i)
     {
-        QGraphicsRectItem *handle = new QGraphicsRectItem(0, 0, getHandleSize(), getHandleSize());
-        handle->setBrush(QBrush(HANDLE_COLOR));
-        handle->setPen(QPen(QColor(0, 0, 0, 180), 1)); // 半透明黑色边框
+        TransformHandle::HandleType type = TransformHandle::None;
+        switch (i) {
+        case 0: type = TransformHandle::TopLeft; break;
+        case 1: type = TransformHandle::TopRight; break;
+        case 2: type = TransformHandle::BottomRight; break;
+        case 3: type = TransformHandle::BottomLeft; break;
+        }
+        
+        CustomHandleItem *handle = new CustomHandleItem(type);
+        handle->setSize(getHandleSize());
         handle->setZValue(2000);
         handle->setVisible(false);
-        // 设置透明度
         handle->setOpacity(0.9);
         m_scene->addItem(handle);
         m_cornerHandles.append(handle);
     }
 
-    // 创建边缘手柄
+    // 创建边缘手柄 - 方形
     for (int i = 0; i < 4; ++i)
     {
-        QGraphicsRectItem *handle = new QGraphicsRectItem(0, 0, getHandleSize(), getHandleSize());
-        handle->setBrush(QBrush(HANDLE_COLOR));
-        handle->setPen(QPen(QColor(0, 0, 0, 180), 1)); // 半透明黑色边框
+        TransformHandle::HandleType type = TransformHandle::None;
+        switch (i) {
+        case 0: type = TransformHandle::Top; break;
+        case 1: type = TransformHandle::Right; break;
+        case 2: type = TransformHandle::Bottom; break;
+        case 3: type = TransformHandle::Left; break;
+        }
+        
+        CustomHandleItem *handle = new CustomHandleItem(type);
+        handle->setSize(getHandleSize());
         handle->setZValue(2000);
         handle->setVisible(false);
-        // 设置透明度
         handle->setOpacity(0.9);
         m_scene->addItem(handle);
         m_edgeHandles.append(handle);
     }
 
-    // 创建中心手柄
-    m_centerHandle = new QGraphicsEllipseItem(0, 0, getHandleSize() * 1.2, getHandleSize() * 1.2);
-    m_centerHandle->setBrush(QBrush(HANDLE_COLOR));
-    m_centerHandle->setPen(QPen(QColor(0, 0, 0, 180), 1)); // 半透明黑色边框
+    // 创建中心手柄 - 圆形
+    m_centerHandle = new CustomHandleItem(TransformHandle::Center);
+    m_centerHandle->setSize(getHandleSize() * 1.2);
     m_centerHandle->setZValue(2000);
     m_centerHandle->setVisible(false);
-    // 设置透明度
     m_centerHandle->setOpacity(0.9);
     m_scene->addItem(m_centerHandle);
 
-    // 创建旋转手柄
-    m_rotateHandle = new QGraphicsEllipseItem(0, 0, getHandleSize() * 1.2, getHandleSize() * 1.2);
-    m_rotateHandle->setBrush(QBrush(ROTATE_HANDLE_COLOR));
-    m_rotateHandle->setPen(QPen(QColor(0, 0, 0, 180), 1)); // 半透明黑色边框
+    // 创建旋转手柄 - 带箭头的空心圆
+    m_rotateHandle = new CustomHandleItem(TransformHandle::Rotate);
+    m_rotateHandle->setStyle(HandleItemBase::RotateCircle);
+    m_rotateHandle->setSize(getHandleSize() * 1.2);
     m_rotateHandle->setZValue(2000);
     m_rotateHandle->setVisible(false);
-    // 设置透明度
     m_rotateHandle->setOpacity(0.9);
     m_scene->addItem(m_rotateHandle);
     
-    // 创建4个角点的旋转手柄（用于旋转模式）
+    // 创建4个角点的旋转手柄（用于旋转模式）- 圆形
     for (int i = 0; i < 4; ++i)
     {
-        QGraphicsEllipseItem *handle = new QGraphicsEllipseItem(0, 0, getHandleSize() * 1.2, getHandleSize() * 1.2);
-        handle->setBrush(QBrush(ROTATE_HANDLE_COLOR));
-        handle->setPen(QPen(QColor(0, 0, 0, 180), 1)); // 半透明黑色边框
+        TransformHandle::HandleType type = TransformHandle::None;
+        switch (i) {
+        case 0: type = TransformHandle::TopLeft; break;
+        case 1: type = TransformHandle::TopRight; break;
+        case 2: type = TransformHandle::BottomRight; break;
+        case 3: type = TransformHandle::BottomLeft; break;
+        }
+        
+        CustomHandleItem *handle = new CustomHandleItem(type);
+        handle->setSize(getHandleSize() * 1.2);
+        handle->setStyle(HandleItemBase::RotateCircle); // 旋转手柄用带箭头的空心圆
         handle->setZValue(2000);
         handle->setVisible(false);
         handle->setOpacity(0.9);
@@ -106,7 +123,7 @@ void HandleManager::ensureHandlesInScene()
     }
 
     // 检查角点手柄
-    for (QGraphicsRectItem *handle : m_cornerHandles)
+    for (CustomHandleItem *handle : m_cornerHandles)
     {
         if (handle && handle->scene() != m_scene)
         {
@@ -120,7 +137,7 @@ void HandleManager::ensureHandlesInScene()
     }
 
     // 检查边缘手柄
-    for (QGraphicsRectItem *handle : m_edgeHandles)
+    for (CustomHandleItem *handle : m_edgeHandles)
     {
         if (handle && handle->scene() != m_scene)
         {
@@ -154,7 +171,7 @@ void HandleManager::ensureHandlesInScene()
     }
     
     // 检查旋转角点手柄
-    for (QGraphicsEllipseItem *handle : m_rotateCornerHandles)
+    for (CustomHandleItem *handle : m_rotateCornerHandles)
     {
         if (handle && handle->scene() != m_scene)
         {
@@ -176,7 +193,7 @@ void HandleManager::destroyHandles()
     }
 
     // 销毁角点手柄
-    for (QGraphicsRectItem *handle : m_cornerHandles)
+    for (CustomHandleItem *handle : m_cornerHandles)
     {
         if (handle && handle->scene())
         {
@@ -187,7 +204,7 @@ void HandleManager::destroyHandles()
     m_cornerHandles.clear();
 
     // 销毁边缘手柄
-    for (QGraphicsRectItem *handle : m_edgeHandles)
+    for (CustomHandleItem *handle : m_edgeHandles)
     {
         if (handle && handle->scene())
         {
@@ -202,7 +219,7 @@ void HandleManager::destroyHandles()
     {
         if (m_centerHandle->scene())
         {
-            m_centerHandle->scene()->removeItem(m_centerHandle);
+            m_scene->removeItem(m_centerHandle);
         }
         delete m_centerHandle;
         m_centerHandle = nullptr;
@@ -213,14 +230,14 @@ void HandleManager::destroyHandles()
     {
         if (m_rotateHandle->scene())
         {
-            m_rotateHandle->scene()->removeItem(m_rotateHandle);
+            m_scene->removeItem(m_rotateHandle);
         }
         delete m_rotateHandle;
         m_rotateHandle = nullptr;
     }
     
     // 销毁旋转角点手柄
-    for (QGraphicsEllipseItem *handle : m_rotateCornerHandles)
+    for (CustomHandleItem *handle : m_rotateCornerHandles)
     {
         if (handle && handle->scene())
         {
@@ -241,7 +258,7 @@ void HandleManager::destroyHandles()
         m_selectionBorder = nullptr;
     }
 }
-void HandleManager::setHandleMode(TransformHandle::HandleMode mode)
+void HandleManager::setHandleMode(HandleMode::Mode mode)
 {
     if (m_handleMode != mode)
     {
@@ -267,7 +284,7 @@ void HandleManager::updateHandlesVisibility()
     if (m_rotateHandle) m_rotateHandle->setVisible(false);
     
     // 根据模式显示相应的手柄
-    if (m_handleMode == TransformHandle::Scale)
+    if (m_handleMode == HandleMode::Scale)
     {
         // 缩放模式：显示8个缩放手柄
         for (auto handle : m_cornerHandles) {
@@ -277,7 +294,7 @@ void HandleManager::updateHandlesVisibility()
             if (handle) handle->setVisible(true);
         }
     }
-    else if (m_handleMode == TransformHandle::RotateMode)
+    else if (m_handleMode == HandleMode::RotateMode)
     {
         // 旋转模式：显示4个旋转手柄+中心手柄
         for (auto handle : m_rotateCornerHandles) {
@@ -304,14 +321,14 @@ void HandleManager::hideHandles()
     // 设置手柄为隐藏状态
     setShowHandles(false);
     
-    for (QGraphicsRectItem *handle : m_cornerHandles)
+    for (CustomHandleItem *handle : m_cornerHandles)
     {
         if (handle)
         {
             handle->setVisible(false);
         }
     }
-    for (QGraphicsRectItem *handle : m_edgeHandles)
+    for (CustomHandleItem *handle : m_edgeHandles)
     {
         if (handle)
         {
@@ -326,7 +343,7 @@ void HandleManager::hideHandles()
     {
         m_rotateHandle->setVisible(false);
     }
-    for (QGraphicsEllipseItem *handle : m_rotateCornerHandles) {
+    for (CustomHandleItem *handle : m_rotateCornerHandles) {
         if (handle) handle->setVisible(false);
     }
     if (m_selectionBorder)
@@ -348,7 +365,7 @@ void HandleManager::updateHandles(const QRectF &bounds)
     const qreal halfSize = handleSize / 2.0;
     const qreal offset = 4.0; // 手柄向外偏移量，避免遮挡图形
 
-    if (m_handleMode == TransformHandle::Scale)
+    if (m_handleMode == HandleMode::Scale)
     {
         // 缩放模式：更新8个缩放手柄
         updateHandlePosition(TransformHandle::TopLeft, bounds.topLeft() + QPointF(-offset, -offset));
@@ -361,7 +378,7 @@ void HandleManager::updateHandles(const QRectF &bounds)
         updateHandlePosition(TransformHandle::Top, QPointF(bounds.center().x(), bounds.top() - offset));
         updateHandlePosition(TransformHandle::Bottom, QPointF(bounds.center().x(), bounds.bottom() + offset));
     }
-    else if (m_handleMode == TransformHandle::RotateMode)
+    else if (m_handleMode == HandleMode::RotateMode)
     {
         // 旋转模式：更新4个旋转手柄+中心手柄
         // 4个角点的旋转手柄位置（比缩放手柄更远一些）
@@ -393,23 +410,21 @@ void HandleManager::updateRotateCornerHandle(int index, const QPointF &pos)
     if (index < 0 || index >= m_rotateCornerHandles.size())
         return;
 
-    QGraphicsEllipseItem *handle = m_rotateCornerHandles[index];
+    CustomHandleItem *handle = m_rotateCornerHandles[index];
     if (!handle)
         return;
 
-    const qreal handleSize = getHandleSize() * 1.2;
-    const qreal halfSize = handleSize / 2.0;
+    // CustomHandleItem已经以中心为原点，直接设置位置
+    handle->setPos(pos);
 
-    handle->setPos(pos.x() - halfSize, pos.y() - halfSize);
-
-    // 更新活动手柄颜色
+    // 更新活动手柄状态
     if (TransformHandle::HandleType(index + TransformHandle::TopLeft) == m_activeHandle)
     {
-        handle->setBrush(QBrush(ACTIVE_HANDLE_COLOR));
+        handle->setState(HandleItemBase::Active);
     }
     else
     {
-        handle->setBrush(QBrush(ROTATE_HANDLE_COLOR));
+        handle->setState(HandleItemBase::Normal);
     }
 }
 
@@ -469,39 +484,39 @@ void HandleManager::updateHandlePosition(TransformHandle::HandleType type, const
     if (!handle)
         return;
 
-    // 根据手柄类型调整位置
-    if (type == TransformHandle::Center)
-    {
-        handle->setPos(pos.x() - centerSize, pos.y() - centerSize);
-    }
-    else if (type == TransformHandle::Rotate)
-    {
-        handle->setPos(pos.x() - rotateSize, pos.y() - rotateSize);
-    }
-    else
-    {
-        handle->setPos(pos.x() - halfSize, pos.y() - halfSize);
-    }
+    // CustomHandleItem已经以中心为原点，直接设置位置即可
+    handle->setPos(pos);
 
-    // 更新活动手柄颜色
-    if (type == m_activeHandle)
+    // 更新活动手柄状态 - 使用自定义手柄状态系统
+    if (CustomHandleItem *customHandle = qgraphicsitem_cast<CustomHandleItem *>(handle))
     {
-        if (QGraphicsRectItem *rectHandle = qgraphicsitem_cast<QGraphicsRectItem *>(handle))
+        if (type == m_activeHandle)
+        {
+            customHandle->setState(HandleItemBase::Active);
+        }
+        else
+        {
+            customHandle->setState(HandleItemBase::Normal);
+        }
+    }
+    else if (QGraphicsRectItem *rectHandle = qgraphicsitem_cast<QGraphicsRectItem *>(handle))
+    {
+        if (type == m_activeHandle)
         {
             rectHandle->setBrush(QBrush(ACTIVE_HANDLE_COLOR));
         }
-        else if (QGraphicsEllipseItem *ellipseHandle = qgraphicsitem_cast<QGraphicsEllipseItem *>(handle))
-        {
-            ellipseHandle->setBrush(QBrush(ACTIVE_HANDLE_COLOR));
-        }
-    }
-    else
-    {
-        if (QGraphicsRectItem *rectHandle = qgraphicsitem_cast<QGraphicsRectItem *>(handle))
+        else
         {
             rectHandle->setBrush(QBrush(HANDLE_COLOR));
         }
-        else if (QGraphicsEllipseItem *ellipseHandle = qgraphicsitem_cast<QGraphicsEllipseItem *>(handle))
+    }
+    else if (QGraphicsEllipseItem *ellipseHandle = qgraphicsitem_cast<QGraphicsEllipseItem *>(handle))
+    {
+        if (type == m_activeHandle)
+        {
+            ellipseHandle->setBrush(QBrush(ACTIVE_HANDLE_COLOR));
+        }
+        else
         {
             if (type == TransformHandle::Rotate)
             {
@@ -634,11 +649,7 @@ QPointF HandleManager::getHandlePosition(TransformHandle::HandleType type) const
     case TransformHandle::Center:
         return m_bounds.center();
     case TransformHandle::Rotate:
-    {
-        QPointF rotatePos = QPointF(m_bounds.center().x(), m_bounds.top());
-        rotatePos.setY(rotatePos.y() - 20.0);
-        return rotatePos;
-    }
+        return QPointF(m_bounds.center().x(), m_bounds.top() - 8.0);  // 与其他手柄保持一致的偏移
     default:
         return QPointF();
     }
@@ -667,11 +678,11 @@ void HandleManager::updateHandleHover(const QPointF &scenePos)
     TransformHandle::HandleType hoveredHandle = getHandleAtPosition(scenePos);
     
     // 重置所有手柄的悬停状态
-    for (QGraphicsRectItem *handle : m_cornerHandles)
+    for (CustomHandleItem *handle : m_cornerHandles)
     {
         updateHandleHoverEffect(handle, false);
     }
-    for (QGraphicsRectItem *handle : m_edgeHandles)
+    for (CustomHandleItem *handle : m_edgeHandles)
     {
         updateHandleHoverEffect(handle, false);
     }
@@ -683,7 +694,7 @@ void HandleManager::updateHandleHover(const QPointF &scenePos)
     {
         updateHandleHoverEffect(m_rotateHandle, false);
     }
-    for (QGraphicsEllipseItem *handle : m_rotateCornerHandles)
+    for (CustomHandleItem *handle : m_rotateCornerHandles)
     {
         updateHandleHoverEffect(handle, false);
     }
@@ -700,7 +711,7 @@ void HandleManager::updateHandleHover(const QPointF &scenePos)
         case TransformHandle::TopRight:
         case TransformHandle::BottomLeft:
         case TransformHandle::BottomRight:
-            if (m_handleMode == TransformHandle::Scale)
+            if (m_handleMode == HandleMode::Scale)
                 hoveredItem = m_cornerHandles[hoveredHandle - TransformHandle::TopLeft];
             else
                 hoveredItem = m_rotateCornerHandles[hoveredHandle - TransformHandle::TopLeft];
@@ -734,7 +745,28 @@ void HandleManager::updateHandleHoverEffect(QGraphicsItem *handle, bool isHovere
     if (!handle)
         return;
     
-    if (isHovered)
+    if (CustomHandleItem *customHandle = qgraphicsitem_cast<CustomHandleItem*>(handle))
+    {
+        // 使用自定义手柄的状态系统
+        if (isHovered)
+        {
+            customHandle->setState(HandleItemBase::Hover);
+            handle->setScale(1.2);
+        }
+        else
+        {
+            if (customHandle->handleType() == m_activeHandle)
+            {
+                customHandle->setState(HandleItemBase::Active);
+            }
+            else
+            {
+                customHandle->setState(HandleItemBase::Normal);
+            }
+            handle->setScale(1.0);
+        }
+    }
+    else if (isHovered)
     {
         // 悬停效果：放大并改变颜色
         handle->setScale(1.2);
@@ -759,15 +791,7 @@ void HandleManager::updateHandleHoverEffect(QGraphicsItem *handle, bool isHovere
         }
         else if (QGraphicsEllipseItem *ellipseItem = qgraphicsitem_cast<QGraphicsEllipseItem*>(handle))
         {
-            // 检查是否是旋转手柄
-            if (ellipseItem == m_rotateHandle || m_rotateCornerHandles.contains(ellipseItem))
-            {
-                ellipseItem->setBrush(QBrush(ROTATE_HANDLE_COLOR));
-            }
-            else
-            {
-                ellipseItem->setBrush(QBrush(HANDLE_COLOR));
-            }
+            ellipseItem->setBrush(QBrush(ROTATE_HANDLE_COLOR));
         }
     }
 }

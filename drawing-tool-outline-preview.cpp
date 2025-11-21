@@ -1,9 +1,14 @@
 #include "drawing-tool-outline-preview.h"
 #include "drawingscene.h"
 #include "drawingview.h"
+#include "drawing-document.h"
+#include "drawing-canvas.h"
 #include "drawing-shape.h"
-#include "transform-handle.h"
+#include "drawing-layer.h"
+#include "selection-layer.h"
 #include "drawing-transform.h"
+#include "handle-item.h"
+#include "transform-handle.h"
 #include <QMouseEvent>
 #include <QKeyEvent>
 #include <QPainterPath>
@@ -120,7 +125,7 @@ void OutlinePreviewTransformTool::activate(DrawingScene *scene, DrawingView *vie
     }
 
     // 显示初始模式提示
-    QString modeText = (m_currentMode == TransformHandle::Scale) ? "缩放模式" : "旋转模式";
+    QString modeText = (m_currentMode == HandleMode::Scale) ? "缩放模式" : "旋转模式";
     emit statusMessageChanged(modeText + " - 按空格键或Tab键切换模式");
 
     // 连接选择变化信号
@@ -247,6 +252,9 @@ bool OutlinePreviewTransformTool::mousePressEvent(QMouseEvent *event, const QPoi
     {
         // 点击空白处，清除选择
         m_scene->clearSelection();
+        // 重置旋转中心位置，让它跟随新的选择
+        resetRotationCenter();
+
         qDebug() << "Clicked on empty space";
     }
     // 不消费事件，让场景处理框选
@@ -398,7 +406,7 @@ void OutlinePreviewTransformTool::grab(TransformHandle::HandleType handleType,
     // 确定变换类型：如果是旋转模式下的角点手柄，或旋转手柄，则为旋转；否则为缩放
     DrawingScene::TransformType transformType = DrawingScene::Scale;
     if (m_activeHandle == TransformHandle::Rotate ||
-        (m_handleManager && m_handleManager->handleMode() == TransformHandle::RotateMode &&
+        (m_handleManager && m_handleManager->handleMode() == HandleMode::RotateMode &&
          (m_activeHandle == TransformHandle::TopLeft || m_activeHandle == TransformHandle::TopRight ||
           m_activeHandle == TransformHandle::BottomLeft || m_activeHandle == TransformHandle::BottomRight)))
     {
@@ -641,8 +649,7 @@ void OutlinePreviewTransformTool::ungrab(bool apply, const QPointF &finalMousePo
 
     destroyVisualHelpers();
 
-    // 重置旋转中心位置
-    resetRotationCenter();
+    // 不重置旋转中心位置，保持用户的设置
 
     // 重置状态，在更新手柄之前
     resetState();
@@ -663,7 +670,7 @@ void OutlinePreviewTransformTool::ungrab(bool apply, const QPointF &finalMousePo
     if (m_scene)
     {
         m_scene->endTransform();
-        m_scene->emitSelectionChanged();
+        // m_scene->emitSelectionChanged();
     }
 }
 
@@ -774,9 +781,6 @@ void OutlinePreviewTransformTool::onSelectionChanged()
     // 更新UI
     //  disableInternalSelectionIndicators();
 
-    // 重置旋转中心位置，让它跟随新的选择
-    resetRotationCenter();
-
     // 延迟更新手柄，确保选择状态完全更新
     QTimer::singleShot(0, this, [this]()
                        { updateHandlePositions(); });
@@ -859,25 +863,28 @@ void OutlinePreviewTransformTool::createVisualHelpers()
     if (!m_scene)
         return;
 
-    // 创建锚点（红色）- 显示在变换中心位置
-    m_anchorPoint = new QGraphicsEllipseItem(-4, -4, 8, 8);
-    m_anchorPoint->setBrush(QBrush(Qt::red));
-    m_anchorPoint->setPen(QPen(Qt::darkRed, 1));
+    // 创建锚点（红色十字）- 显示在变换中心位置
+    m_anchorPoint = new CustomHandleItem(TransformHandle::Center);
+    m_anchorPoint->setStyle(HandleItemBase::Cross);
+    m_anchorPoint->setSpecificColor(Qt::red);
+    m_anchorPoint->setSize(12.0); // 增大尺寸
     m_anchorPoint->setZValue(2001);
     m_scene->addItem(m_anchorPoint);
     m_anchorPoint->setPos(m_transformOrigin);
 
-    // 创建拖动点（绿色）
-    m_dragPoint = new QGraphicsEllipseItem(-4, -4, 8, 8);
-    m_dragPoint->setBrush(QBrush(Qt::green));
-    m_dragPoint->setPen(QPen(Qt::darkGreen, 1));
+    // 创建拖动点（绿色十字）
+    m_dragPoint = new CustomHandleItem(TransformHandle::Center);
+    m_dragPoint->setStyle(HandleItemBase::Cross);
+    m_dragPoint->setSpecificColor(Qt::green);
+    m_dragPoint->setSize(12.0); // 增大尺寸
     m_dragPoint->setZValue(2001);
     m_scene->addItem(m_dragPoint);
 
-    // 创建旋转中心（蓝色）
-    m_rotationCenter = new QGraphicsEllipseItem(-4, -4, 8, 8);
-    m_rotationCenter->setBrush(QBrush(Qt::blue));
-    m_rotationCenter->setPen(QPen(Qt::darkBlue, 1));
+    // 创建旋转中心（浅蓝色）
+    m_rotationCenter = new CustomHandleItem(TransformHandle::Center);
+    m_rotationCenter->setStyle(HandleItemBase::Circle);
+    m_rotationCenter->setSpecificColor(QColor(173, 216, 230, 160)); // 更淡的半透明浅蓝色
+    m_rotationCenter->setSize(10.0);                                // 稍微小一点
     m_rotationCenter->setZValue(2002);
     m_scene->addItem(m_rotationCenter);
 
@@ -949,11 +956,16 @@ void OutlinePreviewTransformTool::updateVisualHelpers(const QPointF &mousePos)
         m_dragPoint->setPos(mousePos);
     }
 
-    // 确保锚点可见（特别是旋转时）
+    // 确保锚点可见（但旋转时隐藏，避免视觉混乱）
     if (m_anchorPoint)
     {
-        m_anchorPoint->setVisible(true);
-        m_anchorPoint->setPos(m_scaleAnchor);
+        // 旋转时隐藏锚点，让它与中心手柄重叠
+        bool showAnchor = (m_activeHandle != TransformHandle::Rotate);
+        m_anchorPoint->setVisible(showAnchor);
+        if (showAnchor)
+        {
+            m_anchorPoint->setPos(m_scaleAnchor);
+        }
     }
 
     // 更新旋转中心显示
@@ -1077,14 +1089,14 @@ void OutlinePreviewTransformTool::toggleMode()
         return;
 
     // 切换模式
-    if (m_currentMode == TransformHandle::Scale)
+    if (m_currentMode == HandleMode::Scale)
     {
-        m_currentMode = TransformHandle::RotateMode;
+        m_currentMode = HandleMode::RotateMode;
         emit statusMessageChanged("旋转模式 - 按空格键或Tab键切换到缩放模式");
     }
     else
     {
-        m_currentMode = TransformHandle::Scale;
+        m_currentMode = HandleMode::Scale;
         emit statusMessageChanged("缩放模式 - 按空格键或Tab键切换到旋转模式");
     }
 
@@ -1104,7 +1116,7 @@ void OutlinePreviewTransformTool::toggleMode()
     }
 }
 
-void OutlinePreviewTransformTool::setMode(TransformHandle::HandleMode mode)
+void OutlinePreviewTransformTool::setMode(HandleMode::Mode mode)
 {
     if (!m_handleManager || m_currentMode == mode)
         return;
@@ -1116,7 +1128,7 @@ void OutlinePreviewTransformTool::setMode(TransformHandle::HandleMode mode)
     updateHandlePositions();
 }
 
-TransformHandle::HandleMode OutlinePreviewTransformTool::currentMode() const
+HandleMode::Mode OutlinePreviewTransformTool::currentMode() const
 {
     return m_currentMode;
 }

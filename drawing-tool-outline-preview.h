@@ -2,9 +2,10 @@
 #define DRAWING_TOOL_OUTLINE_PREVIEW_H
 
 #include "toolbase.h"
-#include "transform-handle.h"
+#include "handle-item.h"
 #include "drawing-transform.h"
 #include "drawingscene.h"
+#include "handle-types.h"
 #include <QPointF>
 #include <QRectF>
 #include <QTransform>
@@ -83,8 +84,8 @@ private:
     
     // 模式管理
     void toggleMode();
-    void setMode(TransformHandle::HandleMode mode);
-    TransformHandle::HandleMode currentMode() const;
+    void setMode(HandleMode::Mode mode);
+    HandleMode::Mode currentMode() const;
 
     // 状态
     State m_state = STATE_IDLE;
@@ -103,7 +104,7 @@ private:
     QPointF m_customRotationCenter;          // 自定义旋转中心（场景坐标）
     
     // 模式管理
-    TransformHandle::HandleMode m_currentMode = TransformHandle::Scale;  // 当前模式（默认为缩放模式）
+    HandleMode::Mode m_currentMode = HandleMode::Scale;  // 当前模式（默认为缩放模式）
 
     
     
@@ -117,9 +118,9 @@ private:
     QRectF m_handleBounds; // 手柄始终基于这个边界（初始边界）
     
     // 视觉辅助元素
-    QGraphicsEllipseItem *m_anchorPoint = nullptr;      // 锚点（红色）
-    QGraphicsEllipseItem *m_dragPoint = nullptr;        // 拖动点（绿色）
-    QGraphicsEllipseItem *m_rotationCenter = nullptr;   // 旋转中心（蓝色）
+    CustomHandleItem *m_anchorPoint = nullptr;            // 锚点（红色十字）
+    CustomHandleItem *m_dragPoint = nullptr;              // 拖动点（绿色十字）
+    CustomHandleItem *m_rotationCenter = nullptr;           // 旋转中心（浅蓝色）
     QGraphicsPathItem *m_outlinePreview = nullptr;      // 整体轮廓预览（类似Inkscape）
     QTimer *m_dashTimer = nullptr;                      // 蚂蚁线动画定时器
 };

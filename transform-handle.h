@@ -6,38 +6,14 @@
 #include <QRectF>
 #include <QGraphicsRectItem>
 #include <QGraphicsEllipseItem>
+#include <QGraphicsPixmapItem>
 #include <QList>
+#include "handle-item.h"
+#include "handle-types.h"
 
 class DrawingScene;
 
-/**
- * @brief 变换手柄类型枚举
- */
-class TransformHandle
-{
-public:
-    enum HandleType {
-        None = 0,
-        TopLeft,
-        TopRight,
-        BottomLeft,
-        BottomRight,
-        Left,
-        Right,
-        Top,
-        Bottom,
-        Center,
-        Rotate  // 旋转手柄
-    };
-    
-    /**
-     * @brief 手柄显示模式
-     */
-    enum HandleMode {
-        Scale,  // 缩放模式：显示8个缩放手柄
-        RotateMode  // 旋转模式：显示4个旋转手柄+中心手柄
-    };
-};
+
 
 /**
  * @brief 手柄管理器
@@ -59,8 +35,8 @@ public:
     void updateHandles(const QRectF &bounds);
     
     // 模式管理
-    void setHandleMode(TransformHandle::HandleMode mode);
-    TransformHandle::HandleMode handleMode() const { return m_handleMode; }
+    void setHandleMode(HandleMode::Mode mode);
+    HandleMode::Mode handleMode() const { return m_handleMode; }
     
     // 检测点击位置的手柄
     TransformHandle::HandleType getHandleAtPosition(const QPointF &scenePos) const;
@@ -107,17 +83,17 @@ private:
     
     DrawingScene *m_scene;
     QRectF m_bounds;
-    TransformHandle::HandleMode m_handleMode;
+    HandleMode::Mode m_handleMode;
     
-    // 手柄图形项
-    QList<QGraphicsRectItem*> m_cornerHandles;  // 角点手柄
-    QList<QGraphicsRectItem*> m_edgeHandles;    // 边缘手柄
-    QGraphicsEllipseItem* m_centerHandle;       // 中心手柄
-    QGraphicsEllipseItem* m_rotateHandle;       // 旋转手柄
+    // 手柄图形项 - 使用自定义绘制的手柄
+    QList<CustomHandleItem*> m_cornerHandles;   // 角点手柄
+    QList<CustomHandleItem*> m_edgeHandles;     // 边缘手柄
+    CustomHandleItem* m_centerHandle;           // 中心手柄
+    CustomHandleItem* m_rotateHandle;           // 旋转手柄
     QGraphicsRectItem* m_selectionBorder;       // 选择边框线
     
     // 旋转模式专用手柄（4个角点的旋转手柄）
-    QList<QGraphicsEllipseItem*> m_rotateCornerHandles;
+    QList<CustomHandleItem*> m_rotateCornerHandles;
     
     TransformHandle::HandleType m_activeHandle;
     

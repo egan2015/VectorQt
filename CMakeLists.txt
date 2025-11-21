@@ -48,6 +48,8 @@ set(SOURCES
     drawing-tool-outline-preview.cpp
     # 变换手柄
     transform-handle.cpp
+    handle-item.cpp
+    handle-icons.cpp
     # 滚动工具栏
     scrollable-toolbar.cpp
     # 图层系统
@@ -99,6 +101,9 @@ set(HEADERS
     drawing-tool-outline-preview.h
     # 变换手柄
     transform-handle.h
+    handle-item.h
+    handle-icons.h
+    handle-types.h
     # 滚动工具栏
     scrollable-toolbar.h
     # 图层系统

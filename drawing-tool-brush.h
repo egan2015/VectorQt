@@ -2,11 +2,14 @@
 #define DRAWING_TOOL_BRUSH_H
 
 #include "toolbase.h"
+#include "brush-engine.h"
 #include <QPointF>
 #include <QVector>
 
 class DrawingPath;
 class QMouseEvent;
+class DrawingThrottle;
+class BrushEngine;
 
 /**
  * 画笔工具 - 自由绘制
@@ -28,19 +31,20 @@ public:
     bool mouseMoveEvent(QMouseEvent *event, const QPointF &scenePos) override;
     bool mouseReleaseEvent(QMouseEvent *event, const QPointF &scenePos) override;
     
-    // 设置画笔粗细
+    // 基础设置
     void setBrushWidth(qreal width) { m_brushWidth = width; }
-    qreal brushWidth() const { return m_brushWidth; }
-    
-    // 设置平滑度
     void setSmoothness(qreal smoothness) { m_smoothness = smoothness; }
+    
+    // 获取当前状态
+    qreal brushWidth() const { return m_brushWidth; }
     qreal smoothness() const { return m_smoothness; }
 
 private:
-    // 平滑路径
+    // 平滑路径（保留兼容性）
     QVector<QPointF> smoothPath(const QVector<QPointF> &points);
     
     DrawingPath *m_currentPath;
+    DrawingThrottle *m_throttle;  // 事件节流器（暂不使用）
     QVector<QPointF> m_points;
     QPointF m_lastPoint;
     qreal m_brushWidth;

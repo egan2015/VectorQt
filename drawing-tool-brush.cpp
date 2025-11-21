@@ -1,4 +1,6 @@
 #include "drawing-tool-brush.h"
+#include "drawing-throttle.h"
+#include "brush-engine.h"
 #include "drawingscene.h"
 #include "drawingview.h"
 #include "drawing-shape.h"
@@ -11,10 +13,16 @@
 DrawingToolBrush::DrawingToolBrush(QObject *parent)
     : ToolBase(parent)
     , m_currentPath(nullptr)
+    , m_throttle(nullptr)
     , m_brushWidth(2.0)
     , m_smoothness(0.5)
     , m_drawing(false)
 {
+    // 创建节流器（暂时保留，但暂不使用）
+    m_throttle = new DrawingThrottle(this);
+    m_throttle->setThrottleInterval(16);  // 60fps
+    m_throttle->setDistanceThreshold(1.5);  // 1.5像素阈值
+    m_throttle->setMaxPendingEvents(8);     // 最多缓存8个事件
 }
 
 void DrawingToolBrush::activate(DrawingScene *scene, DrawingView *view)
@@ -23,17 +31,24 @@ void DrawingToolBrush::activate(DrawingScene *scene, DrawingView *view)
     m_currentPath = nullptr;
     m_points.clear();
     m_drawing = false;
+    
+    // 清除节流器的待处理事件
+    if (m_throttle) {
+        m_throttle->clearPendingEvents();
+    }
 }
 
 void DrawingToolBrush::deactivate()
 {
-    if (m_currentPath) {
-        if (m_scene) {
-            m_scene->removeItem(m_currentPath);
-        }
-        delete m_currentPath;
-        m_currentPath = nullptr;
+    // 处理所有待处理的事件
+    if (m_throttle) {
+        m_throttle->flushPendingEvents();
     }
+    
+    // 不要删除图形，只是清除引用
+    // 图形应该保留在场景中供其他工具编辑
+    m_currentPath = nullptr;
+    
     ToolBase::deactivate();
 }
 
@@ -41,26 +56,27 @@ bool DrawingToolBrush::mousePressEvent(QMouseEvent *event, const QPointF &sceneP
 {
     if (event->button() == Qt::LeftButton && m_scene) {
         m_drawing = true;
-        m_lastPoint = scenePos;
         m_points.clear();
         m_points.append(scenePos);
+        m_lastPoint = scenePos;
         
-        // 创建新的路径
+        // 立即创建路径对象
         m_currentPath = new DrawingPath();
-        m_currentPath->setPos(0, 0);
+        QPainterPath path;
+        path.moveTo(scenePos);
+        m_currentPath->setPath(path);
         
-        // 设置画笔样式
-        QPen pen(Qt::black);
-        pen.setWidth(m_brushWidth);
-        pen.setCapStyle(Qt::RoundCap);
-        pen.setJoinStyle(Qt::RoundJoin);
+        // 设置基本画笔样式
+        QPen pen(Qt::black, m_brushWidth, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
         m_currentPath->setStrokePen(pen);
-        m_currentPath->setFillBrush(Qt::NoBrush);
+        m_currentPath->setFillBrush(Qt::NoBrush); // 确保绘制纯线条
         
         // 添加到场景
         m_scene->addItem(m_currentPath);
-        m_scene->clearSelection();
-        //m_currentPath->setSelected(true);
+        m_currentPath->setVisible(true);
+        m_currentPath->setFlag(QGraphicsItem::ItemIsSelectable, true);
+        
+        qDebug() << "Created initial DrawingPath at" << scenePos;
         
         return true;
     }
@@ -79,32 +95,16 @@ bool DrawingToolBrush::mouseMoveEvent(QMouseEvent *event, const QPointF &scenePo
             m_points.append(scenePos);
             m_lastPoint = scenePos;
             
-            // 如果点数足够，进行平滑处理
-            if (m_points.size() > 2 && m_smoothness > 0) {
-                QVector<QPointF> smoothedPoints = smoothPath(m_points);
-                
-                // 创建平滑的路径
-                QPainterPath path;
-                if (smoothedPoints.size() > 0) {
-                    path.moveTo(smoothedPoints[0]);
-                    for (int i = 1; i < smoothedPoints.size(); ++i) {
-                        path.lineTo(smoothedPoints[i]);
-                    }
-                }
-                
-                m_currentPath->setPath(path);
-            } else {
-                // 直接使用原始点
-                QPainterPath path;
-                if (m_points.size() > 0) {
-                    path.moveTo(m_points[0]);
-                    for (int i = 1; i < m_points.size(); ++i) {
-                        path.lineTo(m_points[i]);
-                    }
-                }
-                
-                m_currentPath->setPath(path);
+            // 直接更新路径
+            QPainterPath path;
+            path.moveTo(m_points.first());
+            for (int i = 1; i < m_points.size(); ++i) {
+                path.lineTo(m_points[i]);
             }
+            
+            m_currentPath->setPath(path);
+            
+            qDebug() << "Updated path with" << m_points.size() << "points";
         }
         
         return true;
@@ -118,64 +118,13 @@ bool DrawingToolBrush::mouseReleaseEvent(QMouseEvent *event, const QPointF &scen
     if (event->button() == Qt::LeftButton && m_drawing) {
         m_drawing = false;
         
-        // 完成路径绘制
-        if (m_currentPath && m_points.size() > 1) {
-            // 最后的平滑处理
-            if (m_smoothness > 0 && m_points.size() > 2) {
-                QVector<QPointF> smoothedPoints = smoothPath(m_points);
-                
-                QPainterPath path;
-                path.moveTo(smoothedPoints[0]);
-                for (int i = 1; i < smoothedPoints.size(); ++i) {
-                    path.lineTo(smoothedPoints[i]);
-                }
-                
-                m_currentPath->setPath(path);
-            }
-            
-            // 设置控制点用于后续编辑
+        // 设置最终路径和控制点
+        if (m_currentPath) {
             m_currentPath->setControlPoints(m_points);
-            
-            // 添加到撤销栈
             m_scene->setModified(true);
             
-            // 使用DrawingScene中的AddItemCommand
-            class AddItemCommand : public QUndoCommand
-            {
-            public:
-                AddItemCommand(DrawingScene *scene, QGraphicsItem *item, QUndoCommand *parent = nullptr)
-                    : QUndoCommand("添加画笔路径", parent), m_scene(scene), m_item(item) {}
-                
-                void undo() override {
-                    m_scene->removeItem(m_item);
-                    m_item->setVisible(false);
-                }
-                
-                void redo() override {
-                    m_scene->addItem(m_item);
-                    m_item->setVisible(true);
-                }
-                
-            private:
-                DrawingScene *m_scene;
-                QGraphicsItem *m_item;
-            };
-            
-            // 创建并推送撤销命令
-            AddItemCommand *command = new AddItemCommand(m_scene, m_currentPath);
-            m_scene->undoStack()->push(command);
-            
-            m_currentPath = nullptr;
-        } else if (m_currentPath) {
-            // 点太少，删除路径
-            if (m_scene) {
-                m_scene->removeItem(m_currentPath);
-            }
-            delete m_currentPath;
-            m_currentPath = nullptr;
+            qDebug() << "Finished drawing with" << m_points.size() << "points";
         }
-        
-        m_points.clear();
         
         return true;
     }
@@ -210,4 +159,8 @@ QVector<QPointF> DrawingToolBrush::smoothPath(const QVector<QPointF> &points)
     
     return smoothedPoints;
 }
+
+
+
+
 

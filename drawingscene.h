@@ -65,7 +65,7 @@ public:
     QPointF alignToGrid(const QPointF &pos, DrawingShape *excludeShape, bool *isObjectSnap = nullptr);
     QRectF alignToGrid(const QRectF &rect) const;
     
-    // 🌟 智能吸附功能 - 只在接近网格线一定距离时才吸附
+    // Smart snapping feature - only snap when close to grid lines
     struct SnapResult {
         QPointF snappedPos;
         bool snappedX;
@@ -78,13 +78,13 @@ public:
     void setGridAlignmentEnabled(bool enabled);
     bool isGridAlignmentEnabled() const;
     
-    // 🌟 智能吸附设置
+    // Smart snapping settings
     void setSnapEnabled(bool enabled);
     bool isSnapEnabled() const;
     void setSnapTolerance(int tolerance);
     int snapTolerance() const;
     
-    // 🌟 参考线系统
+    // Guide line system
     struct Guide {
         Qt::Orientation orientation;
         qreal position;  // 场景坐标中的位置
@@ -101,7 +101,7 @@ public:
     QList<Guide> guides() const { return m_guides; }
     void setGuideVisible(Qt::Orientation orientation, qreal position, bool visible);
     
-    // 🌟 参考线吸附功能
+    // Guide line snapping feature
     struct GuideSnapResult {
         QPointF snappedPos;
         bool snappedToGuide;
@@ -112,7 +112,7 @@ public:
     };
     GuideSnapResult snapToGuides(const QPointF &pos) const;
     
-    // 🌟 对象吸附系统
+    // Object snapping system
     enum ObjectSnapType {
         SnapToLeft,      // 吸附到左边
         SnapToRight,     // 吸附到右边
@@ -142,6 +142,27 @@ public:
         ObjectSnapResult() : snappedToObject(false), snapType(SnapToLeft), targetShape(nullptr) {}
     };
     
+    // Scale hint structure
+    struct ScaleHintResult {
+        bool showHint;
+        qreal scaleX;
+        qreal scaleY;
+        QString hintDescription;
+        QPointF hintPosition;
+        
+        ScaleHintResult() : showHint(false), scaleX(1.0), scaleY(1.0) {}
+    };
+    
+    // Rotate hint structure
+    struct RotateHintResult {
+        bool showHint;
+        qreal angle;
+        QString hintDescription;
+        QPointF hintPosition;
+        
+        RotateHintResult() : showHint(false), angle(0.0) {}
+    };
+    
     // 对象吸附功能
     ObjectSnapResult snapToObjects(const QPointF &pos, DrawingShape *excludeShape = nullptr);
     QList<ObjectSnapPoint> getObjectSnapPoints(DrawingShape *excludeShape = nullptr) const;
@@ -152,12 +173,22 @@ public:
     void setObjectSnapTolerance(int tolerance);
     int objectSnapTolerance() const;
     
-    // 🌟 对象吸附视觉反馈
+    // Object snapping visual feedback
     void showSnapIndicators(const ObjectSnapResult &snapResult);
     void clearSnapIndicators();
     void clearExpiredSnapIndicators(const QPointF &currentPos);
     void setSnapIndicatorsVisible(bool visible);
     bool areSnapIndicatorsVisible() const;
+    
+    // Scale hints
+    void showScaleHint(const ScaleHintResult &hintResult);
+    void clearScaleHint();
+    ScaleHintResult calculateScaleHint(qreal sx, qreal sy, const QPointF &pos);
+    
+    // Rotate hints
+    void showRotateHint(const RotateHintResult &hintResult);
+    void clearRotateHint();
+    RotateHintResult calculateRotateHint(qreal angle, const QPointF &pos);
 
 private:
     void drawSnapIndicators(QPainter *painter);
@@ -195,7 +226,7 @@ private:
     int m_gridSize;
     QColor m_gridColor;
     
-    // 🌟 智能吸附相关
+    // Smart snapping related
     bool m_snapEnabled;
     int m_snapTolerance;
     bool m_objectSnapEnabled;
@@ -204,9 +235,15 @@ private:
     ObjectSnapResult m_lastSnapResult; // 最后一次吸附结果，用于绘制指示器
     bool m_hasActiveSnap; // 是否有活跃的吸附（真正发生了位置变化）
     
-    // 🌟 参考线系统
-    bool m_guidesEnabled;
+    // 参考线吸附
     bool m_guideSnapEnabled;
+    bool m_guidesEnabled;
+    
+    // Scale and rotate hints
+    ScaleHintResult m_lastScaleHint;
+    RotateHintResult m_lastRotateHint;
+    bool m_scaleHintVisible;
+    bool m_rotateHintVisible;
     QList<Guide> m_guides;
     
     // 变换撤销支持

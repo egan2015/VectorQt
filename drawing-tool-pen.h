@@ -2,6 +2,7 @@
 #define DRAWING_TOOL_PEN_H
 
 #include "toolbase.h"
+#include "brush-engine.h"
 #include <QPointF>
 #include <QList>
 #include <QPainterPath>
@@ -9,6 +10,7 @@
 class DrawingScene;
 class DrawingView;
 class DrawingShape;
+class DrawingPath;
 class QGraphicsPathItem;
 class QGraphicsEllipseItem;
 
@@ -24,7 +26,8 @@ public:
     enum PenMode {
         AnchorMode,      // 锚点模式：点击添加直线锚点
         CurveMode,       // 曲线模式：拖动添加曲线锚点
-        EditMode         // 编辑模式：编辑已有路径
+        EditMode,        // 编辑模式：编辑已有路径
+        FreeDrawMode     // 自由绘制模式：使用画笔引擎
     };
 
     explicit DrawingToolPen(QObject *parent = nullptr);
@@ -45,6 +48,12 @@ public slots:
     // 响应颜色变化
     void onStrokeColorChanged(const QColor &color);
     void onFillColorChanged(const QColor &color);
+    
+    // 笔刷配置
+    void setBrushProfile(const QString& profileName);
+    void setBrushWidth(qreal width);
+    void setPressureSensitivity(qreal sensitivity);
+    void togglePressureSupport(bool enabled);
 
 private:
     // 添加锚点
@@ -58,6 +67,15 @@ private:
     
     // 结束曲线锚点
     void endCurveAnchor(const QPointF &scenePos);
+    
+    // 自由绘制相关
+    void beginFreeDraw(const QPointF &scenePos);
+    void updateFreeDraw(const QPointF &scenePos);
+    void endFreeDraw();
+    
+    // 笔锋效果
+    void applyPenTipEffect(QPainterPath& path);
+    void createTaperedPath(const QVector<QPointF>& points, QVector<qreal>& widths);
     
     // 创建路径图形
     void createPathShape();
@@ -103,13 +121,23 @@ private:
     bool m_isDrawing;
     bool m_isDragging;
     
+    // 画笔引擎
+    BrushEngine *m_brushEngine;
+    DrawingPath *m_currentPath;
+    
     // 路径数据
     QList<QPointF> m_anchorPoints;        // 锚点列表
     QList<QPointF> m_controlPoints;       // 控制点列表（每个锚点对应两个控制点）
-    QPainterPath m_currentPath;           // 当前路径
+    QPainterPath m_penPath;               // 钢笔路径（用于锚点模式）
     QPointF m_currentAnchor;              // 当前锚点
     QPointF m_currentControl;             // 当前控制点
     QPointF m_dragStart;                  // 拖动起始点
+    
+    // 自由绘制数据
+    QVector<QPointF> m_freeDrawPoints;    // 自由绘制的点
+    QVector<qreal> m_pressures;           // 压力值
+    QPointF m_lastPoint;                  // 上一个点，用于计算距离
+    QElapsedTimer m_timer;                // 计时器，用于计算速度
     
     // 预览项
     QGraphicsPathItem *m_previewPathItem;
@@ -125,6 +153,8 @@ private:
     // 设置
     bool m_autoClose;                     // 自动闭合路径
     bool m_showControlPoints;             // 显示控制点
+    bool m_pressureSupport;               // 是否支持压感
+    qreal m_pressureSensitivity;          // 压感灵敏度
 };
 
 #endif // DRAWING_TOOL_PEN_H

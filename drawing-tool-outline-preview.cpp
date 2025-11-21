@@ -125,7 +125,7 @@ void OutlinePreviewTransformTool::activate(DrawingScene *scene, DrawingView *vie
     }
 
     // 显示初始模式提示
-    QString modeText = (m_currentMode == HandleMode::Scale) ? "缩放模式" : "旋转模式";
+    QString modeText = (m_currentMode == HandleMode::Scale) ? tr("缩放模式") : tr("旋转模式");
     emit statusMessageChanged(modeText + " - 按空格键或Tab键切换模式");
 
     // 连接选择变化信号
@@ -284,7 +284,7 @@ bool OutlinePreviewTransformTool::mouseMoveEvent(QMouseEvent *event, const QPoin
 
     if (m_state == STATE_DRAG_CENTER)
     {
-        // 🌟 应用智能吸附到旋转中心位置
+        // Apply smart snapping to rotation center position
         QPointF alignedPos = scenePos;
         if (m_scene && m_scene->isGridAlignmentEnabled())
         {
@@ -318,7 +318,7 @@ bool OutlinePreviewTransformTool::mouseReleaseEvent(QMouseEvent *event, const QP
 {
     if (m_state == STATE_DRAG_CENTER)
     {
-        // 🌟 应用智能吸附到旋转中心最终位置
+        // Apply smart snapping to final rotation center position
         QPointF alignedPos = scenePos;
         if (m_scene && m_scene->isGridAlignmentEnabled())
         {
@@ -502,7 +502,7 @@ void OutlinePreviewTransformTool::transform(const QPointF &mousePos, Qt::Keyboar
         return;
     }
 
-    // 🌟 应用智能吸附到鼠标位置
+    // Apply smart snapping to mouse position
     QPointF alignedPos = mousePos;
     if (m_scene && m_scene->isGridAlignmentEnabled())
     {
@@ -570,7 +570,7 @@ void OutlinePreviewTransformTool::transform(const QPointF &mousePos, Qt::Keyboar
         sy = qBound(-10.0, sy, 10.0);
     }
 
-    // 🌟 应用统一变换到所有选中图形
+    // Apply unified transform to all selected shapes
     for (DrawingShape *shape : m_selectedShapes)
     {
         if (!shape || !shape->scene())
@@ -584,7 +584,7 @@ void OutlinePreviewTransformTool::transform(const QPointF &mousePos, Qt::Keyboar
 
         if (m_activeHandle == TransformHandle::Rotate)
         {
-            // 旋转：动态获取当前旋转中心
+            // Rotation: dynamically get current rotation center
             QPointF center = m_useCustomRotationCenter ? m_customRotationCenter : m_transformOrigin;
             qreal initialAngle = qAtan2(m_grabMousePos.y() - center.y(),
                                         m_grabMousePos.x() - center.x());
@@ -601,7 +601,7 @@ void OutlinePreviewTransformTool::transform(const QPointF &mousePos, Qt::Keyboar
         }
         else
         {
-            // 缩放：基于场景锚点计算每个图形的缩放
+            // Scale: calculate scale for each shape based on scene anchor
             // 将场景锚点转换为该图形的本地坐标
             QPointF shapeLocalAnchor = shape->mapFromScene(m_scaleAnchor);
 
@@ -622,12 +622,39 @@ void OutlinePreviewTransformTool::transform(const QPointF &mousePos, Qt::Keyboar
     // 更新视觉辅助元素（使用对齐后的位置）
     updateVisualHelpers(alignedPos);
 
-    if (m_scene)
+    // Show scale or rotate hints
+    if (m_scene) {
+        if (m_activeHandle != TransformHandle::Rotate) {
+            // Scale hint
+            DrawingScene::ScaleHintResult scaleHint = m_scene->calculateScaleHint(sx, sy, alignedPos);
+            m_scene->showScaleHint(scaleHint);
+            m_scene->clearRotateHint(); // 清除旋转提示
+        } else {
+            // Rotate hint
+            QPointF center = m_useCustomRotationCenter ? m_customRotationCenter : m_transformOrigin;
+            qreal initialAngle = qAtan2(m_grabMousePos.y() - center.y(),
+                                        m_grabMousePos.x() - center.x());
+            qreal currentAngle = qAtan2(alignedPos.y() - center.y(),
+                                        alignedPos.x() - center.x());
+            qreal rotation = (currentAngle - initialAngle) * 180.0 / M_PI;
+            
+            DrawingScene::RotateHintResult rotateHint = m_scene->calculateRotateHint(rotation, alignedPos);
+            m_scene->showRotateHint(rotateHint);
+            m_scene->clearScaleHint(); // 清除缩放提示
+        }
+        
         m_scene->update();
+    }
 }
 
 void OutlinePreviewTransformTool::ungrab(bool apply, const QPointF &finalMousePos)
 {
+    // Clear hints
+    if (m_scene) {
+        m_scene->clearScaleHint();
+        m_scene->clearRotateHint();
+    }
+    
     if (apply)
     {
         // 应用变换 - 变换已经在transform()中直接应用到图形了

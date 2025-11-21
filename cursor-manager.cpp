@@ -5,6 +5,7 @@
 #include <QPainter>
 #include <QPen>
 #include <QPainterPath>
+#include <QtMath>
 
 CursorManager& CursorManager::instance()
 {
@@ -68,7 +69,8 @@ QPixmap CursorManager::createCrosshairCursor(int size)
     pixmap.fill(Qt::transparent);
     
     QPainter painter(&pixmap);
-    painter.setRenderHint(QPainter::Antialiasing);
+    // 先关闭抗锯齿绘制十字线
+    painter.setRenderHint(QPainter::Antialiasing, false);
     
     // 设置细十字线样式
     QPen pen(Qt::black, 1);
@@ -96,7 +98,8 @@ QPixmap CursorManager::createCrosshairWithShape(CursorType type, int size)
     pixmap.fill(Qt::transparent);
     
     QPainter painter(&pixmap);
-    painter.setRenderHint(QPainter::Antialiasing);
+    // 重新开启抗锯齿，看看效果
+    painter.setRenderHint(QPainter::Antialiasing, true);
     
     int crossSize = size / 4; // 十字线大小
     int shapeSize = size / 2; // 放大图形尺寸
@@ -119,20 +122,28 @@ QPixmap CursorManager::createCrosshairWithShape(CursorType type, int size)
     int shapeCenterX = size - shapeSize/2 - 2;
     int shapeCenterY = size - shapeSize/2 - 2;
     
+    // 为图形部分开启抗锯齿
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    
     // 设置形状画笔样式
     QPen pen(Qt::black, 1);
     pen.setCosmetic(true);
     painter.setPen(pen);
     
+    // 根据工具类型设置不同的填充颜色，将在switch语句中设置
+    painter.setBrush(Qt::NoBrush); // 默认无填充
+    
     // 根据工具类型绘制不同的形状
     switch (type) {
     case RectangleCursor:
-        // 绘制矩形
+        // 绘制矩形，蓝色填充
+        painter.setBrush(QBrush(QColor(100, 150, 255, 100))); // 半透明蓝色
         painter.drawRect(shapeCenterX - shapeSize/2, shapeCenterY - shapeSize/2, shapeSize, shapeSize);
         break;
         
     case EllipseCursor:
-        // 绘制椭圆
+        // 绘制椭圆，绿色填充
+        painter.setBrush(QBrush(QColor(100, 255, 150, 100))); // 半透明绿色
         painter.drawEllipse(QPoint(shapeCenterX, shapeCenterY), shapeSize/2, shapeSize/2);
         break;
         
@@ -154,14 +165,36 @@ QPixmap CursorManager::createCrosshairWithShape(CursorType type, int size)
         break;
         
     case PolygonCursor:
-    case PolylineCursor:
-        // 绘制三角形（代表多边形）
+        // 绘制多边形（五边形），橙色填充
         {
-            QPolygonF triangle;
-            triangle << QPointF(shapeCenterX, shapeCenterY - shapeSize/2)
-                     << QPointF(shapeCenterX - shapeSize/2, shapeCenterY + shapeSize/2)
-                     << QPointF(shapeCenterX + shapeSize/2, shapeCenterY + shapeSize/2);
-            painter.drawPolygon(triangle);
+            painter.setBrush(QBrush(QColor(255, 200, 100, 100))); // 半透明橙色
+            QPolygonF pentagon;
+            int radius = shapeSize/2;
+            for (int i = 0; i < 5; ++i) {
+                qreal angle = i * 2 * M_PI / 5 - M_PI/2; // 从顶部开始
+                QPointF point(shapeCenterX + radius * qCos(angle),
+                            shapeCenterY + radius * qSin(angle));
+                pentagon << point;
+            }
+            painter.drawPolygon(pentagon);
+        }
+        break;
+        
+    case PolylineCursor:
+        // 绘制折线，红色填充（虽然折线是开放的，但给端点添加小圆点）
+        {
+            painter.setBrush(QBrush(QColor(255, 100, 100, 100))); // 半透明红色
+            QPolygonF polyline;
+            polyline << QPointF(shapeCenterX - shapeSize/2, shapeCenterY - shapeSize/4)
+                     << QPointF(shapeCenterX - shapeSize/4, shapeCenterY + shapeSize/4)
+                     << QPointF(shapeCenterX + shapeSize/4, shapeCenterY - shapeSize/4)
+                     << QPointF(shapeCenterX + shapeSize/2, shapeCenterY + shapeSize/4);
+            painter.drawPolyline(polyline);
+            
+            // 在折线的端点绘制小圆点
+            painter.setBrush(QBrush(QColor(255, 100, 100, 150)));
+            painter.drawEllipse(polyline.first(), 2, 2);
+            painter.drawEllipse(polyline.last(), 2, 2);
         }
         break;
         

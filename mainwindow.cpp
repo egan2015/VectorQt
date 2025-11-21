@@ -99,7 +99,7 @@ MainWindow::MainWindow(QWidget *parent)
     // 不设置默认工具，让用户手动选择
 
     resize(1200, 800);
-    setWindowTitle("VectorQt - 专业矢量绘图工具");
+    setWindowTitle(tr("VectorQt - 专业矢量绘图工具"));
 }
 
 MainWindow::~MainWindow()
@@ -478,19 +478,19 @@ void MainWindow::setupMenus()
     // 添加路径布尔运算操作
     pathMenu->addSeparator();
     m_pathUnionAction = new QAction("联合(&U)", this);
-    m_pathUnionAction->setStatusTip("将选中的图形联合成一个路径");
+    m_pathUnionAction->setStatusTip(tr("将选中的图形联合成一个路径"));
     pathMenu->addAction(m_pathUnionAction);
     
     m_pathSubtractAction = new QAction("减去(&S)", this);
-    m_pathSubtractAction->setStatusTip("从第一个选中图形中减去其他图形");
+    m_pathSubtractAction->setStatusTip(tr("从第一个选中图形中减去其他图形"));
     pathMenu->addAction(m_pathSubtractAction);
     
     m_pathIntersectAction = new QAction("相交(&I)", this);
-    m_pathIntersectAction->setStatusTip("获取选中图形的相交部分");
+    m_pathIntersectAction->setStatusTip(tr("获取选中图形的相交部分"));
     pathMenu->addAction(m_pathIntersectAction);
     
     m_pathXorAction = new QAction("异或(&X)", this);
-    m_pathXorAction->setStatusTip("获取选中图形的异或部分");
+    m_pathXorAction->setStatusTip(tr("获取选中图形的异或部分"));
     pathMenu->addAction(m_pathXorAction);
 
     // Help menu
@@ -680,19 +680,19 @@ void MainWindow::createActions()
     // File actions
     m_newAction = new QAction("&新建", this);
     m_newAction->setShortcut(QKeySequence::New);
-    m_newAction->setStatusTip("创建新文档");
+    m_newAction->setStatusTip(tr("创建新文档"));
 
     m_openAction = new QAction("&打开...", this);
     m_openAction->setShortcut(QKeySequence::Open);
-    m_openAction->setStatusTip("打开现有文档");
+    m_openAction->setStatusTip(tr("打开现有文档"));
 
     m_saveAction = new QAction("&保存", this);
     m_saveAction->setShortcut(QKeySequence::Save);
-    m_saveAction->setStatusTip("保存文档到磁盘");
+    m_saveAction->setStatusTip(tr("保存文档到磁盘"));
 
     m_saveAsAction = new QAction("另存为...", this);
     m_saveAsAction->setShortcut(QKeySequence::SaveAs);
-    m_saveAsAction->setStatusTip("以新名称保存文档");
+    m_saveAsAction->setStatusTip(tr("以新名称保存文档"));
 
     m_exportAction = new QAction("&导出...", this);
     m_exportAction->setStatusTip("导出文档");

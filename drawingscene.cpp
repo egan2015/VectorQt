@@ -306,6 +306,8 @@ DrawingScene::DrawingScene(QObject *parent)
     , m_snapIndicatorsVisible(true)
     , m_guidesEnabled(true)
     , m_guideSnapEnabled(true)
+    , m_scaleHintVisible(false)
+    , m_rotateHintVisible(false)
 {
     // 不在这里创建选择层，只在选择工具激活时创建
     // 暂时不连接选择变化信号，避免在初始化时触发
@@ -614,7 +616,7 @@ void DrawingScene::drawBackground(QPainter *painter, const QRectF &rect)
         }
     }
     
-    // 🌟 绘制参考线
+    // Draw guide lines
     if (m_guidesEnabled && !m_guides.isEmpty()) {
         painter->setRenderHint(QPainter::Antialiasing, false);
         
@@ -728,7 +730,7 @@ QPointF DrawingScene::alignToGrid(const QPointF &pos, DrawingShape *excludeShape
     bool snapped = false;
     bool isObjectSnapped = false;  // 标记是否是对象吸附
     
-    // 🌟 首先尝试对象吸附（优先级最高）
+    // Try object snapping first (highest priority)
     if (m_objectSnapEnabled) {
         ObjectSnapResult objectResult = snapToObjects(pos, excludeShape);
         if (objectResult.snappedToObject) {
@@ -738,7 +740,7 @@ QPointF DrawingScene::alignToGrid(const QPointF &pos, DrawingShape *excludeShape
         }
     }
     
-    // 🌟 其次尝试参考线吸附
+    // Then try guide line snapping
     if (!snapped && m_guidesEnabled && m_guideSnapEnabled) {
         GuideSnapResult guideResult = snapToGuides(pos);
         if (guideResult.snappedToGuide) {
@@ -747,7 +749,7 @@ QPointF DrawingScene::alignToGrid(const QPointF &pos, DrawingShape *excludeShape
         }
     }
     
-    // 🌟 最后尝试网格吸附
+    // Finally try grid snapping
     if (!snapped && m_gridVisible && m_gridAlignmentEnabled) {
         if (m_snapEnabled) {
             SnapResult gridResult = smartAlignToGrid(pos);
@@ -809,7 +811,7 @@ void DrawingScene::onSelectionChanged()
     updateSelection();
 }
 
-// 🌟 智能吸附功能实现
+// Smart snapping feature implementation
 DrawingScene::SnapResult DrawingScene::smartAlignToGrid(const QPointF &pos) const
 {
     SnapResult result;
@@ -861,7 +863,7 @@ int DrawingScene::snapTolerance() const
     return m_snapTolerance;
 }
 
-// 🌟 参考线系统实现
+// Guide line system implementation
 void DrawingScene::addGuide(Qt::Orientation orientation, qreal position)
 {
     m_guides.append(Guide(orientation, position));
@@ -936,7 +938,7 @@ DrawingScene::GuideSnapResult DrawingScene::snapToGuides(const QPointF &pos) con
     return result;
 }
 
-// 🌟 对象吸附功能实现
+// Object snapping feature implementation
 DrawingScene::ObjectSnapResult DrawingScene::snapToObjects(const QPointF &pos, DrawingShape *excludeShape)
 {
     ObjectSnapResult result;
@@ -962,13 +964,13 @@ DrawingScene::ObjectSnapResult DrawingScene::snapToObjects(const QPointF &pos, D
             
             // 设置描述
             switch (snapPoint.type) {
-                case SnapToLeft: result.snapDescription = "吸附到左边"; break;
-                case SnapToRight: result.snapDescription = "吸附到右边"; break;
-                case SnapToTop: result.snapDescription = "吸附到上边"; break;
-                case SnapToBottom: result.snapDescription = "吸附到下边"; break;
-                case SnapToCenterX: result.snapDescription = "吸附到水平中心"; break;
-                case SnapToCenterY: result.snapDescription = "吸附到垂直中心"; break;
-                case SnapToCorner: result.snapDescription = "吸附到角点"; break;
+                case SnapToLeft: result.snapDescription = tr("吸附到左边"); break;
+                case SnapToRight: result.snapDescription = tr("吸附到右边"); break;
+                case SnapToTop: result.snapDescription = tr("吸附到上边"); break;
+                case SnapToBottom: result.snapDescription = tr("吸附到下边"); break;
+                case SnapToCenterX: result.snapDescription = tr("吸附到水平中心"); break;
+                case SnapToCenterY: result.snapDescription = tr("吸附到垂直中心"); break;
+                case SnapToCorner: result.snapDescription = tr("吸附到角点"); break;
             }
         }
     }
@@ -1242,7 +1244,7 @@ void DrawingScene::drawSnapIndicators(QPainter *painter)
     }
 }void DrawingScene::drawForeground(QPainter *painter, const QRectF &rect)
 {
-    // 🌟 在前景绘制对象吸附指示器，确保在最上层不被遮挡
+    // Draw object snap indicators in foreground, ensuring they're on top
     if (m_snapIndicatorsVisible && m_hasActiveSnap && m_lastSnapResult.snappedToObject) {
         // 安全检查目标对象是否仍然有效
         bool targetValid = false;
@@ -1267,4 +1269,151 @@ void DrawingScene::drawSnapIndicators(QPainter *painter)
             m_lastSnapResult = ObjectSnapResult();
         }
     }
+    
+    // Draw scale hint
+    if (m_scaleHintVisible && m_lastScaleHint.showHint) {
+        QColor hintColor = QColor(0, 150, 255, 200); // Semi-transparent blue
+        painter->setPen(QPen(hintColor.darker(120), 1));
+        painter->setBrush(QBrush(hintColor));
+        
+        // 绘制提示背景
+        QFont font = painter->font();
+        font.setPointSize(10);
+        painter->setFont(font);
+        
+        QFontMetrics fm(font);
+        QRect textRect = fm.boundingRect(m_lastScaleHint.hintDescription);
+        textRect.adjust(-4, -2, 4, 2); // 添加内边距
+        textRect.moveTopLeft(m_lastScaleHint.hintPosition.toPoint());
+        
+        // 绘制背景框
+        painter->drawRoundedRect(textRect, 3, 3);
+        
+        // 绘制文本
+        painter->setPen(QPen(Qt::white, 1));
+        painter->drawText(textRect, Qt::AlignCenter, m_lastScaleHint.hintDescription);
+    }
+    
+    // Draw rotate hint
+    if (m_rotateHintVisible && m_lastRotateHint.showHint) {
+        QColor hintColor = QColor(255, 150, 0, 200); // Semi-transparent orange
+        painter->setPen(QPen(hintColor.darker(120), 1));
+        painter->setBrush(QBrush(hintColor));
+        
+        // 绘制提示背景
+        QFont font = painter->font();
+        font.setPointSize(10);
+        painter->setFont(font);
+        
+        QFontMetrics fm(font);
+        QRect textRect = fm.boundingRect(m_lastRotateHint.hintDescription);
+        textRect.adjust(-4, -2, 4, 2); // 添加内边距
+        textRect.moveTopLeft(m_lastRotateHint.hintPosition.toPoint());
+        
+        // 绘制背景框
+        painter->drawRoundedRect(textRect, 3, 3);
+        
+        // 绘制文本
+        painter->setPen(QPen(Qt::white, 1));
+        painter->drawText(textRect, Qt::AlignCenter, m_lastRotateHint.hintDescription);
+    }
+}
+
+// Scale hint implementation
+void DrawingScene::showScaleHint(const DrawingScene::ScaleHintResult &hintResult)
+{
+    m_lastScaleHint = hintResult;
+    m_scaleHintVisible = hintResult.showHint;
+    update(); // 触发重绘
+}
+
+void DrawingScene::clearScaleHint()
+{
+    m_scaleHintVisible = false;
+    m_lastScaleHint = DrawingScene::ScaleHintResult();
+    update();
+}
+
+DrawingScene::ScaleHintResult DrawingScene::calculateScaleHint(qreal sx, qreal sy, const QPointF &pos)
+{
+    ScaleHintResult result;
+    
+    // 检查是否有显著的缩放
+    if (qAbs(sx - 1.0) > 0.01 || qAbs(sy - 1.0) > 0.01) {
+        result.showHint = true;
+        result.scaleX = sx;
+        result.scaleY = sy;
+        result.hintPosition = pos + QPointF(20, -20); // 提示位置偏移
+        
+        // 生成描述文本
+        if (qAbs(sx - sy) < 0.01) {
+            // 等比例缩放
+            result.hintDescription = tr("缩放: %1%").arg(qRound(sx * 100));
+        } else {
+            // 非等比例缩放
+            result.hintDescription = tr("缩放: X%1% Y%2%")
+                .arg(qRound(sx * 100))
+                .arg(qRound(sy * 100));
+        }
+        
+        // 检查特殊比例
+        if (qAbs(sx - 2.0) < 0.05 && qAbs(sy - 2.0) < 0.05) {
+            result.hintDescription += tr(" (2x)");
+        } else if (qAbs(sx - 0.5) < 0.05 && qAbs(sy - 0.5) < 0.05) {
+            result.hintDescription += tr(" (1/2x)");
+        } else if (qAbs(sx - 1.0) < 0.05 && qAbs(sy + 1.0) < 0.05) {
+            result.hintDescription += tr(" (水平翻转)");
+        } else if (qAbs(sx + 1.0) < 0.05 && qAbs(sy - 1.0) < 0.05) {
+            result.hintDescription += tr(" (垂直翻转)");
+        }
+    }
+    
+    return result;
+}
+
+// Rotate hint implementation
+void DrawingScene::showRotateHint(const DrawingScene::RotateHintResult &hintResult)
+{
+    m_lastRotateHint = hintResult;
+    m_rotateHintVisible = hintResult.showHint;
+    update(); // 触发重绘
+}
+
+void DrawingScene::clearRotateHint()
+{
+    m_rotateHintVisible = false;
+    m_lastRotateHint = DrawingScene::RotateHintResult();
+    update();
+}
+
+DrawingScene::RotateHintResult DrawingScene::calculateRotateHint(qreal angle, const QPointF &pos)
+{
+    RotateHintResult result;
+    
+    // 检查是否有显著的旋转
+    if (qAbs(angle) > 0.5) {
+        result.showHint = true;
+        result.angle = angle;
+        result.hintPosition = pos + QPointF(20, -20); // 提示位置偏移
+        
+        // 生成描述文本
+        result.hintDescription = tr("旋转: %1°").arg(qRound(angle));
+        
+        // 检查特殊角度
+        if (qAbs(angle - 45.0) < 2.0) {
+            result.hintDescription += " (45°)";
+        } else if (qAbs(angle - 90.0) < 2.0) {
+            result.hintDescription += " (90°)";
+        } else if (qAbs(angle - 180.0) < 2.0) {
+            result.hintDescription += " (180°)";
+        } else if (qAbs(angle + 45.0) < 2.0) {
+            result.hintDescription += " (-45°)";
+        } else if (qAbs(angle + 90.0) < 2.0) {
+            result.hintDescription += " (-90°)";
+        } else if (qAbs(angle + 180.0) < 2.0) {
+            result.hintDescription += " (-180°)";
+        }
+    }
+    
+    return result;
 }

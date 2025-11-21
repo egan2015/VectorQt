@@ -8,7 +8,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_PREFIX_PATH $ENV{HOME}/Qt/6.9.2/macos ${CMAKE_PREFIX_PATH})
 
 # 查找Qt6组件
-find_package(Qt6 COMPONENTS Widgets SvgWidgets Xml REQUIRED)
+find_package(Qt6 COMPONENTS Widgets SvgWidgets Xml LinguistTools REQUIRED)
 
 # Boost配置将在add_executable之后处理
 
@@ -37,6 +37,8 @@ set(SOURCES
     drawing-tool-node-edit.cpp
     # 新增的绘图工具
     drawing-tool-brush.cpp
+    drawing-throttle.cpp
+    brush-engine.cpp
     drawing-tool-fill.cpp
     drawing-tool-gradient-fill.cpp
     drawing-tool-pen.cpp
@@ -91,6 +93,8 @@ set(HEADERS
     drawing-tool-node-edit.h
     # 新增的绘图工具
     drawing-tool-brush.h
+    drawing-throttle.h
+    brush-engine.h
     drawing-tool-fill.h
     drawing-tool-gradient-fill.h
     drawing-tool-pen.h
@@ -159,4 +163,16 @@ endif()
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     target_compile_definitions(VectorQt PRIVATE DEBUG)
 endif()
+
+# 国际化支持
+set(TS_FILES
+    translations/vectorqt_zh_CN.ts
+    translations/vectorqt_en.ts
+)
+
+# 生成翻译文件
+qt6_add_lupdate(VectorQt ${SOURCES} ${HEADERS} ${TS_FILES})
+
+# 编译翻译文件
+qt6_add_lrelease(VectorQt ${TS_FILES})
 

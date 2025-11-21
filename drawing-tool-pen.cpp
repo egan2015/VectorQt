@@ -13,21 +13,41 @@
 #include <QGraphicsLineItem>
 #include <QPen>
 #include <QBrush>
+#include <QElapsedTimer>
+#include <QtMath>
+#include <QDebug>
 
 DrawingToolPen::DrawingToolPen(QObject *parent)
     : ToolBase(parent)
     , m_scene(nullptr)
     , m_view(nullptr)
-    , m_mode(AnchorMode)
+    , m_mode(FreeDrawMode)  // 默认使用自由绘制模式
     , m_isDrawing(false)
     , m_isDragging(false)
+    , m_brushEngine(new BrushEngine(this))
+    , m_currentPath(nullptr)
     , m_previewPathItem(nullptr)
     , m_currentStrokeColor(Qt::black)
     , m_currentFillColor(Qt::transparent)
-    , m_strokeWidth(2.0)
+    , m_strokeWidth(3.0)  // 钢笔工具使用更宽的默认线宽
     , m_autoClose(false)
     , m_showControlPoints(true)
+    , m_pressureSupport(true)
+    , m_pressureSensitivity(0.8)
 {
+    // 加载钢笔预设
+    m_brushEngine->loadDefaultProfile("Fountain Pen");
+    
+    // 连接信号
+    connect(m_brushEngine, &BrushEngine::strokeUpdated, this, [this]() {
+        if (m_currentPath) {
+            m_currentPath->setPath(m_brushEngine->getStrokePath());
+            // 应用笔锋效果
+            QPainterPath path = m_brushEngine->getStrokePath();
+            applyPenTipEffect(path);
+            m_currentPath->setPath(path);
+        }
+    });
 }
 
 void DrawingToolPen::activate(DrawingScene *scene, DrawingView *view)
@@ -38,6 +58,12 @@ void DrawingToolPen::activate(DrawingScene *scene, DrawingView *view)
     // 获取当前颜色
     m_currentStrokeColor = getCurrentStrokeColor();
     m_currentFillColor = getCurrentFillColor();
+    
+    // 配置画笔引擎
+    BrushProfile profile = m_brushEngine->currentProfile();
+    profile.baseWidth = m_strokeWidth;
+    profile.pressureSensitivity = m_pressureSensitivity;
+    m_brushEngine->loadProfile(profile);
     
     clearCurrentPath();
 }
@@ -63,28 +89,41 @@ bool DrawingToolPen::mousePressEvent(QMouseEvent *event, const QPointF &scenePos
             m_isDrawing = true;
             m_isDragging = true;
             m_dragStart = scenePos;
-            addAnchorPoint(scenePos);
+            
+            // 根据模式处理
+            if (m_mode == FreeDrawMode) {
+                beginFreeDraw(scenePos);
+            } else {
+                addAnchorPoint(scenePos);
+            }
             return true;
         } else {
-            // 检查是否接近第一个锚点（闭合路径）
-            if (m_anchorPoints.size() > 2 && isNearFirstAnchor(scenePos)) {
-                finishPath();
+            // 根据模式处理
+            if (m_mode == FreeDrawMode) {
+                // 自由绘制模式下，继续绘制
+                return true;
+            } else {
+                // 锚点模式
+                // 检查是否接近第一个锚点（闭合路径）
+                if (m_anchorPoints.size() > 2 && isNearFirstAnchor(scenePos)) {
+                    finishPath();
+                    return true;
+                }
+                
+                // 检查是否接近现有锚点（编辑模式）
+                QPointF nearestAnchor = findNearestAnchor(scenePos);
+                if (!nearestAnchor.isNull() && nearestAnchor != m_anchorPoints.last()) {
+                    // 连接到现有锚点
+                    addAnchorPoint(nearestAnchor);
+                    return true;
+                }
+                
+                // 添加新的锚点并继续拖动
+                addAnchorPoint(scenePos);
+                m_isDragging = true;
+                m_dragStart = scenePos;
                 return true;
             }
-            
-            // 检查是否接近现有锚点（编辑模式）
-            QPointF nearestAnchor = findNearestAnchor(scenePos);
-            if (!nearestAnchor.isNull() && nearestAnchor != m_anchorPoints.last()) {
-                // 连接到现有锚点
-                addAnchorPoint(nearestAnchor);
-                return true;
-            }
-            
-            // 添加新的锚点并继续拖动
-            addAnchorPoint(scenePos);
-            m_isDragging = true;
-            m_dragStart = scenePos;
-            return true;
         }
     }
     
@@ -96,11 +135,16 @@ bool DrawingToolPen::mouseMoveEvent(QMouseEvent *event, const QPointF &scenePos)
     if (!m_scene || !m_isDrawing) return false;
     
     if (m_isDragging) {
-        // 自由绘制模式：实时添加点到路径
-        qreal distance = QLineF(m_dragStart, scenePos).length();
-        if (distance > 2.0) { // 只有移动一定距离才添加新点
-            addAnchorPoint(scenePos);
-            m_dragStart = scenePos;
+        if (m_mode == FreeDrawMode) {
+            // 自由绘制模式：使用画笔引擎
+            updateFreeDraw(scenePos);
+        } else {
+            // 锚点模式：实时添加点到路径
+            qreal distance = QLineF(m_dragStart, scenePos).length();
+            if (distance > 2.0) { // 只有移动一定距离才添加新点
+                addAnchorPoint(scenePos);
+                m_dragStart = scenePos;
+            }
         }
         return true;
     }
@@ -116,7 +160,12 @@ bool DrawingToolPen::mouseReleaseEvent(QMouseEvent *event, const QPointF &sceneP
     
     if (event->button() == Qt::LeftButton) {
         m_isDragging = false;
-        // 不结束路径，继续绘制
+        
+        if (m_mode == FreeDrawMode) {
+            endFreeDraw();
+        }
+        // 锚点模式下不结束路径，继续绘制
+        
         return true;
     }
     
@@ -159,9 +208,9 @@ void DrawingToolPen::addAnchorPoint(const QPointF &scenePos)
     
     // 更新路径 - 使用平滑连接
     if (m_anchorPoints.size() == 1) {
-        m_currentPath.moveTo(scenePos);
+        m_penPath.moveTo(scenePos);
     } else if (m_anchorPoints.size() == 2) {
-        m_currentPath.lineTo(scenePos);
+        m_penPath.lineTo(scenePos);
     } else {
         // 使用二次贝塞尔曲线平滑连接
         QPointF prev = m_anchorPoints[m_anchorPoints.size() - 2];
@@ -170,7 +219,7 @@ void DrawingToolPen::addAnchorPoint(const QPointF &scenePos)
             (prev.x() + current.x()) / 2,
             (prev.y() + current.y()) / 2
         );
-        m_currentPath.quadTo(control, current);
+        m_penPath.quadTo(control, current);
     }
     
     // 绘制锚点（只在关键点显示）
@@ -190,13 +239,13 @@ void DrawingToolPen::beginCurveAnchor(const QPointF &scenePos)
     m_currentControl = scenePos;
     
     // 移除最后的直线段 - 重建路径而不是修改元素
-    if (m_currentPath.elementCount() > 1) {
+    if (m_penPath.elementCount() > 1) {
         QPainterPath newPath;
         newPath.moveTo(m_anchorPoints.first());
         for (int i = 1; i < m_anchorPoints.size() - 1; ++i) {
             newPath.lineTo(m_anchorPoints[i]);
         }
-        m_currentPath = newPath;
+        m_penPath = newPath;
     }
 }
 
@@ -207,8 +256,8 @@ void DrawingToolPen::updateCurveAnchor(const QPointF &scenePos)
     m_currentControl = scenePos;
     
     // 重建路径
-    m_currentPath = QPainterPath();
-    m_currentPath.moveTo(m_anchorPoints.first());
+    m_penPath = QPainterPath();
+    m_penPath.moveTo(m_anchorPoints.first());
     
     for (int i = 1; i < m_anchorPoints.size(); ++i) {
         if (i == m_anchorPoints.size() - 1) {
@@ -218,9 +267,9 @@ void DrawingToolPen::updateCurveAnchor(const QPointF &scenePos)
             QPointF control1 = prevAnchor + (m_currentControl - prevAnchor) * 0.5;
             QPointF control2 = currentAnchor + (m_currentControl - currentAnchor) * 0.5;
             
-            m_currentPath.cubicTo(control1, control2, currentAnchor);
+            m_penPath.cubicTo(control1, control2, currentAnchor);
         } else {
-            m_currentPath.lineTo(m_anchorPoints[i]);
+            m_penPath.lineTo(m_anchorPoints[i]);
         }
     }
     
@@ -246,11 +295,11 @@ void DrawingToolPen::endCurveAnchor(const QPointF &scenePos)
 
 void DrawingToolPen::createPathShape()
 {
-    if (!m_scene || m_currentPath.isEmpty()) return;
+    if (!m_scene || m_penPath.isEmpty()) return;
     
     // 创建DrawingPath对象
     DrawingPath *pathShape = new DrawingPath();
-    pathShape->setPath(m_currentPath);
+    pathShape->setPath(m_penPath);
     pathShape->setStrokePen(QPen(m_currentStrokeColor, m_strokeWidth));
     pathShape->setFillBrush(QBrush(m_currentFillColor));
     pathShape->setZValue(1);
@@ -259,7 +308,7 @@ void DrawingToolPen::createPathShape()
     m_scene->addItem(pathShape);
     
     // 设置为选中状态，这样用户可以看到选择框
-    pathShape->setSelected(true);
+    pathShape->setShowSelectionIndicator(false);
     
     m_scene->setModified(true);
 }
@@ -273,10 +322,10 @@ void DrawingToolPen::updatePreviewPath()
         m_previewPathItem = nullptr;
     }
     
-    if (!m_scene || m_currentPath.isEmpty()) return;
+    if (!m_scene || m_penPath.isEmpty()) return;
     
     // 创建新的预览路径
-    m_previewPathItem = m_scene->addPath(m_currentPath);
+    m_previewPathItem = m_scene->addPath(m_penPath);
     m_previewPathItem->setPen(QPen(m_currentStrokeColor, m_strokeWidth, Qt::DashLine));
     m_previewPathItem->setBrush(Qt::NoBrush);
     m_previewPathItem->setZValue(1000);
@@ -315,7 +364,7 @@ void DrawingToolPen::clearCurrentPath()
     // 重置数据
     m_anchorPoints.clear();
     m_controlPoints.clear();
-    m_currentPath = QPainterPath();
+    m_penPath = QPainterPath();
     m_isDrawing = false;
     m_isDragging = false;
 }
@@ -329,7 +378,7 @@ void DrawingToolPen::finishPath()
     
     // 自动闭合路径
     if (m_autoClose && m_anchorPoints.size() > 2) {
-        m_currentPath.closeSubpath();
+        m_penPath.closeSubpath();
     }
     
     // 创建最终的路径图形
@@ -457,4 +506,219 @@ bool DrawingToolPen::isNearFirstAnchor(const QPointF &scenePos, qreal threshold)
     
     qreal distance = QLineF(scenePos, m_anchorPoints.first()).length();
     return distance < threshold;
+}
+
+void DrawingToolPen::beginFreeDraw(const QPointF &scenePos)
+{
+    // 清理之前的数据
+    m_freeDrawPoints.clear();
+    m_pressures.clear();
+    m_timer.restart();
+    
+    // 立即创建路径对象（与画笔工具完全相同）
+    m_currentPath = new DrawingPath();
+    QPainterPath path;
+    path.moveTo(scenePos);
+    m_currentPath->setPath(path);
+    
+    // 设置基本画笔样式（与画笔工具相同）
+    QPen pen(m_currentStrokeColor, m_strokeWidth, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+    m_currentPath->setStrokePen(pen);
+    m_currentPath->setFillBrush(Qt::NoBrush);
+    
+    // 添加到场景
+    m_scene->addItem(m_currentPath);
+    m_currentPath->setVisible(true);
+    m_currentPath->setFlag(QGraphicsItem::ItemIsSelectable, true);
+    
+    // 添加第一个点
+    m_freeDrawPoints.append(scenePos);
+    m_pressures.append(1.0);
+    m_lastPoint = scenePos;
+    
+    qDebug() << "Pen tool: Created initial path at" << scenePos;
+}
+
+void DrawingToolPen::updateFreeDraw(const QPointF &scenePos)
+{
+    if (!m_currentPath) return;
+    
+    // 计算与上一个点的距离（与画笔工具完全相同）
+    qreal distance = QLineF(m_lastPoint, scenePos).length();
+    
+    // 只有当移动距离足够大时才添加点（避免过多的点）
+    if (distance > 2.0) {
+        m_freeDrawPoints.append(scenePos);
+        m_lastPoint = scenePos;
+        
+        // 直接更新路径（与画笔工具完全相同）
+        QPainterPath path;
+        path.moveTo(m_freeDrawPoints.first());
+        for (int i = 1; i < m_freeDrawPoints.size(); ++i) {
+            path.lineTo(m_freeDrawPoints[i]);
+        }
+        
+        m_currentPath->setPath(path);
+        
+        qDebug() << "Pen tool: Updated path with" << m_freeDrawPoints.size() << "points";
+    }
+}
+
+void DrawingToolPen::endFreeDraw()
+{
+    if (!m_currentPath) return;
+    
+    // 简化处理，直接使用当前路径
+    // 设置控制点
+    m_currentPath->setControlPoints(m_freeDrawPoints);
+    
+    // 不自动选中，避免显示选择框
+    m_currentPath->setSelected(false);
+    m_currentPath->setVisible(true);
+    m_currentPath->setFlag(QGraphicsItem::ItemIsSelectable, true);
+    
+    // 标记场景已修改
+    m_scene->setModified(true);
+    
+    qDebug() << "Pen tool: Finished drawing with" << m_freeDrawPoints.size() << "points";
+    
+    // 清理当前路径，但保持工具激活状态以便继续绘制
+    m_currentPath = nullptr;
+    m_freeDrawPoints.clear();
+    m_pressures.clear();
+    m_isDrawing = false;  // 重置绘制状态，允许开始新的绘制
+}
+
+void DrawingToolPen::applyPenTipEffect(QPainterPath& path)
+{
+    if (m_freeDrawPoints.size() < 3) return;
+    
+    // 创建渐变的笔锋效果
+    QVector<qreal> widths;
+    createTaperedPath(m_freeDrawPoints, widths);
+    
+    // 重建路径
+    QPainterPath newPath;
+    
+    if (m_freeDrawPoints.size() >= 2) {
+        // 起始点（笔锋）
+        QPointF startPoint = m_freeDrawPoints[0];
+        QPointF nextPoint = m_freeDrawPoints[1];
+        QPointF direction = nextPoint - startPoint;
+        qreal angle = qAtan2(direction.y(), direction.x()) + M_PI/2;
+        
+        qreal startWidth = widths[0] * 0.3; // 起笔较细
+        QPointF offset1 = QPointF(qCos(angle) * startWidth/2, qSin(angle) * startWidth/2);
+        QPointF offset2 = QPointF(qCos(angle + M_PI) * startWidth/2, qSin(angle + M_PI) * startWidth/2);
+        
+        newPath.moveTo(startPoint + offset1);
+        
+        // 绘制路径主体
+        for (int i = 1; i < m_freeDrawPoints.size() - 1; ++i) {
+            QPointF current = m_freeDrawPoints[i];
+            qreal width = widths[i];
+            
+            // 计算垂直方向
+            QPointF next = m_freeDrawPoints[i + 1];
+            QPointF prev = m_freeDrawPoints[i - 1];
+            QPointF dir = next - prev;
+            angle = qAtan2(dir.y(), dir.x()) + M_PI/2;
+            
+            offset1 = QPointF(qCos(angle) * width/2, qSin(angle) * width/2);
+            newPath.lineTo(current + offset1);
+        }
+        
+        // 结束点（笔锋）
+        QPointF endPoint = m_freeDrawPoints.last();
+        QPointF prevPoint = m_freeDrawPoints[m_freeDrawPoints.size() - 2];
+        direction = endPoint - prevPoint;
+        angle = qAtan2(direction.y(), direction.x()) + M_PI/2;
+        
+        qreal endWidth = widths.last() * 0.3; // 收笔较细
+        offset1 = QPointF(qCos(angle) * endWidth/2, qSin(angle) * endWidth/2);
+        offset2 = QPointF(qCos(angle + M_PI) * endWidth/2, qSin(angle + M_PI) * endWidth/2);
+        
+        newPath.lineTo(endPoint + offset1);
+        
+        // 返回路径
+        for (int i = m_freeDrawPoints.size() - 2; i > 0; --i) {
+            QPointF current = m_freeDrawPoints[i];
+            qreal width = widths[i];
+            
+            QPointF next = m_freeDrawPoints[i + 1];
+            QPointF prev = m_freeDrawPoints[i - 1];
+            QPointF dir = next - prev;
+            angle = qAtan2(dir.y(), dir.x()) + M_PI/2;
+            
+            offset2 = QPointF(qCos(angle + M_PI) * width/2, qSin(angle + M_PI) * width/2);
+            newPath.lineTo(current + offset2);
+        }
+        
+        newPath.lineTo(startPoint + offset2);
+        newPath.closeSubpath();
+    }
+    
+    path = newPath;
+}
+
+void DrawingToolPen::createTaperedPath(const QVector<QPointF>& points, QVector<qreal>& widths)
+{
+    widths.clear();
+    
+    if (points.size() == 0) return;
+    
+    // 基础宽度
+    qreal baseWidth = m_strokeWidth;
+    
+    for (int i = 0; i < points.size(); ++i) {
+        qreal width = baseWidth;
+        
+        // 应用压力
+        if (i < m_pressures.size()) {
+            width *= m_pressures[i];
+        }
+        
+        // 起笔和收笔的笔锋效果
+        if (points.size() > 10) {
+            qreal taperLength = points.size() * 0.1; // 10%的长度用于笔锋
+            
+            if (i < taperLength) {
+                // 起笔渐细
+                qreal factor = i / taperLength;
+                width *= (0.3 + 0.7 * factor);
+            } else if (i > points.size() - taperLength - 1) {
+                // 收笔渐细
+                qreal factor = (points.size() - 1 - i) / taperLength;
+                width *= (0.3 + 0.7 * factor);
+            }
+        }
+        
+        widths.append(width);
+    }
+}
+
+void DrawingToolPen::setBrushProfile(const QString& profileName)
+{
+    m_brushEngine->loadDefaultProfile(profileName);
+}
+
+void DrawingToolPen::setBrushWidth(qreal width)
+{
+    m_strokeWidth = width;
+    BrushProfile profile = m_brushEngine->currentProfile();
+    profile.baseWidth = width;
+    m_brushEngine->loadProfile(profile);
+}
+
+void DrawingToolPen::setPressureSensitivity(qreal sensitivity)
+{
+    m_pressureSensitivity = qBound(0.0, sensitivity, 1.0);
+    BrushProfile profile = m_brushEngine->currentProfile();
+    profile.pressureSensitivity = m_pressureSensitivity;
+    m_brushEngine->loadProfile(profile);
+}
+
+void DrawingToolPen::togglePressureSupport(bool enabled)
+{
+    m_pressureSupport = enabled;
 }

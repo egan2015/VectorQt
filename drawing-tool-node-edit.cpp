@@ -604,7 +604,13 @@ void DrawingNodeEditTool::onSceneSelectionChanged()
             break;
         }
     }
-
+    qDebug() << "Node edit tool: onSceneSelectionChanged, selected shape:" << (selectedShape ? "found" : "none");
+    if (!selectedShape)
+    {
+        // 清除当前节点手柄
+        clearNodeHandles();
+        return;
+    }
     // 如果选中的图形与当前编辑的图形不同
     if (selectedShape != m_selectedShape)
     {

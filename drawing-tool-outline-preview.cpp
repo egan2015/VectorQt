@@ -573,8 +573,8 @@ void OutlinePreviewTransformTool::transform(const QPointF &mousePos, Qt::Keyboar
     // 🌟 应用统一变换到所有选中图形
     for (DrawingShape *shape : m_selectedShapes)
     {
-        if (!shape)
-            continue;
+        if (!shape || !shape->scene())
+            continue;  // 跳过无效的图形
 
         // 获取初始变换
         QTransform originalTransform = m_originalTransforms.value(shape, QTransform());
@@ -637,8 +637,8 @@ void OutlinePreviewTransformTool::ungrab(bool apply, const QPointF &finalMousePo
         // 取消变换 - 恢复到初始变换
         for (DrawingShape *shape : m_selectedShapes)
         {
-            if (!shape)
-                continue;
+            if (!shape || !shape->scene())
+                continue;  // 跳过无效的图形
 
             QTransform originalTransform = m_originalTransforms.value(shape, QTransform());
             DrawingTransform drawingTransform;
@@ -732,8 +732,8 @@ QRectF OutlinePreviewTransformTool::calculateInitialSelectionBounds() const
         bool first = true;
         for (DrawingShape *shape : m_selectedShapes)
         {
-            if (!shape)
-                continue;
+            if (!shape || !shape->scene())
+                continue;  // 跳过无效的图形
 
             QRectF shapeBounds = shape->sceneBoundingRect();
             if (first)
@@ -776,8 +776,26 @@ QRectF OutlinePreviewTransformTool::calculateInitialSelectionBounds() const
     return bounds;
 }
 
+void OutlinePreviewTransformTool::cleanupInvalidShapes()
+{
+    // 清理m_selectedShapes中无效的图形引用
+    QMutableListIterator<DrawingShape*> it(m_selectedShapes);
+    while (it.hasNext()) {
+        DrawingShape* shape = it.next();
+        if (!shape || !shape->scene()) {
+            // 图形已被删除或不再在任何场景中，移除引用
+            it.remove();
+            m_originalTransforms.remove(shape);
+            qDebug() << "Removed invalid shape reference from selection";
+        }
+    }
+}
+
 void OutlinePreviewTransformTool::onSelectionChanged()
 {
+    // 清理无效的图形引用（已被删除的对象）
+    cleanupInvalidShapes();
+    qDebug() << "Selection changed";
     // 更新UI
     //  disableInternalSelectionIndicators();
 
@@ -1004,8 +1022,8 @@ void OutlinePreviewTransformTool::updateOutlinePreview()
         // 计算所有选中图形的统一边界框
         for (DrawingShape *shape : m_selectedShapes)
         {
-            if (!shape)
-                continue;
+            if (!shape || !shape->scene())
+                continue;  // 跳过无效的图形
             QRectF shapeBounds = shape->sceneBoundingRect();
 
             if (unifiedBounds.isEmpty())

@@ -49,6 +49,9 @@ private slots:
     void updateDashOffset();
 
 private:
+    void cleanupInvalidShapes(); // 清理无效的图形引用
+
+private:
     // 状态机：仿 Inkscape grab()/transform()/ungrab()
     enum State {
         STATE_IDLE,

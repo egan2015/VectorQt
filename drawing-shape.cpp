@@ -32,13 +32,6 @@ void BezierControlPointCommand::undo()
             m_path->updatePathFromControlPoints();
             m_path->update();
         }
-        
-        // 更新场景
-        if (m_scene) {
-            m_scene->update();
-            // 通知所有工具对象状态已变化
-            emit m_scene->objectStateChanged(m_path);
-        }
     }
 }
 
@@ -54,12 +47,6 @@ void BezierControlPointCommand::redo()
             m_path->update();
         }
         
-        // 更新场景
-        if (m_scene) {
-            m_scene->update();
-            // 通知所有工具对象状态已变化
-            emit m_scene->objectStateChanged(m_path);
-        }
     }
 }
 
@@ -305,6 +292,12 @@ QVariant DrawingShape::itemChange(GraphicsItemChange change, const QVariant &val
 
 void DrawingShape::mousePressEvent(QGraphicsSceneMouseEvent *event)
 {
+    // 安全检查：确保对象仍在有效的场景中
+    if (!scene()) {
+        qDebug() << "DrawingShape::mousePressEvent - shape not in any scene, ignoring event";
+        return;
+    }
+    
     if (event->button() == Qt::LeftButton && flags() & ItemIsMovable) {
         m_isMoving = true;
         m_moveStartPos = pos();
@@ -316,6 +309,12 @@ void DrawingShape::mousePressEvent(QGraphicsSceneMouseEvent *event)
 
 void DrawingShape::mouseMoveEvent(QGraphicsSceneMouseEvent *event)
 {
+    // 安全检查：确保对象仍在有效的场景中
+    if (!scene()) {
+        qDebug() << "DrawingShape::mouseMoveEvent - shape not in any scene, ignoring event";
+        return;
+    }
+    
     // 检查是否正在拖动且尚未开始变换操作
     if (m_isMoving && !m_transformStarted) {
         QPointF currentPos = pos();
@@ -334,6 +333,15 @@ void DrawingShape::mouseMoveEvent(QGraphicsSceneMouseEvent *event)
 
 void DrawingShape::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
 {
+    // 安全检查：确保对象仍在有效的场景中
+    if (!scene()) {
+        qDebug() << "DrawingShape::mouseReleaseEvent - shape not in any scene, ignoring event";
+        // 重置移动状态以避免内存泄漏
+        m_isMoving = false;
+        m_transformStarted = false;
+        return;
+    }
+    
     if (event->button() == Qt::LeftButton && m_isMoving) {
         m_isMoving = false;
         

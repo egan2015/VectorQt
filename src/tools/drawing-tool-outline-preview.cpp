@@ -811,19 +811,19 @@ QRectF OutlinePreviewTransformTool::calculateInitialSelectionBounds() const
 
 void OutlinePreviewTransformTool::cleanupInvalidShapes()
 {
-    // 清理m_selectedShapes中无效的图形引用
-    QMutableListIterator<DrawingShape *> it(m_selectedShapes);
-    while (it.hasNext())
-    {
-        DrawingShape *shape = it.next();
-        if (!shape || !shape->scene())
-        {
-            // 图形已被删除或不再在任何场景中，移除引用
-            it.remove();
-            m_originalTransforms.remove(shape);
-            qDebug() << "Removed invalid shape reference from selection";
-        }
-    }
+    // // 清理m_selectedShapes中无效的图形引用
+    // QMutableListIterator<DrawingShape *> it(m_selectedShapes);
+    // while (it.hasNext())
+    // {
+    //     DrawingShape *shape = it.next();
+    //     if (!shape || !shape->scene())
+    //     {
+    //         // 图形已被删除或不再在任何场景中，移除引用
+    //         it.remove();
+    //         m_originalTransforms.remove(shape);
+    //         qDebug() << "Removed invalid shape reference from selection";
+    //     }
+    // }
 }
 
 void OutlinePreviewTransformTool::onSelectionChanged()

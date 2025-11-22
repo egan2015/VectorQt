@@ -26,20 +26,21 @@ DrawingGroup::~DrawingGroup()
 {
     // 先清空列表，避免在析构过程中访问
     m_items.clear();
-    
+
     // QGraphicsItemGroup会自动清理子对象
     // 不需要手动删除子对象，它们由scene管理
 }
 
 void DrawingGroup::addItem(DrawingShape *item)
 {
-    if (!item) {
+    if (!item)
+    {
         return;
     }
-    
+
     // 🌟 保存子项的初始变换（参考control-frame）
     m_initialTransforms[item] = item->transform();
-    
+
     // 在设置父子关系之前，将子项的位置转换为相对于组的本地坐标
     // 获取子项在场景中的当前位置
     QPointF scenePos = item->scenePos();
@@ -47,118 +48,120 @@ void DrawingGroup::addItem(DrawingShape *item)
     QPointF localPos = this->mapFromScene(scenePos);
     // 设置子项在组内的本地位置
     item->setPos(localPos);
-    
+
     // 🌟 设置父子关系，这是使组合对象能够移动的关键
-    item->setParentItem(this);  // 设置父子关系
-    
+    item->setParentItem(this); // 设置父子关系
+
     // 🌟 关键修复：重置子项的变换，避免二次变换
     // 子项的位置已经转换为本地坐标，所以变换应该是单位矩阵
-    item->applyTransform(QTransform());
-    
+    //item->applyTransform(QTransform());
+
     // 保存到列表
     m_items.append(item);
-    
+
     // 禁用子项的鼠标事件，让组合对象处理所有事件
     item->setFlag(QGraphicsItem::ItemIsMovable, false);
     item->setFlag(QGraphicsItem::ItemIsSelectable, false);
-    
-   
-    
+
     // 计算所有子项在组坐标系中的边界框
     QRectF combinedBounds;
     bool first = true;
-    
-    for (DrawingShape *item : m_items) {
-        if (item) {
+
+    for (DrawingShape *item : m_items)
+    {
+        if (item)
+        {
             // 获取子项在组坐标系中的边界框
             QRectF itemBounds = item->boundingRect();
             // 将子项的本地边界框转换到组的坐标系中
             QRectF itemBoundsInGroup = item->mapRectToParent(itemBounds);
-            
-            if (first) {
+
+            if (first)
+            {
                 combinedBounds = itemBoundsInGroup;
                 first = false;
-            } else {
+            }
+            else
+            {
                 combinedBounds |= itemBoundsInGroup;
             }
         }
     }
-    
-    
+
     m_currentBounds = combinedBounds;
-    // 更新几何
-    prepareGeometryChange();
-    update();
+
 }
 
 void DrawingGroup::removeItem(DrawingShape *item)
 {
-    if (!item || !m_items.contains(item)) {
+    if (!item || !m_items.contains(item))
+    {
         return;
     }
-    
-    QPointF itemScenePos = item->scenePos(); 
+
+    QPointF itemScenePos = item->scenePos();
     // 🌟 解除父子关系前，恢复子项的原始变换
-    if (m_initialTransforms.contains(item)) {
-        //item->applyTransform(m_initialTransforms[item]);
+    if (m_initialTransforms.contains(item))
+    {
+        // item->applyTransform(m_initialTransforms[item]);
         m_initialTransforms.remove(item);
     }
-    
+
     // 🌟 解除父子关系
     item->setParentItem(nullptr);
     item->setPos(itemScenePos);
-    
+
     // 从列表移除
     m_items.removeOne(item);
-    
+
     // 恢复子项的所有能力
     item->setFlag(QGraphicsItem::ItemIsMovable, true);
     item->setFlag(QGraphicsItem::ItemIsSelectable, true);
-    
-    // 更新几何
-    prepareGeometryChange();
-    update();
+
+ 
 }
 
-QList<DrawingShape*> DrawingGroup::ungroup()
+QList<DrawingShape *> DrawingGroup::ungroup()
 {
-    QList<DrawingShape*> result;
+    QList<DrawingShape *> result;
 
     // 移除所有子项
-    for (DrawingShape *item : m_items) {
-        if (item) {
-            QPointF itemScenePos = item->scenePos(); 
+    for (DrawingShape *item : m_items)
+    {
+        if (item)
+        {
+            QPointF itemScenePos = item->scenePos();
             // 🌟 解除父子关系前，恢复子项的原始变换
-            if (m_initialTransforms.contains(item)) {
-                //item->applyTransform(m_initialTransforms[item]);
+            if (m_initialTransforms.contains(item))
+            {
+                // item->applyTransform(m_initialTransforms[item]);
             }
-            
+
             // 解除父子关系
             item->setParentItem(nullptr);
-            
-             // 保持子项的相对位置，而不是移动到组合位置
+
+            // 保持子项的相对位置，而不是移动到组合位置
             // 子项的场景位置应该是组合位置加上它们在组合中的位置
-            
+
             item->setPos(itemScenePos);
             // 恢复子项的所有能力
             item->setFlag(QGraphicsItem::ItemIsMovable, true);
             item->setFlag(QGraphicsItem::ItemIsSelectable, true);
-            
+
             result.append(item);
         }
     }
-    
+
     // 清空列表和初始变换映射
     m_items.clear();
     m_initialTransforms.clear();
-    
+
     return result;
 }
 
-
 QRectF DrawingGroup::localBounds() const
 {
-       
+
     return m_currentBounds;
 }
 
@@ -175,17 +178,9 @@ QPainterPath DrawingGroup::shape() const
     return path;
 }
 
-
-
 void DrawingGroup::mousePressEvent(QGraphicsSceneMouseEvent *event)
 {
-    // qDebug() << "DrawingGroup::mousePressEvent called on" << this;
-    
-    // 左键自动选中
-    if (event->button() == Qt::LeftButton) {
-        setSelected(true);
-    }
-    
+ 
     // 🌟 调用QGraphicsItem的基类方法，确保拖动功能正常工作
     QGraphicsItem::mousePressEvent(event);
 }
@@ -202,105 +197,86 @@ void DrawingGroup::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
     QGraphicsItem::mouseReleaseEvent(event);
 }
 
-void DrawingGroup::applyTransform(const QTransform &transform , const QPointF &anchor)
+void DrawingGroup::applyTransform(const QTransform &transform, const QPointF &anchor)
 {
     // 实现统一变换：对组内每个子对象应用相同的变换
     // 这与选择工具对多个选中对象进行统一变换的方式一致
-    
+
     // 添加安全检查，确保组对象仍然有效
-    if (!scene()) {
+    if (!scene())
+    {
         qDebug() << "Warning: DrawingGroup::applyTransform called on group not in scene";
         return;
     }
-    
-    if (m_items.isEmpty()) {
+
+    if (m_items.isEmpty())
+    {
         // 如果没有子对象，只对组对象本身应用变换
         DrawingShape::applyTransform(transform, anchor);
         return;
     }
-    
+
     // 如果提供了锚点，使用提供的锚点，否则使用组的中心点作为锚点
     QPointF transformAnchor;
-    if (!anchor.isNull()) {
+    if (!anchor.isNull())
+    {
         transformAnchor = anchor;
-    } else {
+    }
+    else
+    {
         // 计算组的边界框中心点作为默认锚点
         QRectF groupBounds = boundingRect();
         QPointF center = groupBounds.center();
         // 将锚点从组坐标系转换为场景坐标系
         transformAnchor = mapToScene(center);
     }
-    
+
     // 创建子对象列表的副本，避免迭代器失效
-    QList<DrawingShape*> itemsCopy = m_items;
-    
+    QList<DrawingShape *> itemsCopy = m_items;
+
     // 在应用变换前，验证所有子对象的有效性
-    QList<DrawingShape*> validItems;
-    for (DrawingShape *item : itemsCopy) {
-        if (item && item->scene() && item->scene() == scene()) {  // 确保对象存在且在同一个场景中
+    QList<DrawingShape *> validItems;
+    for (DrawingShape *item : itemsCopy)
+    {
+        if (item && item->scene() && item->scene() == scene())
+        { // 确保对象存在且在同一个场景中
             validItems.append(item);
-        } else {
+        }
+        else
+        {
             qDebug() << "Warning: Invalid item found in group during transform";
         }
     }
-    
+
     // 再次检查有效项目列表
-    if (validItems.isEmpty()) {
+    if (validItems.isEmpty())
+    {
         qDebug() << "Warning: No valid items found for transform in DrawingGroup";
         DrawingShape::applyTransform(transform, anchor);
         return;
     }
     // 对所有子对象应用统一的变换
-    for (DrawingShape *item : validItems) {
+    for (DrawingShape *item : validItems)
+    {
         // 将场景坐标系的锚点转换为子对象的本地坐标系
         QPointF localAnchor = item->mapFromParent(transformOriginPoint());
-        
+
         // 构造相对于锚点的变换矩阵
         // 按照规范：变换矩阵必须按照 Translate(-anchor) * Transform * Translate(anchor) 的顺序构造
         QTransform anchoredTransform;
         anchoredTransform.translate(localAnchor.x(), localAnchor.y());
-        anchoredTransform = transform * anchoredTransform ;
+        anchoredTransform = transform * anchoredTransform;
         anchoredTransform.translate(-localAnchor.x(), -localAnchor.y());
-        
+
         // 直接对子对象应用变换，使用场景坐标锚点
-        item->applyTransform(anchoredTransform, localAnchor);
+        item->applyTransform(m_initialTransforms[item] * anchoredTransform, localAnchor);
     }
-    
+
     // 同时也对组对象本身应用变换以保持一致性
     DrawingShape::applyTransform(transform, anchor);
-    
- 
 }
 QVariant DrawingGroup::itemChange(QGraphicsItem::GraphicsItemChange change, const QVariant &value)
 {
-    // 🌟 在变换发生变化时，同步到所有子项
-    if (change == ItemTransformHasChanged) {
-        // 更新边界
-        prepareGeometryChange();
-        update();
-    }
-    
-    // 位置变化也需要更新（虽然 Qt 应该自动处理）
-    else if (change == ItemPositionChange || change == ItemPositionHasChanged) {
-        // prepareGeometryChange();
-        // update();
-        
-        // 老的手柄系统已移除，不再需要更新
-        // if (editHandleManager()) {
-        //     editHandleManager()->updateHandles();
-        // }
-    }
-    
-    // 老的手柄系统已移除，不再需要更新手柄显示
-    else if (change == ItemSelectedHasChanged) {
-        // if (editHandleManager()) {
-        //     if (isSelected()) {
-        //         editHandleManager()->showHandles();
-        //     } else {
-        //         editHandleManager()->hideHandles();
-        //     }
-        // }
-    }
-    
+
     return DrawingShape::itemChange(change, value);
 }

@@ -8,6 +8,7 @@
 #include <QDomDocument>
 #include <QDomElement>
 #include <QDomNodeList>
+#include <QPainter>
 #include <QPainterPath>
 #include <QPainterPathStroker>
 #include <QRegularExpression>

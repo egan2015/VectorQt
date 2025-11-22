@@ -53,7 +53,7 @@ void DrawingGroup::addItem(DrawingShape *item)
     
     // 🌟 关键修复：重置子项的变换，避免二次变换
     // 子项的位置已经转换为本地坐标，所以变换应该是单位矩阵
-    //item->setTransform(QTransform());
+    item->applyTransform(QTransform());
     
     // 保存到列表
     m_items.append(item);
@@ -97,14 +97,16 @@ void DrawingGroup::removeItem(DrawingShape *item)
         return;
     }
     
+    QPointF itemScenePos = item->scenePos(); 
     // 🌟 解除父子关系前，恢复子项的原始变换
     if (m_initialTransforms.contains(item)) {
-        item->setTransform(m_initialTransforms[item]);
+        //item->applyTransform(m_initialTransforms[item]);
         m_initialTransforms.remove(item);
     }
     
     // 🌟 解除父子关系
     item->setParentItem(nullptr);
+    item->setPos(itemScenePos);
     
     // 从列表移除
     m_items.removeOne(item);
@@ -121,29 +123,26 @@ void DrawingGroup::removeItem(DrawingShape *item)
 QList<DrawingShape*> DrawingGroup::ungroup()
 {
     QList<DrawingShape*> result;
-    
-    // 获取组合对象的场景位置
-    QPointF groupScenePos = scenePos();
-    
+
     // 移除所有子项
     for (DrawingShape *item : m_items) {
         if (item) {
+            QPointF itemScenePos = item->scenePos(); 
             // 🌟 解除父子关系前，恢复子项的原始变换
-            // if (m_initialTransforms.contains(item)) {
-            //     item->applyTransform(m_initialTransforms[item]);
-            // }
+            if (m_initialTransforms.contains(item)) {
+                //item->applyTransform(m_initialTransforms[item]);
+            }
             
             // 解除父子关系
             item->setParentItem(nullptr);
             
+             // 保持子项的相对位置，而不是移动到组合位置
+            // 子项的场景位置应该是组合位置加上它们在组合中的位置
+            
+            item->setPos(itemScenePos);
             // 恢复子项的所有能力
             item->setFlag(QGraphicsItem::ItemIsMovable, true);
             item->setFlag(QGraphicsItem::ItemIsSelectable, true);
-            
-            // 保持子项的相对位置，而不是移动到组合位置
-            // 子项的场景位置应该是组合位置加上它们在组合中的位置
-            QPointF itemScenePos = mapToScene(item->pos());
-            item->setPos(itemScenePos);
             
             result.append(item);
         }

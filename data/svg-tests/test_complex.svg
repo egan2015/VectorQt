@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="400" height="400" xmlns="http://www.w3.org/2000/svg">
+  <!-- 基本形状 -->
+  <rect x="50" y="50" width="100" height="100" fill="blue" stroke="black" stroke-width="2"/>
+  <circle cx="100" cy="100" r="30" fill="red" stroke="black" stroke-width="1"/>
+  
+  <!-- 复杂路径 -->
+  <path d="M150,50 Q200,10 250,50 T350,50" stroke="green" stroke-width="3" fill="none"/>
+  <path d="M50,200 C100,150 150,250 200,200 S300,150 350,200" stroke="purple" stroke-width="2" fill="none"/>
+  
+  <!-- 变换测试 -->
+  <rect x="50" y="300" width="50" height="50" fill="orange" transform="rotate(45 75 325)"/>
+  <circle cx="200" cy="325" r="25" fill="cyan" transform="scale(1.5, 0.8)"/>
+  <path d="M250,300 L300,350 L250,350 Z" fill="magenta" transform="translate(50, -25)"/>
+</svg>

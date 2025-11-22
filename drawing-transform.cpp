@@ -5,6 +5,9 @@
 // DrawingTransform
 DrawingTransform::DrawingTransform()
     : m_transform(QTransform())
+    , m_sceneAnchor(QPointF(0, 0))
+    , m_hasAnchor(false)
+    , m_transformType(TransformType::Undefined)
 {
 }
 

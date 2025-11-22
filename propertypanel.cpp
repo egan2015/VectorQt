@@ -75,6 +75,8 @@ void PropertyPanel::setScene(DrawingScene *scene)
     if (m_scene) {
         connect(m_scene, &DrawingScene::selectionChanged, 
                 this, &PropertyPanel::onSelectionChanged);
+        connect(m_scene, &DrawingScene::objectStateChanged,
+                this, &PropertyPanel::onObjectStateChanged);
     }
 }
 
@@ -188,7 +190,7 @@ void PropertyPanel::setupUI()
     m_opacitySpinBox->setValue(1.0);
     m_opacitySpinBox->setButtonSymbols(QAbstractSpinBox::PlusMinus);
     m_opacitySpinBox->setMinimumWidth(70);
-    appearanceLayout->addWidget(m_opacitySpinBox, 3, 1);
+    appearanceLayout->addWidget(m_opacitySpinBox, 4, 1);
     
     mainLayout->addWidget(m_appearanceGroup);
     
@@ -255,6 +257,7 @@ void PropertyPanel::onSelectionChanged()
     }
     
     QList<QGraphicsItem*> selected = m_scene->selectedItems();
+    
     if (selected.isEmpty()) {
         setEnabled(false);
         return;
@@ -262,6 +265,24 @@ void PropertyPanel::onSelectionChanged()
     
     setEnabled(true);
     updateValues();
+}
+
+void PropertyPanel::onObjectStateChanged(DrawingShape* shape)
+{
+    // 检查这个形状是否是当前选中的形状
+    if (!m_scene || m_updating) {
+        return;
+    }
+    
+    QList<QGraphicsItem*> selected = m_scene->selectedItems();
+    
+    if (selected.size() == 1) {
+        QGraphicsItem *item = selected.first();
+        if (item == shape) {
+            // 这是当前选中的形状，更新属性面板显示
+            updateValues();
+        }
+    }
 }
 
 void PropertyPanel::updateValues()
@@ -273,6 +294,7 @@ void PropertyPanel::updateValues()
     m_updating = true;
     
     QList<QGraphicsItem*> selected = m_scene->selectedItems();
+    
     if (selected.size() == 1) {
         QGraphicsItem *item = selected.first();
         DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(item);

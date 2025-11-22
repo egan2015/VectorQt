@@ -523,9 +523,8 @@ void DrawingScene::activateSelectionTool()
         // 断开已存在的连接（如果有的话）
         disconnect(this, &DrawingScene::selectionChanged, this, &DrawingScene::onSelectionChanged);
         
-        qDebug() << "Connecting selectionChanged signal";
-        bool connected = connect(this, &DrawingScene::selectionChanged, this, &DrawingScene::onSelectionChanged);
-        qDebug() << "SelectionChanged signal connected:" << connected;
+        // 连接QGraphicsScene的selectionChanged信号到我们的onSelectionChanged方法
+        connect(this, &QGraphicsScene::selectionChanged, this, &DrawingScene::onSelectionChanged);
         
         // 老的选择层系统已移除，不再需要更新
         // if (this->selectionLayer()) {
@@ -538,6 +537,7 @@ void DrawingScene::deactivateSelectionTool()
 {
     // 断开选择变化信号
     disconnect(this, &DrawingScene::selectionChanged, this, &DrawingScene::onSelectionChanged);
+    disconnect(this, &QGraphicsScene::selectionChanged, this, &DrawingScene::onSelectionChanged);
 }
 
 void DrawingScene::drawBackground(QPainter *painter, const QRectF &rect)
@@ -745,6 +745,8 @@ bool DrawingScene::isGridAlignmentEnabled() const
 void DrawingScene::onSelectionChanged()
 {
     qDebug() << "DrawingScene::onSelectionChanged called, selected items count:" << selectedItems().count();
+    // 发射selectionChanged信号
+    emit selectionChanged();
 }
 
 // Smart snapping feature implementation

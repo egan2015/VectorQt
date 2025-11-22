@@ -627,6 +627,18 @@ void OutlinePreviewTransformTool::transform(const QPointF &mousePos, Qt::Keyboar
         QTransform newTransform = originalTransform * individualTransform;
 
         DrawingTransform drawingTransform;
+        
+        // 🌟 设置场景锚点和变换类型
+        if (m_activeHandle == TransformHandle::Rotate) {
+            QPointF center = m_useCustomRotationCenter ? m_customRotationCenter : m_transformOrigin;
+            drawingTransform.setAnchor(center);
+            drawingTransform.setTransformType(DrawingTransform::TransformType::Rotation);
+        } else {
+            // 缩放操作使用scaleAnchor
+            drawingTransform.setAnchor(m_scaleAnchor);
+            drawingTransform.setTransformType(DrawingTransform::TransformType::Scale);
+        }
+        
         drawingTransform.setTransform(newTransform);
         shape->setTransform(drawingTransform);
         shape->updateShape(); // 刷新图形的边界和碰撞检测
@@ -842,7 +854,7 @@ void OutlinePreviewTransformTool::onSelectionChanged()
 {
     // 清理无效的图形引用（已被删除的对象）
     cleanupInvalidShapes();
-    qDebug() << "Selection changed, cleaning up invalid shapes";
+   // qDebug() << "Selection changed, cleaning up invalid shapes";
     // 更新UI
     //  disableInternalSelectionIndicators();
 

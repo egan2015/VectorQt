@@ -94,10 +94,10 @@ public:
     virtual QPainterPath transformedShape() const;
     
     // 样式属性
-    void setFillBrush(const QBrush &brush) { m_fillBrush = brush; update(); }
+    void setFillBrush(const QBrush &brush) { m_fillBrush = brush; update(); notifyObjectStateChanged(); }
     QBrush fillBrush() const { return m_fillBrush; }
     
-    void setStrokePen(const QPen &pen) { m_strokePen = pen; update(); }
+    void setStrokePen(const QPen &pen) { m_strokePen = pen; update(); notifyObjectStateChanged(); }
     QPen strokePen() const { return m_strokePen; }
     
     // 网格对齐支持

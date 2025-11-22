@@ -65,6 +65,22 @@ public:
     QPointF shear() const;
     QPointF translation() const;
     
+    // 🌟 锚点管理方法
+    void setAnchor(const QPointF &sceneAnchor) { m_sceneAnchor = sceneAnchor; m_hasAnchor = true; }
+    QPointF anchor() const { return m_sceneAnchor; }
+    bool hasAnchor() const { return m_hasAnchor; }
+    void clearAnchor() { m_hasAnchor = false; }
+    
+    // 🌟 变换类型支持
+    enum class TransformType {
+        Undefined,
+        Rotation,
+        Scale
+    };
+    
+    void setTransformType(TransformType type) { m_transformType = type; }
+    TransformType transformType() const { return m_transformType; }
+    
     // 公共方法：获取锚点位置
     QPointF getAnchorPoint(AnchorPoint anchor, const QRectF &bounds) const;
     
@@ -79,6 +95,13 @@ public:
     
     QTransform m_transform;
     QTransform m_savedTransform; // 用于保存变换状态
+    
+    // 🌟 锚点相关成员变量
+    QPointF m_sceneAnchor;       // 场景坐标锚点
+    bool m_hasAnchor = false;    // 是否设置了锚点
+    
+    // 🌟 变换类型相关成员变量
+    TransformType m_transformType = TransformType::Undefined;  // 变换类型
 };
 
 /**

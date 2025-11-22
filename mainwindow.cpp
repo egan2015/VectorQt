@@ -325,6 +325,8 @@ void MainWindow::setupUI()
             this, &MainWindow::onSelectionChanged);
     connect(m_scene, &DrawingScene::sceneModified,
             this, &MainWindow::onSceneChanged);
+    connect(m_scene, &DrawingScene::objectStateChanged,
+            this, &MainWindow::onObjectStateChanged);
     // 连接DrawingCanvas的缩放信号
     connect(m_canvas, &DrawingCanvas::zoomChanged,
             this, &MainWindow::updateZoomLabel);
@@ -1992,9 +1994,9 @@ void MainWindow::groupSelected()
     // qDebug() << "groupSelected: created DrawingGroup at" << group;
     
     // 设置组的标志，确保它可以被选中和移动
-    group->setFlags(QGraphicsItem::ItemIsMovable | 
-                    QGraphicsItem::ItemIsSelectable | 
-                    QGraphicsItem::ItemSendsGeometryChanges);
+    group->setFlag(QGraphicsItem::ItemIsMovable, true);
+    group->setFlag(QGraphicsItem::ItemIsSelectable, true);
+    group->setFlag(QGraphicsItem::ItemSendsGeometryChanges, true);
     
     // 计算包围盒中心（关键！）
     QPointF center = combinedBounds.center();
@@ -2176,9 +2178,8 @@ void MainWindow::about()
 
 void MainWindow::onSelectionChanged()
 {
-    // 调试输出
     if (m_scene) {
-        qDebug() << "onSelectionChanged called, selected items count:" << m_scene->selectedItems().count();
+        qDebug() << "MainWindow::onSelectionChanged: selected items count:" << m_scene->selectedItems().count();
     }
     updateUI();
     if (m_propertyPanel)
@@ -2361,6 +2362,12 @@ void MainWindow::updateRulerSelection()
             m_verticalRuler->update();
         }
     }
+}
+
+void MainWindow::onObjectStateChanged(DrawingShape* shape)
+{
+    // 当图形对象状态发生变化时，更新标尺显示
+    updateRulerSelection();
 }
 
 void MainWindow::onSceneChanged()

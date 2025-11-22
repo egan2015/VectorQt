@@ -41,19 +41,20 @@ void DrawingGroup::addItem(DrawingShape *item)
     // 🌟 保存子项的初始变换（参考control-frame）
     m_initialTransforms[item] = item->transform().transform();
     
-    // 保存子对象的原始场景位置
+    // 在设置父子关系之前，将子项的位置转换为相对于组的本地坐标
+    // 获取子项在场景中的当前位置
     QPointF scenePos = item->scenePos();
-    
-    // 设置父项关系
-    item->setParentItem(this);
-    
-    // 🌟 对于SVG导入的元素，需要转换到组的本地坐标系
-    // 使用mapFromScene正确转换位置
+    // 将场景位置转换为组的本地坐标
     QPointF localPos = this->mapFromScene(scenePos);
+    // 设置子项在组内的本地位置
     item->setPos(localPos);
     
-    // 🌟 不重置子项的变换，保持原始变换
-    // item->setTransform(DrawingTransform());
+    // 🌟 设置父子关系，这是使组合对象能够移动的关键
+    item->setParentItem(this);  // 设置父子关系
+    
+    // 🌟 关键修复：重置子项的变换，避免二次变换
+    // 子项的位置已经转换为本地坐标，所以变换应该是单位矩阵
+    item->setTransform(DrawingTransform());
     
     // 保存到列表
     m_items.append(item);
@@ -73,7 +74,13 @@ void DrawingGroup::removeItem(DrawingShape *item)
         return;
     }
     
-    // 解除父子关系
+    // 🌟 解除父子关系前，恢复子项的原始变换
+    if (m_initialTransforms.contains(item)) {
+        item->setTransform(DrawingTransform(m_initialTransforms[item]));
+        m_initialTransforms.remove(item);
+    }
+    
+    // 🌟 解除父子关系
     item->setParentItem(nullptr);
     
     // 从列表移除
@@ -98,6 +105,11 @@ QList<DrawingShape*> DrawingGroup::ungroup()
     // 移除所有子项
     for (DrawingShape *item : m_items) {
         if (item) {
+            // 🌟 解除父子关系前，恢复子项的原始变换
+            if (m_initialTransforms.contains(item)) {
+                item->setTransform(DrawingTransform(m_initialTransforms[item]));
+            }
+            
             // 解除父子关系
             item->setParentItem(nullptr);
             
@@ -105,15 +117,18 @@ QList<DrawingShape*> DrawingGroup::ungroup()
             item->setFlag(QGraphicsItem::ItemIsMovable, true);
             item->setFlag(QGraphicsItem::ItemIsSelectable, true);
             
-            // 设置子项的位置到组合对象的场景位置
-            item->setPos(groupScenePos);
+            // 保持子项的相对位置，而不是移动到组合位置
+            // 子项的场景位置应该是组合位置加上它们在组合中的位置
+            QPointF itemScenePos = mapToScene(item->pos());
+            item->setPos(itemScenePos);
             
             result.append(item);
         }
     }
     
-    // 清空列表
+    // 清空列表和初始变换映射
     m_items.clear();
+    m_initialTransforms.clear();
     
     return result;
 }
@@ -124,24 +139,28 @@ QRectF DrawingGroup::boundingRect() const
         return QRectF(0, 0, 1, 1);
     }
     
+    // 计算所有子项在组坐标系中的边界框
     QRectF combinedBounds;
     bool first = true;
     
     for (DrawingShape *item : m_items) {
-        if (item && item->parentItem() == this) {
-            // 获取子项的边界框（包含变换）
+        if (item) {
+            // 获取子项在组坐标系中的边界框
             QRectF itemBounds = item->boundingRect();
-            // 将子项的边界框转换到组合对象的坐标系
-            QTransform itemTransform = item->itemTransform(this);
-            QRectF transformedBounds = itemTransform.mapRect(itemBounds);
+            // 将子项的本地边界框转换到组的坐标系中
+            QRectF itemBoundsInGroup = item->mapRectToParent(itemBounds);
             
             if (first) {
-                combinedBounds = transformedBounds;
+                combinedBounds = itemBoundsInGroup;
                 first = false;
             } else {
-                combinedBounds |= transformedBounds;
+                combinedBounds |= itemBoundsInGroup;
             }
         }
+    }
+    
+    if (combinedBounds.isEmpty()) {
+        return QRectF(0, 0, 1, 1);
     }
     
     return combinedBounds;
@@ -176,162 +195,46 @@ void DrawingGroup::mousePressEvent(QGraphicsSceneMouseEvent *event)
         setSelected(true);
     }
     
-    // 🌟 总是调用基类，确保拖动功能正常工作
-    DrawingShape::mousePressEvent(event);
+    // 🌟 调用QGraphicsItem的基类方法，确保拖动功能正常工作
+    QGraphicsItem::mousePressEvent(event);
 }
 
 void DrawingGroup::mouseMoveEvent(QGraphicsSceneMouseEvent *event)
 {
-    // 直接调用基类方法
-    DrawingShape::mouseMoveEvent(event);
+    // 调用QGraphicsItem的基类方法
+    QGraphicsItem::mouseMoveEvent(event);
 }
 
 void DrawingGroup::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
 {
-    // 直接调用基类方法
-    DrawingShape::mouseReleaseEvent(event);
+    // 调用QGraphicsItem的基类方法
+    QGraphicsItem::mouseReleaseEvent(event);
 }
 
 void DrawingGroup::setTransform(const DrawingTransform &transform)
 {
-
-    
-
-    // 🌟 参考control-frame的统一旋转逻辑
-    if (m_items.isEmpty()) {
-        DrawingShape::setTransform(transform);
-        QGraphicsItem::setTransform(transform.transform());
-        return;
-    }
-    
-    // 🌟 1. 计算整体边界框和中心点（参考control-frame）
-    QRectF totalBounds;
-    for (DrawingShape *item : m_items) {
-        if (item && item->parentItem() == this) {
-            totalBounds |= item->boundingRect().translated(item->pos());
-        }
-    }
-    
-    if (totalBounds.isEmpty()) {
-        DrawingShape::setTransform(transform);
-        QGraphicsItem::setTransform(transform.transform());
-        return;
-    }
-    
-    // 🌟 2. 设置统一的变换中心和锚点（参考control-frame）
-    QPointF lockCenter = totalBounds.center();
-    QPointF lockAnchor = totalBounds.topLeft(); // 默认使用左上角作为锚点
-    
-    // 🌟 3. 为每个子项计算相对于统一中心的局部变换矩阵（用于旋转）
-    QHash<DrawingShape*, QTransform> T0;
-    for (DrawingShape *item : m_items) {
-        if (item && item->parentItem() == this) {
-            QPointF axisLocal = item->mapFromScene(lockCenter);
-            QTransform t0;
-            t0.translate(axisLocal.x(), axisLocal.y());
-            T0[item] = t0;
-        }
-    }
-    
-    // 🌟 4. 分析变换矩阵来确定操作类型
-    QTransform transformMatrix = transform.transform();
-    
-    // 检查是否是纯旋转（矩阵的行列式接近1，且没有缩放）
-    qreal det = transformMatrix.determinant();
-    bool isRotation = qFuzzyCompare(det, 1.0) && 
-                     qFuzzyCompare(transformMatrix.m11(), 1.0) && 
-                     qFuzzyCompare(transformMatrix.m22(), 1.0) &&
-                     (!qFuzzyIsNull(transformMatrix.m12()) || !qFuzzyIsNull(transformMatrix.m21()));
-    
-    // 🌟 5. 如果是旋转操作，使用control-frame的统一旋转逻辑
-    if (isRotation) {
-        // 提取旋转角度
-        qreal angle = qAtan2(transformMatrix.m12(), transformMatrix.m11());
-        
-        // 🌟 关键：为所有子项应用相同的旋转角度，使用统一的旋转中心
-        for (DrawingShape *item : m_items) {
-            if (item && item->parentItem() == this) {
-                QTransform R;
-                R.translate(T0[item].dx(), T0[item].dy());
-                R.rotateRadians(angle);
-                R.translate(-T0[item].dx(), -T0[item].dy());
-                
-                // 应用到初始变换上，保持相对关系
-                QTransform combinedTransform = R * m_initialTransforms[item];
-                item->setTransform(DrawingTransform(combinedTransform));
-            }
-        }
-    } else {
-        // 🌟 6. 缩放操作，使用之前的逻辑
-        qreal sx = transformMatrix.m11();
-        qreal sy = transformMatrix.m22();
-        
-        // 限制缩放范围
-        sx = qBound(0.01, sx, 100.0);
-        sy = qBound(0.01, sy, 100.0);
-        
-        // 智能锚点选择
-        DrawingTransform::AnchorPoint anchor = DrawingTransform::Center;
-        QPointF translation = QPointF(transformMatrix.dx(), transformMatrix.dy());
-        
-        if (!qFuzzyIsNull(translation.x()) || !qFuzzyIsNull(translation.y())) {
-            if (translation.x() > 0 && translation.y() > 0) {
-                anchor = DrawingTransform::TopLeft;
-            } else if (translation.x() < 0 && translation.y() > 0) {
-                anchor = DrawingTransform::TopRight;
-            } else if (translation.x() > 0 && translation.y() < 0) {
-                anchor = DrawingTransform::BottomLeft;
-            } else if (translation.x() < 0 && translation.y() < 0) {
-                anchor = DrawingTransform::BottomRight;
-            }
-        }
-        
-        // 为每个子项应用缩放
-        for (DrawingShape *item : m_items) {
-            if (item && item->parentItem() == this) {
-                DrawingTransform newTransform = m_initialTransforms[item];
-                newTransform.scaleAroundAnchor(sx, sy, anchor, totalBounds);
-                item->setTransform(newTransform);
-            }
-        }
-    }
-    
-    // 🌟 7. 应用到组合对象自身
+    // 🌟 简化变换逻辑，直接调用基类方法
     DrawingShape::setTransform(transform);
     QGraphicsItem::setTransform(transform.transform());
-    
-    // 更新几何
-    prepareGeometryChange();
-    update();
 }
-
 void DrawingGroup::applyScale(const QPointF &anchor, qreal sx, qreal sy)
 {
     if (m_items.isEmpty()) {
         return;
     }
     
+    // 🌟 简化缩放逻辑：直接在组合对象上应用缩放
     // 将锚点转换为组合对象的本地坐标
     QPointF anchorLocal = mapFromScene(anchor);
     
-    // 将缩放应用到组合对象本身
-    QTransform groupTransform = m_transform.transform();
-    QTransform scaleTransform;
-    scaleTransform.translate(anchorLocal.x(), anchorLocal.y());
-    scaleTransform.scale(sx, sy);
-    scaleTransform.translate(-anchorLocal.x(), -anchorLocal.y());
+    // 创建新的变换
+    DrawingTransform newTransform = m_transform;
     
-    setTransform(DrawingTransform(scaleTransform * groupTransform));
+    // 应用缩放
+    newTransform.scale(sx, sy, anchorLocal);
     
-    // 更新几何
-    prepareGeometryChange();
-    update();
-    
-    // 更新编辑手柄位置
-    // 老的手柄系统已移除，不再需要更新
-    // if (editHandleManager()) {
-    //     editHandleManager()->updateHandles();
-    // }
+    // 设置新变换
+    setTransform(newTransform);
 }
 
 void DrawingGroup::grabTransform()
@@ -492,34 +395,18 @@ void DrawingGroup::applyTransformWithHandle(int handleType, const QPointF &initi
     sx = qBound(0.01, sx, 100.0);
     sy = qBound(0.01, sy, 100.0);
     
-    // 🌟 8. 为每个子项应用变换（完全模仿单个图形的正确逻辑）
-    for (DrawingShape *item : m_items) {
-        if (item && item->parentItem() == this) {
-            // 🌟 关键：使用DrawingTransform的scaleAroundAnchor方法，完全模仿单个图形的正确逻辑
-            // 基于当前变换状态，但使用DrawingTransform的专业处理
-            DrawingTransform baseTransform = m_currentTransforms.contains(item) ? 
-                                           DrawingTransform(m_currentTransforms[item]) : 
-                                           m_initialTransforms[item];
-            
-            // 🌟 关键：为每个子项计算相对于锚点的局部变换
-            // 将场景坐标中的锚点转换到每个子项的本地坐标系
-            QPointF anchorLocal = item->mapFromScene(anchorScenePos);
-            
-            // 创建缩放变换矩阵 - 使用相对于锚点的正确变换
-            QTransform scaleTransform;
-            scaleTransform.translate(anchorLocal.x(), anchorLocal.y());
-            scaleTransform.scale(sx, sy);
-            scaleTransform.translate(-anchorLocal.x(), -anchorLocal.y());
-            
-            // 应用到基础变换上
-            QTransform combinedTransform = scaleTransform * baseTransform.transform();
-            item->setTransform(DrawingTransform(combinedTransform));
-        }
-    }
+    // 🌟 简化缩放逻辑：直接在组合对象上应用缩放
+    // 将锚点转换为组合对象的本地坐标
+    QPointF anchorLocal = mapFromScene(anchorScenePos);
     
-    // 更新几何
-    prepareGeometryChange();
-    update();
+    // 创建新的变换
+    DrawingTransform newTransform = m_transform;
+    
+    // 应用缩放
+    newTransform.scale(sx, sy, anchorLocal);
+    
+    // 设置新变换
+    setTransform(newTransform);
     
     // 🌟 更新编辑手柄位置
     // 老的手柄系统已移除，不再需要更新
@@ -561,21 +448,17 @@ void DrawingGroup::applyRotationWithHandle(const QPointF &center, double angleDe
         }
     }
     
-    // 🌟 为所有子项应用相同的旋转角度，使用统一的旋转中心
-    for (DrawingShape *item : m_items) {
-        if (item && item->parentItem() == this) {
-            QTransform R;
-            R.translate(T0[item].dx(), T0[item].dy());
-            R.rotateRadians(angleDelta);
-            R.translate(-T0[item].dx(), -T0[item].dy());
-            
-            // 🌟 关键：应用到当前变换状态，而不是初始变换
-            QTransform baseTransform = m_currentTransforms.contains(item) ? 
-                                     m_currentTransforms[item] : m_initialTransforms[item];
-            QTransform combinedTransform = R * baseTransform;
-            item->setTransform(DrawingTransform(combinedTransform));
-        }
-    }
+    // 将旋转中心转换为组的本地坐标
+    QPointF localCenter = mapFromScene(lockCenter);
+    
+    // 对组合对象本身应用旋转变换
+    QTransform groupTransform = m_transform.transform();
+    QTransform rotationTransform;
+    rotationTransform.translate(localCenter.x(), localCenter.y());
+    rotationTransform.rotateRadians(angleDelta);
+    rotationTransform.translate(-localCenter.x(), -localCenter.y());
+    
+    setTransform(DrawingTransform(rotationTransform * groupTransform));
     
     // 更新几何
     prepareGeometryChange();
@@ -700,33 +583,16 @@ void DrawingGroup::applyRotation(qreal angle, const QPointF &center)
 QVariant DrawingGroup::itemChange(QGraphicsItem::GraphicsItemChange change, const QVariant &value)
 {
     // 🌟 在变换发生变化时，同步到所有子项
-    if (change == ItemTransformChange || change == ItemTransformHasChanged) {
-        QTransform newTransform = value.value<QTransform>();
-        
-        for (DrawingShape *item : m_items) {
-            if (item && item->parentItem() == this) {
-                // 🌟 应用相同的变换，但保持相对位置
-                // 注意：DrawingShape使用DrawingTransform，需要转换
-                DrawingTransform drawTransform;
-                drawTransform.setTransform(newTransform);
-                item->setTransform(drawTransform);
-            }
-        }
-        
+    if (change == ItemTransformHasChanged) {
         // 更新边界
         prepareGeometryChange();
         update();
-        
-        // 老的手柄系统已移除，不再需要更新
-        // if (editHandleManager()) {
-        //     editHandleManager()->updateHandles();
-        // }
     }
     
     // 位置变化也需要更新（虽然 Qt 应该自动处理）
     else if (change == ItemPositionChange || change == ItemPositionHasChanged) {
-        prepareGeometryChange();
-        update();
+        // prepareGeometryChange();
+        // update();
         
         // 老的手柄系统已移除，不再需要更新
         // if (editHandleManager()) {
@@ -745,6 +611,6 @@ QVariant DrawingGroup::itemChange(QGraphicsItem::GraphicsItemChange change, cons
         // }
     }
     
-    return DrawingShape::itemChange(change, value);
+    return QGraphicsItem::itemChange(change, value);
 }
 

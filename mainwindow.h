@@ -19,6 +19,7 @@
 #include <QUndoView>
 
 class DrawingScene;
+class DrawingShape;
 class DrawingView;
 class DrawingCanvas;
 class ToolBase;
@@ -116,6 +117,7 @@ private slots:
     void onSceneChanged();
     void updateZoomLabel();
     void updateRulerSelection();
+    void onObjectStateChanged(DrawingShape* shape);
     void updateStatusBar(const QString &message);
     
     // 调色板颜色应用槽函数

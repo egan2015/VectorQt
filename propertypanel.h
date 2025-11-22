@@ -26,6 +26,7 @@ public:
 
 public slots:
     void onSelectionChanged();
+    void onObjectStateChanged(DrawingShape* shape);
 
 private slots:
     void onPositionChanged();

@@ -2080,6 +2080,9 @@ void MainWindow::ungroupSelected()
             }
         }
         
+        // 🌟 关键修复：在删除前强制清除所有选择，避免 Qt 内部引用已删除对象
+        m_scene->clearSelection();
+        
         // 从场景中移除组
         m_scene->removeItem(group);
         
@@ -2090,8 +2093,7 @@ void MainWindow::ungroupSelected()
     }
     
     if (ungroupedCount > 0) {
-        // 清除选择，触发选择状态更新
-        m_scene->clearSelection();
+        // 选择状态已在删除组合前清理
         
         // 老的选择层系统已移除，不再需要更新
         // if (m_scene->selectionLayer()) {

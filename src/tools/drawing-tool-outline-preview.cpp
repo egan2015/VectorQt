@@ -426,7 +426,8 @@ void OutlinePreviewTransformTool::grab(TransformHandle::HandleType handleType,
     for (QGraphicsItem *item : selectedItems)
     {
         DrawingShape *shape = dynamic_cast<DrawingShape *>(item);
-        if (shape)
+        // 🌟 关键修复：检查对象是否有效
+        if (shape && shape->scene())
         {
             m_selectedShapes.append(shape);
             m_originalTransforms[shape] = shape->transform();

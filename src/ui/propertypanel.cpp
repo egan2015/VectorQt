@@ -6,11 +6,29 @@
 #include "../ui/propertypanel.h"
 #include "../ui/drawingscene.h"
 #include "../core/drawing-shape.h"
+#include "../tools/transform-components.h"
+
+// 辅助函数：从变换矩阵中提取旋转角度
+static double extractRotationFromTransform(const QTransform& transform)
+{
+    // 使用更准确的方法提取旋转角度
+    // QTransform的旋转角度可以通过m11和m21计算
+    double angle = qAtan2(transform.m21(), transform.m11()) * 180.0 / M_PI;
+    
+    // 标准化到 [0, 360) 范围
+    while (angle < 0) angle += 360.0;
+    while (angle >= 360.0) angle -= 360.0;
+    
+    return angle;
+}
 
 PropertyPanel::PropertyPanel(QWidget *parent)
     : QWidget(parent)
     , m_scene(nullptr)
     , m_updating(false)
+    , m_lastKnownRotation(0.0)
+    , m_lastKnownWidth(0.0)
+    , m_lastKnownHeight(0.0)
 {
     setupUI();
     setEnabled(false);
@@ -233,7 +251,7 @@ void PropertyPanel::setupUI()
             this, &PropertyPanel::onSizeChanged);
     connect(m_heightSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
             this, &PropertyPanel::onSizeChanged);
-    connect(m_rotationSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+    connect(m_rotationSpinBox, &QDoubleSpinBox::editingFinished,
             this, &PropertyPanel::onRotationChanged);
     connect(m_fillColorButton, &QPushButton::clicked,
             this, &PropertyPanel::onFillColorChanged);
@@ -297,7 +315,7 @@ void PropertyPanel::updateValues()
     
     if (selected.size() == 1) {
         QGraphicsItem *item = selected.first();
-        DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(item);
+        DrawingShape *shape = dynamic_cast<DrawingShape*>(item);
         
         QRectF bounds = item->boundingRect();
         QPointF pos = item->pos();
@@ -306,16 +324,31 @@ void PropertyPanel::updateValues()
         m_ySpinBox->setValue(pos.y());
         m_widthSpinBox->setValue(bounds.width());
         m_heightSpinBox->setValue(bounds.height());
+        m_lastKnownWidth = bounds.width();
+        m_lastKnownHeight = bounds.height();
         
         // 获取旋转角度
         if (shape) {
-            // 从QTransform中提取旋转角度
-            QTransform transform = shape->transform();
-            qreal rotationRad = qAtan2(transform.m21(), transform.m11());
-            qreal rotationDeg = rotationRad * 180.0 / M_PI;
-            m_rotationSpinBox->setValue(rotationDeg);
+            // 改进的角度提取方法，处理Qt坐标系差异
+            double angle = extractRotationFromTransform(shape->transform());
+            // Qt的rotate()是顺时针为正，我们需要转换为逆时针为正的显示
+            angle = -angle; // 转换坐标系
+            // 标准化到 [0, 360) 范围
+            while (angle < 0) angle += 360.0;
+            while (angle >= 360.0) angle -= 360.0;
+            
+            m_rotationSpinBox->setValue(angle);
+            m_lastKnownRotation = angle;
         } else {
-            m_rotationSpinBox->setValue(item->rotation());
+            double rotation = item->rotation();
+            // Qt的rotation()也是顺时针为正，转换为逆时针显示
+            rotation = -rotation;
+            // 标准化到 [0, 360) 范围
+            while (rotation < 0) rotation += 360.0;
+            while (rotation >= 360.0) rotation -= 360.0;
+            
+            m_rotationSpinBox->setValue(rotation);
+            m_lastKnownRotation = rotation;
         }
         
         if (shape) {
@@ -382,9 +415,55 @@ void PropertyPanel::onSizeChanged()
     QList<QGraphicsItem*> selected = m_scene->selectedItems();
     if (selected.size() == 1) {
         QGraphicsItem *item = selected.first();
-        // This is a simplified implementation
-        // In a real application, you would need to handle different item types
-        m_scene->setModified(true);
+        DrawingShape *shape = dynamic_cast<DrawingShape*>(item);
+        
+        if (shape) {
+            // 保存旧值用于递归检测
+            double oldWidth = m_lastKnownWidth;
+            double oldHeight = m_lastKnownHeight;
+            double newWidth = m_widthSpinBox->value();
+            double newHeight = m_heightSpinBox->value();
+            
+            // 避免微小变化导致的递归
+            if (qAbs(oldWidth - newWidth) < 0.01 && qAbs(oldHeight - newHeight) < 0.01) {
+                return;
+            }
+            
+            m_updating = true;
+            m_lastKnownWidth = newWidth;
+            m_lastKnownHeight = newHeight;
+            
+            // 根据形状类型调整大小
+            switch (shape->shapeType()) {
+                case DrawingShape::Rectangle: {
+                    DrawingRectangle *rect = static_cast<DrawingRectangle*>(shape);
+                    QRectF currentRect = rect->rectangle();
+                    QRectF newRect(currentRect.x(), currentRect.y(), newWidth, newHeight);
+                    rect->setRectangle(newRect);
+                    break;
+                }
+                case DrawingShape::Ellipse: {
+                    DrawingEllipse *ellipse = static_cast<DrawingEllipse*>(shape);
+                    QRectF currentRect = ellipse->ellipse();
+                    QRectF newRect(currentRect.x(), currentRect.y(), newWidth, newHeight);
+                    ellipse->setEllipse(newRect);
+                    break;
+                }
+                default:
+                    // 对于其他形状，使用变换来调整大小
+                    QRectF bounds = shape->boundingRect();
+                    double scaleX = newWidth / bounds.width();
+                    double scaleY = newHeight / bounds.height();
+                    
+                    QTransform transform;
+                    transform.scale(scaleX, scaleY);
+                    shape->setTransform(transform);
+                    break;
+            }
+            
+            m_scene->setModified(true);
+            m_updating = false;
+        }
     }
 }
 
@@ -397,23 +476,49 @@ void PropertyPanel::onRotationChanged()
     QList<QGraphicsItem*> selected = m_scene->selectedItems();
     if (selected.size() == 1) {
         QGraphicsItem *item = selected.first();
-        DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(item);
+        DrawingShape *shape = dynamic_cast<DrawingShape*>(item);
+        
+        // 直接从SpinBox获取当前值
+        double newAngle = m_rotationSpinBox->value();
+        
+        // 由于使用editingFinished，不需要检查微小变化
+        
+        m_updating = true;
+        m_lastKnownRotation = newAngle;
         
         if (shape) {
-            // 对于DrawingShape，使用QTransform设置旋转
-            QTransform transform = shape->transform();
-            QPointF center = shape->boundingRect().center();
-            qreal angleDeg = m_rotationSpinBox->value();
-            transform.translate(center.x(), center.y());
-            transform.rotate(angleDeg);
-            transform.translate(-center.x(), -center.y());
-            shape->applyTransform(transform, center);
+            // 对于DrawingShape，设置绝对角度（不是增量），但保留位移和缩放
+            // 使用变换中心（场景原点）而不是图形中心
+            QPointF center = shape->transformOriginPoint();
+            
+            // 获取当前变换并提取各分量
+            QTransform currentTransform = shape->transform();
+            
+            // 提取位移分量
+            double translateX = currentTransform.dx();
+            double translateY = currentTransform.dy();
+            
+            // 提取缩放分量（使用更准确的方法）
+            double scaleX = qSqrt(currentTransform.m11() * currentTransform.m11() + currentTransform.m21() * currentTransform.m21());
+            double scaleY = qSqrt(currentTransform.m12() * currentTransform.m12() + currentTransform.m22() * currentTransform.m22());
+            
+            // 创建新的变换：保留缩放和位移，设置绝对角度
+            // 使用变换分量系统，链式调用：缩放 → 旋转 → 平移
+            QTransform newTransform = 
+                Scale{QPointF(scaleX, scaleY), center} *
+                Rotate{-newAngle, center} *
+                Translate{QPointF(translateX, translateY)};
+            
+            // 使用applyTransform而不是setTransform，确保通知机制正常工作
+            shape->applyTransform(newTransform, center);
         } else {
             // 对于其他图形项，使用标准旋转
-            item->setRotation(m_rotationSpinBox->value());
+            // 注意：Qt的setRotation()也是顺时针为正，需要转换
+            item->setRotation(-newAngle);
         }
         
         m_scene->setModified(true);
+        m_updating = false;
     }
 }
 
@@ -426,7 +531,7 @@ void PropertyPanel::onFillColorChanged()
     QList<QGraphicsItem*> selected = m_scene->selectedItems();
     if (selected.size() == 1) {
         QGraphicsItem *item = selected.first();
-        DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(item);
+        DrawingShape *shape = dynamic_cast<DrawingShape*>(item);
         if (shape) {
             QColor color = QColorDialog::getColor(shape->fillBrush().color(), this, "选择填充颜色");
             if (color.isValid()) {
@@ -448,7 +553,7 @@ void PropertyPanel::onStrokeColorChanged()
     QList<QGraphicsItem*> selected = m_scene->selectedItems();
     if (selected.size() == 1) {
         QGraphicsItem *item = selected.first();
-        DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(item);
+        DrawingShape *shape = dynamic_cast<DrawingShape*>(item);
         if (shape) {
             QColor color = QColorDialog::getColor(shape->strokePen().color(), this, "选择描边颜色");
             if (color.isValid()) {
@@ -472,7 +577,7 @@ void PropertyPanel::onStrokeWidthChanged()
     QList<QGraphicsItem*> selected = m_scene->selectedItems();
     if (selected.size() == 1) {
         QGraphicsItem *item = selected.first();
-        DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(item);
+        DrawingShape *shape = dynamic_cast<DrawingShape*>(item);
         if (shape) {
             QPen pen = shape->strokePen();
             pen.setWidth(m_strokeWidthSpinBox->value());
@@ -491,7 +596,7 @@ void PropertyPanel::onStrokeStyleChanged()
     QList<QGraphicsItem*> selected = m_scene->selectedItems();
     if (selected.size() == 1) {
         QGraphicsItem *item = selected.first();
-        DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(item);
+        DrawingShape *shape = dynamic_cast<DrawingShape*>(item);
         if (shape) {
             Qt::PenStyle style = static_cast<Qt::PenStyle>(m_strokeStyleComboBox->currentData().toInt());
             QPen pen = shape->strokePen();

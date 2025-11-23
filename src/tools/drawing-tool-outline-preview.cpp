@@ -1,10 +1,10 @@
-#include "../tools/drawing-tool-outline-preview.h"
-#include "../ui/drawingview.h"
 #include <QGraphicsScene>
 #include <QGraphicsItem>
 #include <QGraphicsSceneMouseEvent>
 #include <QGraphicsSceneHoverEvent>
 #include <QTimer>
+#include "../tools/drawing-tool-outline-preview.h"
+#include "../ui/drawingview.h"
 #include "../core/drawing-shape.h"
 #include "../ui/drawingscene.h"
 #include "../tools/transform-handle.h"
@@ -273,12 +273,19 @@ bool OutlinePreviewTransformTool::mouseMoveEvent(QMouseEvent *event, const QPoin
         if (m_handleManager && m_view && m_state == STATE_IDLE)
         {
             TransformHandle::HandleType handle = m_handleManager->getHandleAtPosition(scenePos);
-            if (handle == TransformHandle::Center)
-                m_view->setCursor(Qt::SizeAllCursor);
-            else if (handle != TransformHandle::None)
-                m_view->setCursor(Qt::CrossCursor);
-            else
-                m_view->setCursor(Qt::ArrowCursor);
+            
+            // 选择工具专注于基本操作，不处理节点高亮
+            bool hoveringOnPath = false;
+            
+            if (!hoveringOnPath) {
+                // 没有悬停在路径上，使用原来的手柄检测逻辑
+                if (handle == TransformHandle::Center)
+                    m_view->setCursor(Qt::SizeAllCursor);
+                else if (handle != TransformHandle::None)
+                    m_view->setCursor(Qt::CrossCursor);
+                else
+                    m_view->setCursor(Qt::ArrowCursor);
+            }
 
             // 更新手柄悬停效果
             m_handleManager->updateHandleHover(scenePos);
@@ -703,7 +710,6 @@ void OutlinePreviewTransformTool::ungrab(bool apply, const QPointF &finalMousePo
     if (m_scene)
     {
         m_scene->endTransform();
-        // m_scene->emitSelectionChanged();
     }
 }
 
@@ -830,7 +836,19 @@ void OutlinePreviewTransformTool::onSelectionChanged()
 {
     // 清理无效的图形引用（已被删除的对象）
     cleanupInvalidShapes();
-    // qDebug() << "Selection changed, cleaning up invalid shapes";
+    
+    // 选择工具只处理基本选择，不管理节点显示
+    if (m_scene) {
+        QList<QGraphicsItem *> selectedItems = m_scene->selectedItems();
+        for (QGraphicsItem *item : selectedItems) {
+            // 先检查类型，确保是DrawingShape
+            if (item->type() >= QGraphicsItem::UserType + 1 && item->type() <= QGraphicsItem::UserType + 10) {
+                DrawingShape *shape = static_cast<DrawingShape*>(item);
+                shape->clearHighlights();
+            }
+        }
+    }
+    
     // 更新UI
     //  disableInternalSelectionIndicators();
 

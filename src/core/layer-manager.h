@@ -71,6 +71,7 @@ signals:
     void layerChanged(DrawingLayer *layer);
     void activeLayerChanged(DrawingLayer *layer);
     void layersReordered();
+    void layerContentChanged(DrawingLayer *layer);  // 图层内容变化信号
 
 private slots:
     void onLayerPropertyChanged();

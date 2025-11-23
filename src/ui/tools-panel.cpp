@@ -1,10 +1,3 @@
-#include "../ui/tools-panel.h"
-#include "../core/toolbase.h"
-#include "../ui/drawingscene.h"
-#include "../tools/drawing-tool-brush.h"
-#include "../tools/drawing-tool-pen.h"
-#include "../tools/drawing-tool-eraser.h"
-#include "../tools/drawing-tool-fill.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
@@ -15,6 +8,13 @@
 #include <QPushButton>
 #include <QComboBox>
 #include <QCheckBox>
+#include "../ui/tools-panel.h"
+#include "../core/toolbase.h"
+#include "../ui/drawingscene.h"
+#include "../tools/drawing-tool-brush.h"
+#include "../tools/drawing-tool-pen.h"
+#include "../tools/drawing-tool-eraser.h"
+#include "../tools/drawing-tool-fill.h"
 
 ToolsPanel::ToolsPanel(QWidget *parent)
     : QWidget(parent)

@@ -1,8 +1,8 @@
+#include <QGraphicsScene>
+#include <QMouseEvent>
 #include "../tools/drawing-tool-line.h"
 #include "../ui/drawingscene.h"
 #include "../ui/drawingview.h"
-#include <QGraphicsScene>
-#include <QMouseEvent>
 
 DrawingToolLine::DrawingToolLine(QObject *parent)
     : ToolBase(parent)

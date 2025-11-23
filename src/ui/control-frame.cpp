@@ -1,9 +1,9 @@
-#include "../ui/control-frame.h"
 #include <QPainter>
 #include <QStyleOptionGraphicsItem>
 #include <QGraphicsSceneMouseEvent>
 #include <QCursor>
 #include <QDebug>
+#include "../ui/control-frame.h"
 
 ControlFrame::ControlFrame(QGraphicsItem *parent)
     : QGraphicsObject(parent)

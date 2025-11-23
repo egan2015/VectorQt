@@ -1,4 +1,3 @@
-#include "../tools/handle-item.h"
 #include <QGraphicsSceneHoverEvent>
 #include <QPen>
 #include <QBrush>
@@ -6,6 +5,7 @@
 #include <QPainter>
 #include <QStyleOptionGraphicsItem>
 #include <QWidget>
+#include "../tools/handle-item.h"
 
 // HandleItemBase 实现
 HandleItemBase::HandleItemBase(TransformHandle::HandleType type, HandleStyle style)

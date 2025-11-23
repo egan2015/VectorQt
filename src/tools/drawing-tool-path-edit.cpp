@@ -1,8 +1,3 @@
-#include "../tools/drawing-tool-path-edit.h"
-#include "../ui/drawingscene.h"
-#include "../ui/drawingview.h"
-#include "../core/drawing-shape.h"
-#include "../core/patheditor.h"
 #include <QGraphicsScene>
 #include <QGraphicsTextItem>
 #include <QMouseEvent>
@@ -12,6 +7,11 @@
 #include <QDebug>
 #include <QPointer>
 #include <QUndoCommand>
+#include "../tools/drawing-tool-path-edit.h"
+#include "../ui/drawingscene.h"
+#include "../ui/drawingview.h"
+#include "../core/drawing-shape.h"
+#include "../core/patheditor.h"
 
 DrawingToolPathEdit::DrawingToolPathEdit(QObject *parent)
     : ToolBase(parent)
@@ -429,6 +429,26 @@ void DrawingToolPathEdit::showContextMenu(const QPointF &scenePos)
     QAction *starAction = shapeMenu->addAction("星形");
     QAction *gearAction = shapeMenu->addAction("齿轮");
     
+    // 检查是否有选中的文本对象
+    bool hasTextSelection = false;
+    if (m_scene) {
+        QList<QGraphicsItem *> selected = m_scene->selectedItems();
+        for (QGraphicsItem *item : selected) {
+            DrawingText *textShape = qgraphicsitem_cast<DrawingText*>(item);
+            if (textShape) {
+                hasTextSelection = true;
+                break;
+            }
+        }
+    }
+    
+    // 如果有选中的文本，添加文本转路径选项
+    QAction *convertTextToPathAction = nullptr;
+    if (hasTextSelection) {
+        contextMenu.addSeparator();
+        convertTextToPathAction = contextMenu.addAction("文本转路径");
+    }
+    
     // 显示菜单
     QAction *selectedAction = contextMenu.exec(QCursor::pos());
     
@@ -647,6 +667,42 @@ void DrawingToolPathEdit::showContextMenu(const QPointF &scenePos)
             newPath->setFillBrush(QBrush(Qt::gray));
             m_scene->addItem(newPath);
             m_scene->setModified(true);
+        }
+    } else if (selectedAction == convertTextToPathAction) {
+        // 处理文本转路径
+        if (m_scene) {
+            QList<QGraphicsItem *> selected = m_scene->selectedItems();
+            QList<DrawingShape*> convertedShapes;
+            
+            for (QGraphicsItem *item : selected) {
+                DrawingText *textShape = qgraphicsitem_cast<DrawingText*>(item);
+                if (textShape) {
+                    // 将文本转换为路径
+                    DrawingPath *pathShape = textShape->convertToPath();
+                    if (pathShape) {
+                        // 从选择列表中移除原始文本
+                        m_selectedPaths.removeAll(textShape);
+                        
+                        // 添加到场景
+                        m_scene->addItem(pathShape);
+                        pathShape->setSelected(true);
+                        convertedShapes.append(pathShape);
+                        
+                        // 添加到选择列表
+                        m_selectedPaths.append(pathShape);
+                        
+                        // 安全地移除原始文本
+                        textShape->setSelected(false);
+                        m_scene->removeItem(textShape);
+                        delete textShape; // 现在可以安全删除，因为已经从选择列表中移除
+                    }
+                }
+            }
+            
+            if (!convertedShapes.isEmpty()) {
+                m_scene->setModified(true);
+                showTemporaryMessage(QString("已将 %1 个文本转换为路径").arg(convertedShapes.size()), QCursor::pos());
+            }
         }
     }
 }

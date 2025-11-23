@@ -1,4 +1,3 @@
-#include "../ui/ruler.h"
 #include <QPainter>
 #include <QFontMetrics>
 #include <QDebug>
@@ -6,6 +5,7 @@
 #include <QMenu>
 #include <QContextMenuEvent>
 #include <QEnterEvent>
+#include "../ui/ruler.h"
 
 Ruler::Ruler(Orientation orientation, QWidget *parent)
     : QWidget(parent)

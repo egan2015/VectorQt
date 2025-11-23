@@ -2,17 +2,22 @@
 #define LAYER_PANEL_H
 
 #include <QWidget>
-#include <QListWidget>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QPushButton>
 #include <QLabel>
 #include <QToolBar>
 #include <QAction>
+#include <QTreeWidget>
+#include <QTreeWidgetItem>
 
 class DrawingScene;
 class DrawingLayer;
+class DrawingGroup;
+class DrawingShape;
 class LayerManager;
+class ObjectTreeView;
+class ObjectTreeModel;
 
 /**
  * 图层管理面板
@@ -54,19 +59,28 @@ private slots:
     void onMoveLayerDown();
     void onDuplicateLayer();
     void onMergeLayerDown();
-    void onLayerItemChanged(QListWidgetItem *item);
-    void onLayerItemClicked(QListWidgetItem *item);
-    void onLayerItemDoubleClicked(QListWidgetItem *item);
+    void onLayerItemChanged(QTreeWidgetItem *item, int column);
+    void onLayerItemClicked(QTreeWidgetItem *item, int column);
+    void onLayerItemDoubleClicked(QTreeWidgetItem *item, int column);
+    void onLayerAdded();
 
 private:
     void setupUI();
     void updateLayerButtons();
-    QListWidgetItem* createLayerItem(DrawingLayer *layer, int index);
+    QTreeWidgetItem* createLayerItem(DrawingLayer *layer, int index);
+    void populateLayerTree();
+    void addObjectsToLayerItem(QTreeWidgetItem *layerItem, DrawingLayer *layer);
+    void addGroupAsShapeItem(QTreeWidgetItem *parentItem, DrawingGroup *group);
+    void addGroupChildrenToShapeItem(QTreeWidgetItem *groupItem, DrawingGroup *group);
+    QString getShapeName(DrawingShape *shape) const;
+    QString getItemPath(QTreeWidgetItem *item) const;
+    QTreeWidgetItem* findItemByPath(const QString &path) const;
     
     DrawingScene *m_scene;
     LayerManager *m_layerManager;
-    QListWidget *m_layerList;
+    QTreeWidget *m_layerTree;
     QLabel *m_layerCountLabel;
+    ObjectTreeModel *m_objectTreeModel;
     
     // 工具栏按钮
     QAction *m_addLayerAction;

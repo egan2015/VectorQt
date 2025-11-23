@@ -1,4 +1,3 @@
-#include "../ui/cursor-manager.h"
 #include <QWidget>
 #include <QApplication>
 #include <QHash>
@@ -6,6 +5,7 @@
 #include <QPen>
 #include <QPainterPath>
 #include <QtMath>
+#include "../ui/cursor-manager.h"
 
 CursorManager& CursorManager::instance()
 {

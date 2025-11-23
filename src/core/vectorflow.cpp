@@ -1,6 +1,6 @@
+#include <QApplication>
 #include "../core/vectorflow.h"
 #include "../ui/mainwindow.h"
-#include <QApplication>
 
 VectorQt::VectorQt()
 {

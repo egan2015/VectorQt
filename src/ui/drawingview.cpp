@@ -1,10 +1,10 @@
-#include "../ui/drawingview.h"
-#include "../core/toolbase.h"
 #include <QWheelEvent>
 #include <QMouseEvent>
 #include <QResizeEvent>
 #include <QKeyEvent>
 #include <QPainter>
+#include "../ui/drawingview.h"
+#include "../core/toolbase.h"
 
 DrawingView::DrawingView(QGraphicsScene *scene, QWidget *parent)
     : QGraphicsView(scene, parent)

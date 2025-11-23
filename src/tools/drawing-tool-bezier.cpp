@@ -1,10 +1,10 @@
-#include "../tools/drawing-tool-bezier.h"
-#include "../ui/drawingscene.h"
-#include "../core/drawing-shape.h"
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
 #include <QDebug>
+#include "../tools/drawing-tool-bezier.h"
+#include "../ui/drawingscene.h"
+#include "../core/drawing-shape.h"
 
 DrawingBezierTool::DrawingBezierTool(QObject *parent)
     : ToolBase(parent)

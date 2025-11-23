@@ -1,9 +1,3 @@
-#include "../core/svghandler.h"
-#include "../ui/drawingscene.h"
-#include "../core/drawing-shape.h"
-#include "../core/drawing-layer.h"
-#include "../core/drawing-group.h"
-#include "../core/layer-manager.h"
 #include <QFile>
 #include <QDomDocument>
 #include <QDomElement>
@@ -16,6 +10,12 @@
 #include <QPointF>
 #include <QTransform>
 #include <QDebug>
+#include "../core/svghandler.h"
+#include "../ui/drawingscene.h"
+#include "../core/drawing-shape.h"
+#include "../core/drawing-layer.h"
+#include "../core/drawing-group.h"
+#include "../core/layer-manager.h"
 
 // 渐变存储
 static QHash<QString, QGradient> s_gradients;
@@ -31,6 +31,9 @@ static QHash<QString, QDomElement> s_markers;
 
 // Marker渲染缓存
 static QHash<QString, QPixmap> s_markerCache;
+
+// 定义的元素存储（用于use元素）
+static QHash<QString, QDomElement> s_definedElements;
 
 bool SvgHandler::importFromSvg(DrawingScene *scene, const QString &fileName)
 {
@@ -67,7 +70,13 @@ bool SvgHandler::parseSvgDocument(DrawingScene *scene, const QDomDocument &doc)
         return false;
     }
     
-    // 首先解析defs元素中的渐变定义
+    // 清空之前存储的定义元素
+    s_definedElements.clear();
+    
+    // 首先收集所有定义的元素（用于use元素）
+    collectDefinedElements(root);
+    
+    // 解析defs元素中的渐变定义
     parseDefsElements(root);
     
     // 解析滤镜定义
@@ -151,9 +160,7 @@ DrawingShape* SvgHandler::parseSvgElement(const QDomElement &element)
             // 这些是定义元素，不创建图形
             return nullptr;
         } else if (tagName == "use") {
-            // TODO: 实现use元素支持
-            // qDebug() << "暂不支持的元素:" << tagName;
-            return nullptr;
+            return parseUseElement(element);
         } else if (tagName == "image") {
             // TODO: 实现image元素支持
             // qDebug() << "暂不支持的元素:" << tagName;
@@ -336,15 +343,18 @@ DrawingPath* SvgHandler::parsePathElement(const QDomElement &element)
     
     // 自动生成控制点用于节点编辑
     QVector<QPointF> controlPoints;
+    QVector<QPainterPath::ElementType> controlPointTypes;
+    
     for (int i = 0; i < path.elementCount(); ++i) {
         QPainterPath::Element element = path.elementAt(i);
-        if (element.type == QPainterPath::MoveToElement || 
-            element.type == QPainterPath::LineToElement ||
-            element.type == QPainterPath::CurveToElement) {
-            controlPoints.append(QPointF(element.x, element.y));
-        }
+        // 保存所有元素作为控制点，包括曲线数据点
+        controlPoints.append(QPointF(element.x, element.y));
+        controlPointTypes.append(element.type);
     }
+    
     drawingPath->setControlPoints(controlPoints);
+    // 设置控制点类型信息
+    drawingPath->setControlPointTypes(controlPointTypes);
     
     // 解析样式属性
     parseStyleAttributes(drawingPath, element);
@@ -360,17 +370,8 @@ DrawingPath* SvgHandler::parsePathElement(const QDomElement &element)
     QString markerMid = element.attribute("marker-mid");
     QString markerEnd = element.attribute("marker-end");
     
-    // 应用Marker（目前只支持end marker）
-    if (!markerEnd.isEmpty()) {
-        // 提取marker ID
-        QRegularExpression markerRegex("url\\(#([^\\)]+)\\)");
-        QRegularExpressionMatch match = markerRegex.match(markerEnd);
-        if (match.hasMatch()) {
-            QString markerId = match.captured(1);
-            applyMarkerToPath(drawingPath, markerId);
-        } else {
-        }
-    }
+    // 应用Marker
+    applyMarkers(drawingPath, markerStart, markerMid, markerEnd);
     
     return drawingPath;
 }
@@ -738,16 +739,8 @@ DrawingPath* SvgHandler::parseLineElement(const QDomElement &element)
     QString markerMid = element.attribute("marker-mid");
     QString markerEnd = element.attribute("marker-end");
     
-    // 应用Marker（目前只支持end marker）
-    if (!markerEnd.isEmpty()) {
-        // 提取marker ID
-        QRegularExpression markerRegex("url\\(#([^\\)]+)\\)");
-        QRegularExpressionMatch match = markerRegex.match(markerEnd);
-        if (match.hasMatch()) {
-            QString markerId = match.captured(1);
-            applyMarkerToPath(line, markerId);
-        }
-    }
+    // 应用Marker
+    applyMarkers(line, markerStart, markerMid, markerEnd);
     
     return line;
 }
@@ -790,6 +783,14 @@ DrawingPath* SvgHandler::parsePolygonElement(const QDomElement &element)
     if (!transform.isEmpty()) {
         parseTransformAttribute(shape, transform);
     }
+    
+    // 解析Marker属性
+    QString markerStart = element.attribute("marker-start");
+    QString markerMid = element.attribute("marker-mid");
+    QString markerEnd = element.attribute("marker-end");
+    
+    // 应用Marker
+    applyMarkers(shape, markerStart, markerMid, markerEnd);
     
     return shape;
 }
@@ -2238,7 +2239,28 @@ QPainterPath SvgHandler::createMarkerPath(const QString &markerId, const QPointF
     return markerPath;
 }
 
-void SvgHandler::applyMarkerToPath(DrawingPath *path, const QString &markerId)
+// 应用所有类型的marker
+void SvgHandler::applyMarkers(DrawingPath *path, const QString &markerStart, const QString &markerMid, const QString &markerEnd)
+{
+    if (!path) {
+        return;
+    }
+    
+    // 应用end marker
+    if (!markerEnd.isEmpty()) {
+        QRegularExpression markerRegex("url\\(#([^\\)]+)\\)");
+        QRegularExpressionMatch match = markerRegex.match(markerEnd);
+        if (match.hasMatch()) {
+            QString markerId = match.captured(1);
+            applyMarkerToPath(path, markerId, "end");
+        }
+    }
+    
+    // TODO: 实现start和mid marker
+    // 需要扩展DrawingPath来支持多个marker
+}
+
+void SvgHandler::applyMarkerToPath(DrawingPath *path, const QString &markerId, const QString &position)
 {
     if (!path || markerId.isEmpty()) {
         return;
@@ -2264,14 +2286,33 @@ void SvgHandler::applyMarkerToPath(DrawingPath *path, const QString &markerId)
         QPointF startPoint = painterPath.elementAt(0);
         QPointF endPoint = painterPath.elementAt(painterPath.elementCount() - 1);
         
-        // 计算方向
-        qreal dx = endPoint.x() - startPoint.x();
-        qreal dy = endPoint.y() - startPoint.y();
-        qreal angle = qAtan2(dy, dx) * 180.0 / M_PI;
+        // 根据marker位置确定应用点和方向
+        QPointF markerPoint;
+        qreal angle = 0;
+        
+        if (position == "start") {
+            markerPoint = startPoint;
+            // 计算从起点到下一个点的方向
+            if (painterPath.elementCount() > 1) {
+                QPointF nextPoint = painterPath.elementAt(1);
+                qreal dx = nextPoint.x() - startPoint.x();
+                qreal dy = nextPoint.y() - startPoint.y();
+                angle = qAtan2(dy, dx) * 180.0 / M_PI;
+            }
+        } else { // "end" (默认)
+            markerPoint = endPoint;
+            // 计算从倒数第二个点到终点的方向
+            if (painterPath.elementCount() > 1) {
+                QPointF prevPoint = painterPath.elementAt(painterPath.elementCount() - 2);
+                qreal dx = endPoint.x() - prevPoint.x();
+                qreal dy = endPoint.y() - prevPoint.y();
+                angle = qAtan2(dy, dx) * 180.0 / M_PI;
+            }
+        }
         
         // 创建Marker图像变换
         QTransform transform;
-        transform.translate(endPoint.x() - refX, endPoint.y() - refY);
+        transform.translate(markerPoint.x() - refX, markerPoint.y() - refY);
         transform.rotate(angle);
         
         // 存储Marker信息用于渲染
@@ -2634,4 +2675,157 @@ QDomElement SvgHandler::exportPolygonToSvgElement(QDomDocument &doc, DrawingPoly
     }
     
     return polygonElement;
+}
+
+// 收集所有有id的元素（用于use元素）
+void SvgHandler::collectDefinedElements(const QDomElement &parent)
+{
+    QDomNodeList children = parent.childNodes();
+    for (int i = 0; i < children.size(); ++i) {
+        QDomNode node = children.at(i);
+        if (node.isElement()) {
+            QDomElement element = node.toElement();
+            QString tagName = element.tagName();
+            
+            // 如果元素有id，存储它
+            if (element.hasAttribute("id")) {
+                QString id = element.attribute("id");
+                s_definedElements[id] = element.cloneNode().toElement();
+            }
+            
+            // 递归处理子元素
+            if (tagName == "defs" || tagName == "g") {
+                collectDefinedElements(element);
+            }
+        }
+    }
+}
+
+// 解析use元素
+DrawingShape* SvgHandler::parseUseElement(const QDomElement &element)
+{
+    // 获取href属性（引用的元素ID）
+    QString href = element.attribute("href");
+    if (href.isEmpty()) {
+        href = element.attribute("xlink:href"); // 兼容旧版本SVG
+    }
+    
+    if (href.isEmpty() || !href.startsWith("#")) {
+        return nullptr;
+    }
+    
+    // 提取引用的ID
+    QString refId = href.mid(1); // 去掉#
+    
+    // 查找定义的元素
+    if (!s_definedElements.contains(refId)) {
+        return nullptr;
+    }
+    
+    QDomElement referencedElement = s_definedElements[refId];
+    
+    // 克隆并解析引用的元素
+    DrawingShape *shape = parseSvgElement(referencedElement);
+    if (!shape) {
+        return nullptr;
+    }
+    
+    // 应用use元素的位置偏移
+    qreal x = element.attribute("x", "0").toDouble();
+    qreal y = element.attribute("y", "0").toDouble();
+    
+    // 应用use元素的位置偏移
+    if (x != 0 || y != 0) {
+        shape->setPos(QPointF(x, y));
+    }
+    
+    // 解析并应用变换
+    QString transform = element.attribute("transform");
+    if (!transform.isEmpty()) {
+        // 对于use元素，需要调整旋转中心，考虑位置偏移
+        QString adjustedTransform = adjustTransformForUseElement(transform, x, y);
+        parseTransformAttribute(shape, adjustedTransform);
+    }
+    
+    // 解析样式属性（use元素的样式会覆盖引用元素的样式）
+    parseStyleAttributes(shape, element);
+    
+    // 处理特定属性的覆盖（例如fill、stroke等）
+    if (element.hasAttribute("fill")) {
+        QString fill = element.attribute("fill");
+        if (fill == "none") {
+            shape->setFillBrush(Qt::NoBrush);
+        } else {
+            QColor fillColor = parseColor(fill);
+            if (fillColor.isValid()) {
+                shape->setFillBrush(fillColor);
+            }
+        }
+    }
+    
+    if (element.hasAttribute("stroke")) {
+        QString stroke = element.attribute("stroke");
+        if (stroke == "none") {
+            shape->setStrokePen(Qt::NoPen);
+        } else {
+            QColor strokeColor = parseColor(stroke);
+            if (strokeColor.isValid()) {
+                QPen pen = shape->strokePen();
+                pen.setColor(strokeColor);
+                shape->setStrokePen(pen);
+            }
+        }
+    }
+    
+    if (element.hasAttribute("stroke-width")) {
+        qreal width = parseLength(element.attribute("stroke-width"));
+        if (width > 0) {
+            QPen pen = shape->strokePen();
+            pen.setWidthF(width);
+            shape->setStrokePen(pen);
+        }
+    }
+    
+    return shape;
+}
+
+// 调整use元素的变换，考虑位置偏移
+QString SvgHandler::adjustTransformForUseElement(const QString &transformStr, qreal x, qreal y)
+{
+    // 解析SVG变换字符串
+    QRegularExpression regex("(\\S+)\\s*\\(\\s*([^)]+)\\s*\\)");
+    QRegularExpressionMatchIterator iter = regex.globalMatch(transformStr);
+    
+    QString result;
+    
+    while (iter.hasNext()) {
+        QRegularExpressionMatch match = iter.next();
+        QString func = match.captured(1);
+        QString paramsStr = match.captured(2);
+        
+        QStringList params = paramsStr.split(QRegularExpression("\\s*,\\s*|\\s+"), Qt::SkipEmptyParts);
+        
+        if (!result.isEmpty()) {
+            result += " ";
+        }
+        
+        if (func == "rotate" && params.size() >= 1) {
+            qreal angle = params[0].toDouble();
+            qreal cx = 0, cy = 0;
+            if (params.size() >= 3) {
+                cx = params[1].toDouble();
+                cy = params[2].toDouble();
+                // 对于use元素，旋转中心需要减去位置偏移
+                // 因为parseTransformAttribute中的旋转实现假设形状在原点
+                cx -= x;
+                cy -= y;
+            }
+            result += QString("rotate(%1 %2 %3)").arg(angle).arg(cx).arg(cy);
+        } else {
+            // 其他变换保持不变
+            result += func + "(" + paramsStr + ")";
+        }
+    }
+    
+    return result;
 }

@@ -1,13 +1,13 @@
+#include <QMouseEvent>
+#include <QKeyEvent>
+#include <QPen>
+#include <QBrush>
 #include "../core/toolbase.h"
 #include "../ui/drawingview.h"
 #include "../ui/drawingscene.h"
 #include "../core/drawing-shape.h"
 #include "../core/drawing-layer.h"
 #include "../core/layer-manager.h"
-#include <QMouseEvent>
-#include <QKeyEvent>
-#include <QPen>
-#include <QBrush>
 
 // ToolBase
 ToolBase::ToolBase(QObject *parent)

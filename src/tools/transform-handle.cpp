@@ -1,8 +1,8 @@
-#include "../tools/transform-handle.h"
-#include "../ui/drawingscene.h"
 #include <QGraphicsScene>
 #include <QBrush>
 #include <QPen>
+#include "../tools/transform-handle.h"
+#include "../ui/drawingscene.h"
 
 // 静态颜色定义 - 现代化配色方案
 const QColor HandleManager::HANDLE_COLOR = QColor(255, 255, 255, 220);  // 更不透明的白色

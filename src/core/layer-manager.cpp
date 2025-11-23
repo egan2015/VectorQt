@@ -1,9 +1,9 @@
+#include <QDebug>
 #include "../core/layer-manager.h"
 #include "../ui/drawingscene.h"
 #include "../core/drawing-layer.h"
 #include "../core/drawing-shape.h"
 #include "../ui/layer-panel.h"
-#include <QDebug>
 
 // 静态成员变量初始化
 LayerManager *LayerManager::s_instance = nullptr;
@@ -48,7 +48,11 @@ LayerManager::~LayerManager()
 
 void LayerManager::setScene(DrawingScene *scene)
 {
+    qDebug() << "LayerManager::setScene called with scene:" << scene;
+    qDebug() << "Current m_scene:" << m_scene << "Current layers count:" << m_layers.count();
+    
     if (m_scene == scene) {
+        qDebug() << "Scene is the same, returning";
         return;
     }
     
@@ -73,7 +77,20 @@ void LayerManager::setScene(DrawingScene *scene)
             }
         }
         
-        qDebug() << "Default layer created successfully";
+        qDebug() << "Default layer created successfully, total layers:" << m_layers.count();
+        
+        // 发出图层添加信号，通知UI
+        qDebug() << "LayerManager: Emitting layerAdded signal for default layer:" << layer->name();
+        emit layerAdded(layer);
+        
+        // 检查是否有LayerPanel已经连接，如果有但可能错过了信号，手动更新
+        // 注意：这是一个临时解决方案，更好的架构应该是延迟初始化
+        if (m_layerPanel) {
+            qDebug() << "LayerManager: LayerPanel already exists, updating it";
+            updatePanel();
+        }
+    } else {
+        qDebug() << "Not creating default layer. m_scene:" << m_scene << "layers.isEmpty():" << m_layers.isEmpty();
     }
 }
 
@@ -451,7 +468,23 @@ void LayerManager::connectLayer(DrawingLayer *layer)
     }
     
     // 连接图层属性变化信号
-    // 这里需要DrawingLayer支持属性变化信号
+    connect(layer, &DrawingLayer::visibilityChanged, this, [this, layer]() {
+        emit layerChanged(layer);
+    });
+    connect(layer, &DrawingLayer::opacityChanged, this, [this, layer]() {
+        emit layerChanged(layer);
+    });
+    connect(layer, &DrawingLayer::nameChanged, this, [this, layer]() {
+        emit layerChanged(layer);
+    });
+    
+    // 连接图层内容变化信号
+    connect(layer, &DrawingLayer::shapeAdded, this, [this, layer]() {
+        emit layerContentChanged(layer);
+    });
+    connect(layer, &DrawingLayer::shapeRemoved, this, [this, layer]() {
+        emit layerContentChanged(layer);
+    });
 }
 
 void LayerManager::disconnectLayer(DrawingLayer *layer)
@@ -460,7 +493,8 @@ void LayerManager::disconnectLayer(DrawingLayer *layer)
         return;
     }
     
-    // 断开图层属性变化信号
+    // 断开所有信号连接
+    disconnect(layer, nullptr, this, nullptr);
 }
 
 void LayerManager::onLayerPropertyChanged()

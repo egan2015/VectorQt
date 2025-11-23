@@ -1,7 +1,7 @@
+#include <QDebug>
 #include "../tools/node-handle-manager.h"
 #include "../ui/drawingscene.h"
 #include "../core/drawing-shape.h"
-#include <QDebug>
 
 // 静态常量定义
 const qreal NodeHandleManager::DEFAULT_HANDLE_SIZE = 8.0;

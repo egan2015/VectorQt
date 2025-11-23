@@ -10,6 +10,7 @@ class LayerManager;
 class PropertyPanel;
 class ToolsPanel;
 class PageSettingsPanel;
+class ObjectTreeView;
 
 /**
  * Tab属性面板 - 使用TabBar布局组织不同功能面板
@@ -25,12 +26,14 @@ public:
     void addPropertiesPanel();
     void addLayersPanel();
     void addToolsPanel();
+    void addObjectTreePanel();
     void addPageSettingsPanel();
     
     // 获取特定面板
     PropertyPanel* getPropertiesPanel() const { return m_propertiesPanel; }
     LayerPanel* getLayersPanel() const { return m_layersPanel; }
     ToolsPanel* getToolsPanel() const { return m_toolsPanel; }
+    ObjectTreeView* getObjectTreeView() const { return m_objectTreeView; }
     PageSettingsPanel* getPageSettingsPanel() const { return m_pageSettingsPanel; }
     
     // 当前面板访问
@@ -41,6 +44,7 @@ public:
     void switchToPropertiesPanel();
     void switchToLayersPanel();
     void switchToToolsPanel();
+    void switchToObjectTreePanel();
     void switchToPageSettingsPanel();
     
     // 设置场景
@@ -50,12 +54,16 @@ public:
 
 signals:
     void currentPanelChanged(int index);
+    
+private slots:
+    void onCurrentPanelChanged(int index);
 
 private:
     // 面板实例
     PropertyPanel *m_propertiesPanel;
     LayerPanel *m_layersPanel;
     ToolsPanel *m_toolsPanel;
+    ObjectTreeView *m_objectTreeView;
     PageSettingsPanel *m_pageSettingsPanel;
     
     // 图层管理器引用

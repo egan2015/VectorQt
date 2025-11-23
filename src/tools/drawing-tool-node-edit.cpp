@@ -1,14 +1,15 @@
-#include "../tools/drawing-tool-node-edit.h"
-#include "../ui/drawingscene.h"
-#include "../core/drawing-shape.h"
-#include "../tools/node-handle-manager.h"
-#include "../tools/handle-item.h"
 #include <QMouseEvent>
 #include <QGraphicsScene>
 #include <QGraphicsItem>
 #include <QGraphicsPathItem>
 #include <QPainterPath>
 #include <QDebug>
+#include "../tools/drawing-tool-node-edit.h"
+#include "../ui/drawingscene.h"
+#include "../ui/drawingview.h"
+#include "../core/drawing-shape.h"
+#include "../tools/node-handle-manager.h"
+#include "../tools/handle-item.h"
 
 // NodeEditCommand 实现
 NodeEditCommand::NodeEditCommand(DrawingScene *scene, DrawingShape *shape, int nodeIndex,
@@ -295,6 +296,71 @@ bool DrawingNodeEditTool::mouseMoveEvent(QMouseEvent *event, const QPointF &scen
 
     
 
+    // 处理悬停检测和高亮 - 检测所有路径对象
+    if (m_scene && !m_dragging)
+    {
+        QList<QGraphicsItem *> allItems = m_scene->items();
+        bool hoveringOnNode = false;
+        DrawingShape *hoveredShape = nullptr;
+        
+        // 首先清除所有高亮
+        for (QGraphicsItem *item : allItems) {
+            // 跳过DrawingLayer
+            if (item->type() == QGraphicsItem::UserType + 100) {
+                continue;
+            }
+            
+            DrawingShape *shape = dynamic_cast<DrawingShape*>(item);
+            if (shape) {
+                shape->clearHighlights();
+            }
+        }
+        
+        // 然后检测悬停
+        for (QGraphicsItem *item : allItems) {
+            // 跳过DrawingLayer
+            if (item->type() == QGraphicsItem::UserType + 100) {
+                continue;
+            }
+            
+            // 使用安全的类型检查
+            DrawingShape *shape = dynamic_cast<DrawingShape*>(item);
+            if (shape) {
+                // 检查是否悬停在节点上（优先级更高）
+                int nodeIndex = shape->findNodeAt(scenePos, 8.0);
+                if (nodeIndex >= 0) {
+                    // 悬停在节点上 - 显示高亮（只有选中的对象才显示节点高亮）
+                    QList<QGraphicsItem *> selectedItems = m_scene->selectedItems();
+                    if (selectedItems.contains(item)) {
+                        shape->highlightNode(nodeIndex);
+                        if (m_view) {
+                            m_view->setCursor(QCursor(Qt::CrossCursor)); // 探针指针
+                        }
+                    }
+                    hoveringOnNode = true;
+                    hoveredShape = shape;
+                    break; // 找到一个就停止
+                } else if (shape->isPointOnPath(scenePos, 5.0)) {
+                    // 悬停在路径上 - 显示路径高亮
+                    shape->highlightPath(scenePos);
+                    if (m_view) {
+                        m_view->setCursor(QCursor(Qt::PointingHandCursor)); // 手型指针
+                    }
+                    hoveringOnNode = true;
+                    hoveredShape = shape;
+                    break; // 找到一个就停止
+                }
+            }
+        }
+        
+        // 没有悬停在路径上时恢复箭头光标
+        if (!hoveringOnNode && m_view) {
+            m_view->setCursor(Qt::ArrowCursor);
+        }
+        
+        return hoveringOnNode;
+    }
+    
     // 在节点编辑状态下，不调用父类的mouseMoveEvent，以防止图形被移动
     return false;
 }

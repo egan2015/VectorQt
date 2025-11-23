@@ -1,9 +1,3 @@
-#include "../tools/drawing-tool-gradient-fill.h"
-#include "../ui/drawingscene.h"
-#include "../ui/drawingview.h"
-#include "../core/drawing-shape.h"
-#include "../ui/mainwindow.h"
-#include "../ui/colorpalette.h"
 #include <QGraphicsScene>
 #include <QMouseEvent>
 #include <QKeyEvent>
@@ -12,6 +6,12 @@
 #include <QGraphicsEllipseItem>
 #include <QGraphicsLineItem>
 #include <algorithm>
+#include "../tools/drawing-tool-gradient-fill.h"
+#include "../ui/drawingscene.h"
+#include "../ui/drawingview.h"
+#include "../core/drawing-shape.h"
+#include "../ui/mainwindow.h"
+#include "../ui/colorpalette.h"
 
 DrawingToolGradientFill::DrawingToolGradientFill(QObject *parent)
     : ToolBase(parent)

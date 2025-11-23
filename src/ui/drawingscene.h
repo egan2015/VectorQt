@@ -57,6 +57,12 @@ public:
     void ungroupSelectedItems();
     void endTransformWithStates(const QList<TransformState>& newStates);
     
+    // Z序控制操作
+    void bringToFront();
+    void sendToBack();
+    void bringForward();
+    void sendBackward();
+    
     // 网格功能
     void setGridVisible(bool visible);
     bool isGridVisible() const;
@@ -203,11 +209,13 @@ signals:
     void objectStateChanged(DrawingShape* shape); // 对象状态变化通知
     void selectionChanged(); // 选择变化通知
     void sceneAboutToBeCleared(); // 场景即将被清理通知
+    void contextMenuRequested(const QPointF &pos); // 右键菜单请求信号
 
 protected:
     void mousePressEvent(QGraphicsSceneMouseEvent *event) override;
     void mouseMoveEvent(QGraphicsSceneMouseEvent *event) override;
     void mouseReleaseEvent(QGraphicsSceneMouseEvent *event) override;
+    void contextMenuEvent(QGraphicsSceneContextMenuEvent *event) override;
     
     void keyPressEvent(QKeyEvent *event) override;
     void drawBackground(QPainter *painter, const QRectF &rect) override;

@@ -3,10 +3,18 @@
 #include <QKeyEvent>
 #include <QUndoCommand>
 #include <QPainter>
+#include <QStyleOptionGraphicsItem>
 #include <QDebug>
+#include <QGraphicsScene>
+#include <QTimer>
+#include <QPointer>
+#include <algorithm>
+#include <limits>
 #include "../ui/drawingscene.h"
 #include "../core/drawing-shape.h"
 #include "../core/drawing-group.h"
+#include "../core/drawing-layer.h"
+#include "../core/layer-manager.h"
 
 class AddItemCommand : public QUndoCommand
 {
@@ -333,11 +341,19 @@ public:
         m_scene->clearSelection();
         
         // 从组合中移除所有项目并恢复到场景（检查对象有效性）
+        LayerManager *layerManager = LayerManager::instance();
+        DrawingLayer *activeLayer = layerManager ? layerManager->activeLayer() : nullptr;
+        
         for (int i = 0; i < m_shapes.size(); ++i) {
             DrawingShape *shape = m_shapes[i];
             if (shape && shape->scene()) {
                 // 从组合中移除（DrawingGroup::removeItem会自动处理坐标转换）
                 m_group->removeItem(shape);
+                
+                // 将形状重新添加到图层
+                if (activeLayer) {
+                    activeLayer->addShape(shape);
+                }
                 
                 // 恢复原始父项
                 if (m_originalParents[i]) {
@@ -351,9 +367,15 @@ public:
             }
         }
         
-        // 从场景中移除并删除组合对象
+        // 从场景和图层中移除组合对象
         if (m_group->scene()) {
             m_scene->removeItem(m_group);
+            
+            // 从活动图层移除组
+            LayerManager *layerManager = LayerManager::instance();
+            if (layerManager && layerManager->activeLayer()) {
+                layerManager->activeLayer()->removeShape(m_group);
+            }
         }
         delete m_group;
         m_group = nullptr;
@@ -375,19 +397,35 @@ public:
         // 设置组合位置
         m_group->setPos(m_groupPosition);
         
-        // 添加组合到场景
+        // 添加组合到场景和活动图层
         if (!m_group->scene()) {
             m_scene->addItem(m_group);
+            
+            // 将组添加到活动图层
+            LayerManager *layerManager = LayerManager::instance();
+            if (layerManager && layerManager->activeLayer()) {
+                layerManager->activeLayer()->addShape(m_group);
+            }
         }
         
         // 清除选择
         m_scene->clearSelection();
         
         // 将所有形状添加到组合中（检查对象有效性）
+        LayerManager *layerManager = LayerManager::instance();
+        DrawingLayer *activeLayer = layerManager ? layerManager->activeLayer() : nullptr;
+        
         for (DrawingShape *shape : m_shapes) {
             if (shape && shape->scene()) {
                 // 确保对象仍然有效且在场景中
                 shape->setSelected(false);
+                
+                // 从图层中移除形状（因为现在它属于组）
+                if (activeLayer) {
+                    activeLayer->removeShape(shape);
+                }
+                
+                // 添加到组中
                 m_group->addItem(shape);
             }
         }
@@ -677,6 +715,12 @@ void DrawingScene::mouseMoveEvent(QGraphicsSceneMouseEvent *event)
 void DrawingScene::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
 {
     QGraphicsScene::mouseReleaseEvent(event);
+}
+
+void DrawingScene::contextMenuEvent(QGraphicsSceneContextMenuEvent *event)
+{
+    // 发出右键菜单请求信号，让MainWindow处理
+    emit contextMenuRequested(event->scenePos());
 }
 
 void DrawingScene::keyPressEvent(QKeyEvent *event)
@@ -1572,7 +1616,7 @@ void DrawingScene::groupSelectedItems()
     QList<DrawingShape*> shapesToGroup;
     for (QGraphicsItem *item : selected) {
         if (item && item->parentItem() == nullptr) {  // 确保项目没有父项
-            DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(item);
+            DrawingShape *shape = dynamic_cast<DrawingShape*>(item);
             if (shape) {
                 shapesToGroup.append(shape);
             }
@@ -1600,9 +1644,9 @@ void DrawingScene::ungroupSelectedItems()
     QList<DrawingGroup*> groupsToUngroup;
     for (QGraphicsItem *item : selected) {
         if (item && item->type() == QGraphicsItem::UserType + 1) {
-            DrawingShape *shape = static_cast<DrawingShape*>(item);
+            DrawingShape *shape = dynamic_cast<DrawingShape*>(item);
             if (shape && shape->shapeType() == DrawingShape::Group) {
-                DrawingGroup *group = static_cast<DrawingGroup*>(item);
+                DrawingGroup *group = dynamic_cast<DrawingGroup*>(item);
                 groupsToUngroup.append(group);
             }
         }
@@ -1613,4 +1657,219 @@ void DrawingScene::ungroupSelectedItems()
         UngroupCommand *command = new UngroupCommand(this, group);
         m_undoStack.push(command);
     }
+}
+
+// Z序控制操作的实现
+void DrawingScene::bringToFront()
+{
+    QList<QGraphicsItem *> selected = selectedItems();
+    if (selected.isEmpty()) {
+        return;
+    }
+    
+    // 获取场景中所有项（不包括选中的项）
+    QList<QGraphicsItem *> allItems = items();
+    QList<QGraphicsItem *> otherItems;
+    
+    for (QGraphicsItem *item : allItems) {
+        if (item && !selected.contains(item)) {
+            otherItems.append(item);
+        }
+    }
+    
+    if (otherItems.isEmpty()) {
+        return;
+    }
+    
+    // 找到最大Z值
+    qreal maxZ = -999999;
+    for (QGraphicsItem *item : otherItems) {
+        if (item && item->zValue() > maxZ) {
+            maxZ = item->zValue();
+        }
+    }
+    
+    // 将选中项设置为比最大Z值更大的值
+    for (QGraphicsItem *item : selected) {
+        if (item) {
+            item->setZValue(maxZ + 1);
+        }
+    }
+    
+    setModified(true);
+}
+
+void DrawingScene::sendToBack()
+{
+    QList<QGraphicsItem *> selected = selectedItems();
+    if (selected.isEmpty()) {
+        return;
+    }
+    
+    // 获取场景中所有项（不包括选中的项）
+    QList<QGraphicsItem *> allItems = items();
+    QList<QGraphicsItem *> otherItems;
+    
+    for (QGraphicsItem *item : allItems) {
+        if (item && !selected.contains(item)) {
+            otherItems.append(item);
+        }
+    }
+    
+    if (otherItems.isEmpty()) {
+        return;
+    }
+    
+    // 找到最小Z值
+    qreal minZ = 999999;
+    for (QGraphicsItem *item : otherItems) {
+        if (item && item->zValue() < minZ) {
+            minZ = item->zValue();
+        }
+    }
+    
+    // 将选中项设置为比最小Z值更小的值
+    for (QGraphicsItem *item : selected) {
+        if (item) {
+            item->setZValue(minZ - 1);
+        }
+    }
+    
+    setModified(true);
+}
+
+void DrawingScene::bringForward()
+{
+    QList<QGraphicsItem *> selected = selectedItems();
+    if (selected.isEmpty()) {
+        return;
+    }
+    
+    // 获取场景中所有项，按Z值排序
+    QList<QGraphicsItem *> allItems = items();
+    if (allItems.size() < 2) {
+        return;
+    }
+    
+    // 按Z值排序（从低到高）
+    std::sort(allItems.begin(), allItems.end(), [](const QGraphicsItem *a, const QGraphicsItem *b) {
+        return a->zValue() < b->zValue();
+    });
+    
+    for (QGraphicsItem *selectedItem : selected) {
+        if (!selectedItem) continue;
+        
+        // 获取选中项的边界框
+        QRectF selectedBounds = selectedItem->boundingRect().translated(selectedItem->pos());
+        
+        // 找到所有与选中项相交的对象
+        QList<QGraphicsItem*> intersectingItems;
+        for (QGraphicsItem *item : allItems) {
+            if (item == selectedItem || selected.contains(item)) continue;
+            
+            QRectF itemBounds = item->boundingRect().translated(item->pos());
+            if (selectedBounds.intersects(itemBounds)) {
+                intersectingItems.append(item);
+            }
+        }
+        
+        // 如果有相交的对象，只在这些相交对象中移动
+        if (!intersectingItems.isEmpty()) {
+            // 在相交对象中找到当前选中项的位置
+            int currentIndex = -1;
+            for (int i = 0; i < intersectingItems.size(); ++i) {
+                if (intersectingItems[i]->zValue() > selectedItem->zValue()) {
+                    currentIndex = i;
+                    break;
+                }
+            }
+            
+            // 如果找到更高Z值的相交对象，移动到最接近的那个的上方
+            if (currentIndex >= 0) {
+                QGraphicsItem *targetItem = intersectingItems[currentIndex];
+                selectedItem->setZValue(targetItem->zValue() + 0.01);
+            }
+        } else {
+            // 如果没有相交对象，在所有对象中找下一个更高的Z值
+            for (int i = 0; i < allItems.size() - 1; ++i) {
+                if (allItems[i] == selectedItem) {
+                    QGraphicsItem *nextItem = allItems[i + 1];
+                    if (!selected.contains(nextItem)) {
+                        selectedItem->setZValue(nextItem->zValue() + 0.01);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    
+    setModified(true);
+}
+
+void DrawingScene::sendBackward()
+{
+    QList<QGraphicsItem *> selected = selectedItems();
+    if (selected.isEmpty()) {
+        return;
+    }
+    
+    // 获取场景中所有项，按Z值排序
+    QList<QGraphicsItem *> allItems = items();
+    if (allItems.size() < 2) {
+        return;
+    }
+    
+    // 按Z值排序（从低到高）
+    std::sort(allItems.begin(), allItems.end(), [](const QGraphicsItem *a, const QGraphicsItem *b) {
+        return a->zValue() < b->zValue();
+    });
+    
+    for (QGraphicsItem *selectedItem : selected) {
+        if (!selectedItem) continue;
+        
+        // 获取选中项的边界框
+        QRectF selectedBounds = selectedItem->boundingRect().translated(selectedItem->pos());
+        
+        // 找到所有与选中项相交的对象
+        QList<QGraphicsItem*> intersectingItems;
+        for (QGraphicsItem *item : allItems) {
+            if (item == selectedItem || selected.contains(item)) continue;
+            
+            QRectF itemBounds = item->boundingRect().translated(item->pos());
+            if (selectedBounds.intersects(itemBounds)) {
+                intersectingItems.append(item);
+            }
+        }
+        
+        // 如果有相交的对象，只在这些相交对象中移动
+        if (!intersectingItems.isEmpty()) {
+            // 在相交对象中找到当前选中项的位置
+            int currentIndex = -1;
+            for (int i = intersectingItems.size() - 1; i >= 0; --i) {
+                if (intersectingItems[i]->zValue() < selectedItem->zValue()) {
+                    currentIndex = i;
+                    break;
+                }
+            }
+            
+            // 如果找到更低Z值的相交对象，移动到最接近的那个的下方
+            if (currentIndex >= 0) {
+                QGraphicsItem *targetItem = intersectingItems[currentIndex];
+                selectedItem->setZValue(targetItem->zValue() - 0.01);
+            }
+        } else {
+            // 如果没有相交对象，在所有对象中找下一个更低的Z值
+            for (int i = 1; i < allItems.size(); ++i) {
+                if (allItems[i] == selectedItem) {
+                    QGraphicsItem *prevItem = allItems[i - 1];
+                    if (!selected.contains(prevItem)) {
+                        selectedItem->setZValue(prevItem->zValue() - 0.01);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    
+    setModified(true);
 }

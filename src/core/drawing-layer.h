@@ -55,6 +55,8 @@ signals:
     void visibilityChanged(bool visible);
     void opacityChanged(qreal opacity);
     void nameChanged(const QString &name);
+    void shapeAdded(DrawingShape *shape);
+    void shapeRemoved(DrawingShape *shape);
 
 private:
     QString m_name;

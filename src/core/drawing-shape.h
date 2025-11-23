@@ -64,6 +64,11 @@ public:
     DrawingShape(ShapeType type, QGraphicsItem *parent = nullptr);
     ~DrawingShape();
     
+    // 对象ID管理
+    QString id() const { return m_id; }
+    void setId(const QString &id) { m_id = id; }
+    static QString generateUniqueId();
+    
     // 几何变换接口 - 直接使用QTransform
     virtual void applyTransform(const QTransform &transform, const QPointF &anchor = QPointF());
     QTransform transform() const { return m_transform; }
@@ -92,6 +97,15 @@ public:
     
     // 获取可用于布尔运算的路径（考虑变换）
     virtual QPainterPath transformedShape() const;
+    
+    // 视觉反馈和高亮支持
+    virtual void highlightNode(int index) { Q_UNUSED(index); }
+    virtual void highlightPath(const QPointF& point) { Q_UNUSED(point); }
+    virtual void clearHighlights() { m_highlightedNode = -1; m_highlightedPath = false; update(); }
+    
+    // 获取节点在指定位置的索引
+    virtual int findNodeAt(const QPointF& pos, qreal threshold = 5.0) const { Q_UNUSED(pos); Q_UNUSED(threshold); return -1; }
+    virtual bool isPointOnPath(const QPointF& pos, qreal threshold = 5.0) const { Q_UNUSED(pos); Q_UNUSED(threshold); return false; }
     
     // 样式属性
     void setFillBrush(const QBrush &brush) { m_fillBrush = brush; update(); notifyObjectStateChanged(); }
@@ -153,6 +167,7 @@ protected:
     // 子类需要实现的绘制方法（在本地坐标系中）
     virtual void paintShape(QPainter *painter) = 0;
     
+    QString m_id;           // 对象唯一标识符
     ShapeType m_type;
     QTransform m_transform;  // 直接使用Qt的变换系统
     QBrush m_fillBrush;
@@ -163,7 +178,7 @@ protected:
     bool m_editHandlesEnabled = false;
     
     // 选择边框显示控制
-    bool m_showSelectionIndicator = true;
+    bool m_showSelectionIndicator = false;
     
     // 网格对齐
     bool m_gridAlignmentEnabled = false;
@@ -175,6 +190,10 @@ protected:
     bool m_isMoving = false;
     bool m_transformStarted = false;
     QPointF m_moveStartPos;
+    
+    // 视觉反馈状态
+    int m_highlightedNode = -1;
+    bool m_highlightedPath = false;
 };
 
 // DrawingRectangle
@@ -309,6 +328,10 @@ public:
     QVector<QPointF> controlPoints() const { return m_controlPoints; }
     void updatePathFromControlPoints();
     
+    // 控制点类型相关 - 用于保存原始路径元素信息
+    void setControlPointTypes(const QVector<QPainterPath::ElementType> &types) { m_controlPointTypes = types; }
+    QVector<QPainterPath::ElementType> controlPointTypes() const { return m_controlPointTypes; }
+    
     // 控制点连线显示
     void setShowControlPolygon(bool show);
     bool showControlPolygon() const;
@@ -321,6 +344,13 @@ public:
     void endNodeDrag(int index) override;
     void updateFromNodePoints() override;
     int getNodePointCount() const override { return m_controlPoints.size(); }
+    
+    // 重写视觉反馈方法
+    void highlightNode(int index) override;
+    void highlightPath(const QPointF& point) override;
+    void clearHighlights() override;
+    int findNodeAt(const QPointF& pos, qreal threshold = 5.0) const override;
+    bool isPointOnPath(const QPointF& pos, qreal threshold = 5.0) const override;
     
     // Marker相关
     void setMarker(const QString &markerId, const QPixmap &markerPixmap, const QTransform &markerTransform);
@@ -377,6 +407,9 @@ public:
     
     // 重写setPos以确保位置变化时文本也跟着移动
     void setPos(const QPointF &pos);
+    
+    // 文本转路径功能
+    DrawingPath* convertToPath() const;
     
     // 编辑点相关 - 文本的控制点（位置和大小）
     QVector<QPointF> getNodePoints() const override;

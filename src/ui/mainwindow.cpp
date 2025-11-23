@@ -13,11 +13,11 @@
 #include <QHBoxLayout>
 #include <QFileDialog>
 #include <QMessageBox>
-#include <QApplication>
 #include <QInputDialog>
 #include <QColorDialog>
 #include <QScrollBar>
 #include <QIcon>
+#include <algorithm>
 #include "../ui/mainwindow.h"
 #include "../ui/drawingscene.h"
 #include "../ui/drawingview.h"
@@ -29,6 +29,9 @@
 #include "../tools/drawing-tool-brush.h"
 #include "../tools/drawing-tool-pen.h"
 #include "../tools/drawing-tool-eraser.h"
+#include "../core/patheditor.h"
+#include "../core/layer-manager.h"
+#include "../core/drawing-layer.h"
 #include "../tools/drawing-tool-fill.h"
 #include "../core/layer-manager.h"
 #include "../ui/layer-panel.h"
@@ -37,11 +40,8 @@
 #include "../tools/drawing-tool-node-edit.h"
 #include "../tools/drawing-tool-polyline.h"
 #include "../tools/drawing-tool-polygon.h"
-#include "../tools/drawing-tool-brush.h"
 #include "../tools/drawing-tool-fill.h"
 #include "../tools/drawing-tool-gradient-fill.h"
-#include "../tools/drawing-tool-pen.h"
-#include "../tools/drawing-tool-eraser.h"
 #include "../tools/drawing-tool-line.h"
 #include "../tools/drawing-tool-path-edit.h"
 #include "../tools/drawing-tool-outline-preview.h"
@@ -49,7 +49,6 @@
 #include "../ui/ruler.h"
 #include "../ui/scrollable-toolbar.h"
 #include "../core/svghandler.h"
-#include <algorithm>
 #include "../core/drawing-shape.h"
 #include "../ui/colorpalette.h"
 #include "../core/drawing-group.h"
@@ -323,6 +322,8 @@ void MainWindow::setupUI()
             this, &MainWindow::onSceneChanged);
     connect(m_scene, &DrawingScene::objectStateChanged,
             this, &MainWindow::onObjectStateChanged);
+    connect(m_scene, &DrawingScene::contextMenuRequested,
+            this, &MainWindow::showContextMenu);
     // 连接DrawingCanvas的缩放信号
     connect(m_canvas, &DrawingCanvas::zoomChanged,
             this, &MainWindow::updateZoomLabel);
@@ -450,6 +451,11 @@ void MainWindow::setupMenus()
     editMenu->addAction(m_groupAction);
     editMenu->addAction(m_ungroupAction);
     editMenu->addSeparator();
+    editMenu->addAction(m_bringToFrontAction);
+    editMenu->addAction(m_sendToBackAction);
+    editMenu->addAction(m_bringForwardAction);
+    editMenu->addAction(m_sendBackwardAction);
+    editMenu->addSeparator();
     editMenu->addAction(m_alignLeftAction);
     editMenu->addAction(m_alignCenterAction);
     editMenu->addAction(m_alignRightAction);
@@ -481,19 +487,10 @@ void MainWindow::setupMenus()
     toolsMenu->addAction(m_rectangleToolAction);
     toolsMenu->addAction(m_ellipseToolAction);
     toolsMenu->addAction(m_bezierToolAction);
-    toolsMenu->addAction(m_polylineToolAction);
-    toolsMenu->addAction(m_polygonToolAction);
-    toolsMenu->addAction(m_brushToolAction);
-    toolsMenu->addAction(m_fillToolAction);
-    toolsMenu->addAction(m_gradientFillToolAction);
-    toolsMenu->addAction(m_penToolAction);
-    toolsMenu->addAction(m_eraserToolAction);
-    toolsMenu->addAction(m_lineToolAction);
-    // toolsMenu->addAction(m_textToolAction);  // Not implemented yet
+    toolsMenu->addAction(m_textToolAction);
 
-    // Path menu
+    // Path menu - 路径编辑功能已集成到选择工具中
     QMenu *pathMenu = menuBar()->addMenu("&路径");
-    pathMenu->addAction(m_pathEditToolAction);
     
     // 添加路径布尔运算操作
     pathMenu->addSeparator();
@@ -512,6 +509,27 @@ void MainWindow::setupMenus()
     m_pathXorAction = new QAction("异或(&X)", this);
     m_pathXorAction->setStatusTip(tr("获取选中图形的异或部分"));
     pathMenu->addAction(m_pathXorAction);
+    
+    pathMenu->addSeparator();
+    
+    // 路径编辑操作
+    m_pathSimplifyAction = new QAction("简化路径(&M)", this);
+    m_pathSimplifyAction->setStatusTip(tr("简化选中路径，减少节点数量"));
+    pathMenu->addAction(m_pathSimplifyAction);
+    
+    m_pathSmoothAction = new QAction("平滑路径(&S)", this);
+    m_pathSmoothAction->setStatusTip(tr("平滑选中路径的曲线"));
+    pathMenu->addAction(m_pathSmoothAction);
+    
+    m_pathReverseAction = new QAction("反转路径(&R)", this);
+    m_pathReverseAction->setStatusTip(tr("反转选中路径的方向"));
+    pathMenu->addAction(m_pathReverseAction);
+    
+    pathMenu->addSeparator();
+    
+    m_generateShapeAction = new QAction("生成图形(&G)", this);
+    m_generateShapeAction->setStatusTip(tr("从选中路径生成标准图形"));
+    pathMenu->addAction(m_generateShapeAction);
 
     // Help menu
     QMenu *helpMenu = menuBar()->addMenu("&帮助");
@@ -581,7 +599,7 @@ void MainWindow::setupToolbars()
     addToolBar(Qt::LeftToolBarArea, m_scrollableToolBar);
     m_scrollableToolBar->setOrientation(Qt::Vertical);
     m_scrollableToolBar->setToolButtonStyle(Qt::ToolButtonIconOnly); // 只显示图标
-    m_scrollableToolBar->setIconSize(QSize(32, 32)); // 工具图标稍大一些
+    m_scrollableToolBar->setIconSize(QSize(24, 24)); // 统一图标大小
     m_scrollableToolBar->addAction(m_outlinePreviewToolAction);
     m_scrollableToolBar->addSeparator();
     
@@ -594,8 +612,6 @@ void MainWindow::setupToolbars()
     // 路径工具
     m_scrollableToolBar->addAction(m_bezierToolAction);
     m_scrollableToolBar->addAction(m_nodeEditToolAction);
-    m_scrollableToolBar->addAction(m_pathEditToolAction);
-    m_scrollableToolBar->addAction(m_polylineToolAction);
     m_scrollableToolBar->addAction(m_polygonToolAction);
     m_scrollableToolBar->addSeparator();
     
@@ -608,7 +624,7 @@ void MainWindow::setupToolbars()
     m_scrollableToolBar->addAction(m_fillToolAction);
     m_scrollableToolBar->addAction(m_gradientFillToolAction);
     m_scrollableToolBar->addAction(m_eraserToolAction);
-    // m_scrollableToolBar->addAction(m_textToolAction);  // Not implemented yet
+    m_scrollableToolBar->addAction(m_textToolAction);
 
     // View toolbar - 包含视图、组合和对齐操作
     QToolBar *viewToolBar = addToolBar("视图");
@@ -684,6 +700,9 @@ void MainWindow::setupDocks()
             qDebug() << "No layer panel found in setupDocks";
         }
         m_layerManager->setScene(m_scene);
+        
+        // 重要：设置TabbedPropertyPanel的LayerManager引用
+        m_tabbedPropertyPanel->setLayerManager(m_layerManager);
     } else {
         qDebug() << "No layer manager available in setupDocks";
     }
@@ -704,21 +723,7 @@ void MainWindow::setupDocks()
         connect(toolsPanel, &ToolsPanel::penCapStyleChanged, this, &MainWindow::onPenCapStyleChanged);
     }
     
-    // 连接图层管理器
-    if (m_layerManager) {
-        qDebug() << "Connecting layer manager";
-        LayerPanel *layerPanel = m_tabbedPropertyPanel->getLayersPanel();
-        if (layerPanel) {
-            qDebug() << "Found layer panel, setting scene and layer manager";
-            layerPanel->setScene(m_scene);
-            m_layerManager->setLayerPanel(layerPanel);
-        } else {
-            qDebug() << "No layer panel found";
-        }
-        m_layerManager->setScene(m_scene);
-    } else {
-        qDebug() << "No layer manager available";
-    }
+    
     
     // Properties dock with TabBar layout
     QDockWidget *propertiesDock = new QDockWidget(tr("面板"), this);
@@ -798,6 +803,10 @@ void MainWindow::createActions()
     m_duplicateAction->setShortcut(QKeySequence("Ctrl+D"));
     m_duplicateAction->setStatusTip("快速复制并粘贴选中项目");
 
+    m_convertTextToPathAction = new QAction("文本转路径(&T)", this);
+    m_convertTextToPathAction->setShortcut(QKeySequence("Ctrl+Shift+T"));
+    m_convertTextToPathAction->setStatusTip("将选中的文本转换为可编辑的路径");
+
     m_selectAllAction = new QAction("全选(&A)", this);
     m_selectAllAction->setShortcut(QKeySequence::SelectAll);
     m_selectAllAction->setStatusTip("选择所有项目");
@@ -855,6 +864,23 @@ void MainWindow::createActions()
     m_ungroupAction->setShortcut(QKeySequence("Ctrl+Shift+G"));
     m_ungroupAction->setStatusTip("取消选中的组合");
     
+    // Z-order actions
+    m_bringToFrontAction = new QAction("置于顶层(&F)", this);
+    m_bringToFrontAction->setShortcut(QKeySequence("Ctrl+Shift+]"));
+    m_bringToFrontAction->setStatusTip("将选中项目置于顶层");
+    
+    m_sendToBackAction = new QAction("置于底层(&B)", this);
+    m_sendToBackAction->setShortcut(QKeySequence("Ctrl+Shift+["));
+    m_sendToBackAction->setStatusTip("将选中项目置于底层");
+    
+    m_bringForwardAction = new QAction("上移一层(&R)", this);
+    m_bringForwardAction->setShortcut(QKeySequence("Ctrl+]"));
+    m_bringForwardAction->setStatusTip("将选中项目上移一层");
+    
+    m_sendBackwardAction = new QAction("下移一层(&S)", this);
+    m_sendBackwardAction->setShortcut(QKeySequence("Ctrl+["));
+    m_sendBackwardAction->setStatusTip("将选中项目下移一层");
+    
     // Align actions
     m_alignLeftAction = new QAction("左对齐(&L)", this);
     m_alignLeftAction->setStatusTip("将选中的项目左对齐");
@@ -888,28 +914,28 @@ void MainWindow::createActions()
     m_outlinePreviewToolAction->setCheckable(true);
     m_outlinePreviewToolAction->setShortcut(QKeySequence("V"));
     m_outlinePreviewToolAction->setStatusTip("选择和变换项目");
-    m_outlinePreviewToolAction->setIcon(QIcon(":/icons/icons/select-tool-new.svg"));
+    m_outlinePreviewToolAction->setIcon(QIcon(":/icons/icons/tool-pointer.svg"));
     m_toolGroup->addAction(m_outlinePreviewToolAction);
 
     m_rectangleToolAction = new QAction("&矩形工具", this);
     m_rectangleToolAction->setCheckable(true);
     m_rectangleToolAction->setShortcut(QKeySequence("R"));
     m_rectangleToolAction->setStatusTip("绘制矩形");
-    m_rectangleToolAction->setIcon(QIcon(":/icons/icons/rectangle-tool-new.svg"));
+    m_rectangleToolAction->setIcon(QIcon(":/icons/icons/draw-rectangle.svg"));
     m_toolGroup->addAction(m_rectangleToolAction);
 
     m_ellipseToolAction = new QAction("&椭圆工具", this);
     m_ellipseToolAction->setCheckable(true);
     m_ellipseToolAction->setShortcut(QKeySequence("E"));
     m_ellipseToolAction->setStatusTip("绘制椭圆");
-    m_ellipseToolAction->setIcon(QIcon(":/icons/icons/ellipse-tool-new.svg"));
+    m_ellipseToolAction->setIcon(QIcon(":/icons/icons/draw-ellipse.svg"));
     m_toolGroup->addAction(m_ellipseToolAction);
 
     m_bezierToolAction = new QAction("&贝塞尔曲线工具", this);
     m_bezierToolAction->setCheckable(true);
     m_bezierToolAction->setShortcut(QKeySequence("B"));
     m_bezierToolAction->setStatusTip("绘制贝塞尔曲线");
-    m_bezierToolAction->setIcon(QIcon(":/icons/icons/bezier-tool-new.svg"));
+    m_bezierToolAction->setIcon(QIcon(":/icons/icons/draw-path.svg"));
     m_toolGroup->addAction(m_bezierToolAction);
     
     
@@ -918,7 +944,7 @@ void MainWindow::createActions()
     m_nodeEditToolAction->setCheckable(true);
     m_nodeEditToolAction->setShortcut(QKeySequence("N"));
     m_nodeEditToolAction->setStatusTip("编辑图形节点和控制点");
-    m_nodeEditToolAction->setIcon(QIcon(":/icons/icons/node-edit-tool.svg")); // 使用专用节点编辑图标
+    m_nodeEditToolAction->setIcon(QIcon(":/icons/icons/tool-node-editor.svg")); // 使用专用节点编辑图标
     m_toolGroup->addAction(m_nodeEditToolAction);
 
     m_polylineToolAction = new QAction("&折线工具", this);
@@ -932,42 +958,42 @@ void MainWindow::createActions()
     m_polygonToolAction->setCheckable(true);
     m_polygonToolAction->setShortcut(QKeySequence("P"));
     m_polygonToolAction->setStatusTip("绘制多边形");
-    m_polygonToolAction->setIcon(QIcon(":/icons/icons/polygon-tool-new.svg"));
+    m_polygonToolAction->setIcon(QIcon(":/icons/icons/draw-polygon.svg"));
     m_toolGroup->addAction(m_polygonToolAction);
 
     m_brushToolAction = new QAction("&画笔工具", this);
     m_brushToolAction->setCheckable(true);
     m_brushToolAction->setShortcut(QKeySequence("B"));
     m_brushToolAction->setStatusTip("自由绘制");
-    m_brushToolAction->setIcon(QIcon(":/icons/icons/brush-tool-new.svg"));
+    m_brushToolAction->setIcon(QIcon(":/icons/icons/draw-freehand.svg"));
     m_toolGroup->addAction(m_brushToolAction);
 
     m_fillToolAction = new QAction("&填充工具", this);
     m_fillToolAction->setCheckable(true);
     m_fillToolAction->setShortcut(QKeySequence("F"));
     m_fillToolAction->setStatusTip("填充区域");
-    m_fillToolAction->setIcon(QIcon(":/icons/icons/fill-tool-new.svg"));
+    m_fillToolAction->setIcon(QIcon(":/icons/icons/color-fill.svg"));
     m_toolGroup->addAction(m_fillToolAction);
 
     m_gradientFillToolAction = new QAction("&渐进填充工具", this);
     m_gradientFillToolAction->setCheckable(true);
     m_gradientFillToolAction->setShortcut(QKeySequence("G"));
     m_gradientFillToolAction->setStatusTip("渐进填充区域");
-    m_gradientFillToolAction->setIcon(QIcon(":/icons/icons/gradient-fill-tool.svg"));
+    m_gradientFillToolAction->setIcon(QIcon(":/icons/icons/color-gradient.svg"));
     m_toolGroup->addAction(m_gradientFillToolAction);
 
     m_penToolAction = new QAction("&钢笔工具", this);
     m_penToolAction->setCheckable(true);
     m_penToolAction->setShortcut(QKeySequence("P"));
     m_penToolAction->setStatusTip("绘制贝塞尔曲线路径");
-    m_penToolAction->setIcon(QIcon(":/icons/icons/pen-tool.svg"));
+    m_penToolAction->setIcon(QIcon(":/icons/icons/draw-calligraphic.svg"));
     m_toolGroup->addAction(m_penToolAction);
 
     m_eraserToolAction = new QAction("&橡皮擦工具", this);
     m_eraserToolAction->setCheckable(true);
     m_eraserToolAction->setShortcut(QKeySequence("E"));
     m_eraserToolAction->setStatusTip("擦除图形或图形的部分区域");
-    m_eraserToolAction->setIcon(QIcon(":/icons/icons/eraser-tool.svg"));
+    m_eraserToolAction->setIcon(QIcon(":/icons/icons/draw-eraser.svg"));
     m_toolGroup->addAction(m_eraserToolAction);
 
     m_lineToolAction = new QAction("&线条工具", this);
@@ -984,11 +1010,12 @@ void MainWindow::createActions()
     m_pathEditToolAction->setIcon(QIcon(":/icons/icons/path-edit-tool-new.svg"));
     m_toolGroup->addAction(m_pathEditToolAction);
 
-    // m_textToolAction = new QAction("&文本工具", this);  // Not implemented yet
-    // m_textToolAction->setCheckable(true);
-    // m_textToolAction->setShortcut(QKeySequence("T"));
-    // m_textToolAction->setStatusTip("添加文本");
-    // m_toolGroup->addAction(m_textToolAction);
+    m_textToolAction = new QAction("&文本工具", this);
+    m_textToolAction->setCheckable(true);
+    m_textToolAction->setShortcut(QKeySequence("T"));
+    m_textToolAction->setStatusTip("添加文本");
+    m_textToolAction->setIcon(QIcon(":/icons/icons/draw-text.svg"));
+    m_toolGroup->addAction(m_textToolAction);
 
     // Path boolean operations
     m_pathUnionAction = new QAction("联合(&U)", this);
@@ -1029,6 +1056,7 @@ void MainWindow::connectActions()
     connect(m_copyAction, &QAction::triggered, this, &MainWindow::copySelected);
     connect(m_pasteAction, &QAction::triggered, this, &MainWindow::paste);
     connect(m_duplicateAction, &QAction::triggered, this, &MainWindow::duplicate);
+    connect(m_convertTextToPathAction, &QAction::triggered, this, &MainWindow::convertTextToPath);
     connect(m_selectAllAction, &QAction::triggered, this, &MainWindow::selectAll);
     connect(m_deselectAllAction, &QAction::triggered, this, &MainWindow::deselectAll);
 
@@ -1048,6 +1076,12 @@ void MainWindow::connectActions()
     // Group connections
     connect(m_groupAction, &QAction::triggered, this, &MainWindow::groupSelected);
     connect(m_ungroupAction, &QAction::triggered, this, &MainWindow::ungroupSelected);
+    
+    // Z-order connections
+    connect(m_bringToFrontAction, &QAction::triggered, this, &MainWindow::bringToFront);
+    connect(m_sendToBackAction, &QAction::triggered, this, &MainWindow::sendToBack);
+    connect(m_bringForwardAction, &QAction::triggered, this, &MainWindow::bringForward);
+    connect(m_sendBackwardAction, &QAction::triggered, this, &MainWindow::sendBackward);
     
     // Align connections
     connect(m_alignLeftAction, &QAction::triggered, this, &MainWindow::alignLeft);
@@ -1076,13 +1110,19 @@ void MainWindow::connectActions()
     connect(m_eraserToolAction, &QAction::triggered, this, &MainWindow::eraserTool);
     connect(m_lineToolAction, &QAction::triggered, this, &MainWindow::lineTool);
     connect(m_pathEditToolAction, &QAction::triggered, this, &MainWindow::pathEditTool);
-    // connect(m_textToolAction, &QAction::triggered, this, &MainWindow::textTool);  // Not implemented yet
+    connect(m_textToolAction, &QAction::triggered, this, &MainWindow::textTool);
     
     // Path boolean operation connections
     connect(m_pathUnionAction, &QAction::triggered, this, &MainWindow::pathUnion);
     connect(m_pathSubtractAction, &QAction::triggered, this, &MainWindow::pathSubtract);
     connect(m_pathIntersectAction, &QAction::triggered, this, &MainWindow::pathIntersect);
     connect(m_pathXorAction, &QAction::triggered, this, &MainWindow::pathXor);
+    
+    // 路径编辑连接
+    connect(m_pathSimplifyAction, &QAction::triggered, this, &MainWindow::pathSimplify);
+    connect(m_pathSmoothAction, &QAction::triggered, this, &MainWindow::pathSmooth);
+    connect(m_pathReverseAction, &QAction::triggered, this, &MainWindow::pathReverse);
+    connect(m_generateShapeAction, &QAction::triggered, this, &MainWindow::generateShape);
 
     // Help connections
     connect(m_aboutAction, &QAction::triggered, this, &MainWindow::about);
@@ -1448,10 +1488,12 @@ void MainWindow::pathEditTool()
     setCurrentTool(m_pathEditTool);
 }
 
-// void MainWindow::textTool()  // Not implemented yet
-// {
-//     setCurrentTool(m_textTool);
-// }
+void MainWindow::textTool()
+{
+    // 暂时使用选择工具作为文本工具的基础
+    selectTool();
+    m_statusLabel->setText("文本工具已激活 - 选择文本对象后右键选择'文本转路径'");
+}
 
 // updateZoomLabel implementation is below
 
@@ -1604,6 +1646,20 @@ void MainWindow::copySelected()
             jsonData += QString("\"type\":%1,").arg((int)shape->shapeType());
             jsonData += QString("\"x\":%1,").arg(shape->pos().x());
             jsonData += QString("\"y\":%1,").arg(shape->pos().y());
+            
+            // 写入变换矩阵
+            QTransform transform = shape->transform();
+            if (!transform.isIdentity()) {
+                jsonData += QString("\"transform\":{\"m11\":%1,\"m12\":%2,\"m21\":%3,\"m22\":%4,\"dx\":%5,\"dy\":%6},")
+                            .arg(transform.m11())
+                            .arg(transform.m12())
+                            .arg(transform.m21())
+                            .arg(transform.m22())
+                            .arg(transform.dx())
+                            .arg(transform.dy());
+            } else {
+                jsonData += "\"transform\":null,";
+            }
             
             // 写入样式数据
             QPen pen = shape->strokePen();
@@ -1843,6 +1899,25 @@ void MainWindow::paste()
         }
         
         if (shape) {
+            // 应用变换矩阵
+            QString transformStr = props["transform"];
+            if (!transformStr.isEmpty() && transformStr != "null") {
+                QString cleanTransform = transformStr.mid(1, transformStr.length() - 2); // 移除 {}
+                QStringList transformPairs = cleanTransform.split(',');
+                
+                if (transformPairs.size() >= 6) {
+                    double m11 = transformPairs[0].split(':')[1].toDouble();
+                    double m12 = transformPairs[1].split(':')[1].toDouble();
+                    double m21 = transformPairs[2].split(':')[1].toDouble();
+                    double m22 = transformPairs[3].split(':')[1].toDouble();
+                    double dx = transformPairs[4].split(':')[1].toDouble();
+                    double dy = transformPairs[5].split(':')[1].toDouble();
+                    
+                    QTransform transform(m11, m12, m21, m22, dx, dy);
+                    shape->applyTransform(transform);
+                }
+            }
+            
             // 应用样式
             QString strokeStr = props["stroke"];
             QString fillStr = props["fill"];
@@ -1893,6 +1968,43 @@ void MainWindow::duplicate()
     // 快速复制粘贴：先复制，然后立即粘贴
     copySelected();
     paste();
+}
+
+void MainWindow::convertTextToPath()
+{
+    if (!m_scene)
+        return;
+
+    QList<QGraphicsItem *> selected = m_scene->selectedItems();
+    if (selected.isEmpty())
+        return;
+
+    QList<DrawingShape*> convertedShapes;
+    
+    foreach (QGraphicsItem *item, selected) {
+        DrawingText *textShape = qgraphicsitem_cast<DrawingText*>(item);
+        if (textShape) {
+            // 将文本转换为路径
+            DrawingPath *pathShape = textShape->convertToPath();
+            if (pathShape) {
+                // 添加到场景
+                m_scene->addItem(pathShape);
+                pathShape->setSelected(true);
+                convertedShapes.append(pathShape);
+                
+                // 移除原始文本
+                m_scene->removeItem(textShape);
+                delete textShape;
+            }
+        }
+    }
+    
+    if (!convertedShapes.isEmpty()) {
+        m_scene->setModified(true);
+        m_statusLabel->setText(QString("已将 %1 个文本转换为路径").arg(convertedShapes.size()));
+    } else {
+        m_statusLabel->setText("没有选中的文本对象");
+    }
 }
 
 void MainWindow::selectAll()
@@ -2064,7 +2176,15 @@ void MainWindow::about()
 void MainWindow::onSelectionChanged()
 {
     if (m_scene) {
-        qDebug() << "MainWindow::onSelectionChanged: selected items count:" << m_scene->selectedItems().count();
+        int selectedCount = m_scene->selectedItems().count();
+        qDebug() << "MainWindow::onSelectionChanged: selected items count:" << selectedCount;
+        
+        // 如果有选中的图形，提示用户可以使用空格键切换到选择工具
+        if (selectedCount > 0) {
+            updateStatusBar("选中图形 - 按空格键切换到选择工具");
+        } else {
+            updateStatusBar("就绪");
+        }
     }
     updateUI();
     if (m_propertyPanel)
@@ -2394,6 +2514,188 @@ void MainWindow::closeEvent(QCloseEvent *event)
     }
 
     event->accept();
+}
+
+void MainWindow::bringToFront()
+{
+    if (m_scene) {
+        m_scene->bringToFront();
+        m_statusLabel->setText("置于顶层");
+    }
+}
+
+void MainWindow::sendToBack()
+{
+    if (m_scene) {
+        m_scene->sendToBack();
+        m_statusLabel->setText("置于底层");
+    }
+}
+
+void MainWindow::bringForward()
+{
+    if (m_scene) {
+        m_scene->bringForward();
+        m_statusLabel->setText("上移一层");
+    }
+}
+
+void MainWindow::sendBackward()
+{
+    if (m_scene) {
+        m_scene->sendBackward();
+        m_statusLabel->setText("下移一层");
+    }
+}
+
+void MainWindow::showContextMenu(const QPointF &pos)
+{
+    QMenu contextMenu(this);
+    
+    // 获取选中项数量用于条件判断
+    int selectedCount = m_scene ? m_scene->selectedItems().size() : 0;
+    
+    // 添加基本操作
+    contextMenu.addAction(m_copyAction);
+    contextMenu.addAction(m_pasteAction);
+    contextMenu.addAction(m_duplicateAction);
+    contextMenu.addSeparator();
+    contextMenu.addAction(m_deleteAction);
+    contextMenu.addSeparator();
+    
+    // 添加Z序控制子菜单
+    QMenu *zOrderMenu = contextMenu.addMenu("Z序");
+    zOrderMenu->addAction(m_bringToFrontAction);
+    zOrderMenu->addAction(m_sendToBackAction);
+    zOrderMenu->addSeparator();
+    zOrderMenu->addAction(m_bringForwardAction);
+    zOrderMenu->addAction(m_sendBackwardAction);
+    
+    // 添加对齐子菜单
+    QMenu *alignMenu = contextMenu.addMenu("对齐");
+    alignMenu->addAction(m_alignLeftAction);
+    alignMenu->addAction(m_alignCenterAction);
+    alignMenu->addAction(m_alignRightAction);
+    alignMenu->addSeparator();
+    alignMenu->addAction(m_alignTopAction);
+    alignMenu->addAction(m_alignMiddleAction);
+    alignMenu->addAction(m_alignBottomAction);
+    alignMenu->addSeparator();
+    alignMenu->addAction(m_distributeHorizontalAction);
+    alignMenu->addAction(m_distributeVerticalAction);
+    
+    // 根据选中数量启用/禁用对齐功能
+    bool canAlign = selectedCount >= 1;
+    bool canDistribute = selectedCount >= 3;
+    m_alignLeftAction->setEnabled(canAlign);
+    m_alignCenterAction->setEnabled(canAlign);
+    m_alignRightAction->setEnabled(canAlign);
+    m_alignTopAction->setEnabled(canAlign);
+    m_alignMiddleAction->setEnabled(canAlign);
+    m_alignBottomAction->setEnabled(canAlign);
+    m_distributeHorizontalAction->setEnabled(canDistribute);
+    m_distributeVerticalAction->setEnabled(canDistribute);
+    
+    // 添加组合操作
+    contextMenu.addAction(m_groupAction);
+    contextMenu.addAction(m_ungroupAction);
+    m_groupAction->setEnabled(selectedCount >= 2);  // 需要至少2个对象才能组合
+    
+    contextMenu.addSeparator();
+    
+    // 添加路径编辑菜单
+    QMenu *pathMenu = contextMenu.addMenu("路径编辑");
+    
+    // 路径编辑功能需要至少1个选中对象
+    bool canEditPath = selectedCount >= 1;
+    
+    // 布尔运算需要至少2个选中对象
+    bool canBoolean = selectedCount >= 2;
+    
+    // 布尔运算菜单
+    QMenu *booleanMenu = pathMenu->addMenu("布尔运算");
+    
+    QAction *unionAction = booleanMenu->addAction("合并");
+    unionAction->setEnabled(canBoolean);
+    QAction *intersectAction = booleanMenu->addAction("相交");
+    intersectAction->setEnabled(canBoolean);
+    QAction *subtractAction = booleanMenu->addAction("减去");
+    subtractAction->setEnabled(canBoolean);
+    QAction *xorAction = booleanMenu->addAction("异或");
+    xorAction->setEnabled(canBoolean);
+    
+    // 路径操作菜单
+    QMenu *pathOpsMenu = pathMenu->addMenu("路径操作");
+    
+    QAction *simplifyAction = pathOpsMenu->addAction("简化路径");
+    simplifyAction->setEnabled(canEditPath);
+    QAction *smoothAction = pathOpsMenu->addAction("平滑路径");
+    smoothAction->setEnabled(canEditPath);
+    QAction *curveAction = pathOpsMenu->addAction("转换为曲线");
+    curveAction->setEnabled(canEditPath);
+    QAction *offsetAction = pathOpsMenu->addAction("偏移路径");
+    offsetAction->setEnabled(canEditPath);
+    QAction *clipAction = pathOpsMenu->addAction("裁剪路径");
+    clipAction->setEnabled(canEditPath);
+    
+    // 创建形状菜单
+    QMenu *shapeMenu = pathMenu->addMenu("创建形状");
+    
+    QAction *arrowAction = shapeMenu->addAction("箭头");
+    QAction *starAction = shapeMenu->addAction("星形");
+    QAction *gearAction = shapeMenu->addAction("齿轮");
+    
+    // 检查是否有选中的文本对象
+    bool hasTextSelection = false;
+    if (m_scene) {
+        QList<QGraphicsItem *> selected = m_scene->selectedItems();
+        for (QGraphicsItem *item : selected) {
+            DrawingText *textShape = qgraphicsitem_cast<DrawingText*>(item);
+            if (textShape) {
+                hasTextSelection = true;
+                break;
+            }
+        }
+    }
+    
+    // 如果有选中的文本，添加文本转路径选项
+    QAction *convertTextToPathAction = nullptr;
+    if (hasTextSelection) {
+        pathMenu->addSeparator();
+        convertTextToPathAction = pathMenu->addAction("文本转路径");
+    }
+    
+    // 显示菜单
+    QAction *selectedAction = contextMenu.exec(m_canvas->view()->mapToGlobal(m_canvas->view()->mapFromScene(pos)));
+    
+    // 处理菜单选择
+    if (selectedAction == unionAction) {
+        executeBooleanOperation(static_cast<int>(PathEditor::Union));
+    } else if (selectedAction == intersectAction) {
+        executeBooleanOperation(static_cast<int>(PathEditor::Intersection));
+    } else if (selectedAction == subtractAction) {
+        executeBooleanOperation(static_cast<int>(PathEditor::Subtraction));
+    } else if (selectedAction == xorAction) {
+        executeBooleanOperation(static_cast<int>(PathEditor::Xor));
+    } else if (selectedAction == simplifyAction) {
+        executePathOperation("simplify");
+    } else if (selectedAction == smoothAction) {
+        executePathOperation("smooth");
+    } else if (selectedAction == curveAction) {
+        executePathOperation("curve");
+    } else if (selectedAction == offsetAction) {
+        executePathOperation("offset");
+    } else if (selectedAction == clipAction) {
+        executePathOperation("clip");
+    } else if (selectedAction == arrowAction) {
+        createShapeAtPosition("arrow", pos);
+    } else if (selectedAction == starAction) {
+        createShapeAtPosition("star", pos);
+    } else if (selectedAction == gearAction) {
+        createShapeAtPosition("gear", pos);
+    } else if (selectedAction == convertTextToPathAction) {
+        convertSelectedTextToPath();
+    }
 }
 
 void MainWindow::alignLeft()
@@ -2739,6 +3041,135 @@ void MainWindow::pathXor()
     performPathBooleanOperation(3, "异或"); // PathEditor::Xor = 3
 }
 
+// 路径编辑槽函数
+void MainWindow::pathSimplify()
+{
+    if (!m_scene) return;
+    
+    QList<QGraphicsItem*> selectedItems = m_scene->selectedItems();
+    if (selectedItems.isEmpty()) {
+        m_statusLabel->setText("请先选择要简化的路径");
+        return;
+    }
+    
+    for (QGraphicsItem *item : selectedItems) {
+        DrawingShape *shape = dynamic_cast<DrawingShape*>(item);
+        if (shape && shape->shapeType() == DrawingShape::Path) {
+            DrawingPath *drawingPath = dynamic_cast<DrawingPath*>(shape);
+            if (drawingPath) {
+                QPainterPath originalPath = drawingPath->path();
+                QPainterPath simplifiedPath = PathEditor::simplifyPath(originalPath, 0.5);
+                drawingPath->setPath(simplifiedPath);
+                m_statusLabel->setText("路径已简化");
+            }
+        }
+    }
+    
+    m_scene->update();
+    m_scene->setModified(true);
+}
+
+void MainWindow::pathSmooth()
+{
+    if (!m_scene) return;
+    
+    QList<QGraphicsItem*> selectedItems = m_scene->selectedItems();
+    if (selectedItems.isEmpty()) {
+        m_statusLabel->setText("请先选择要平滑的路径");
+        return;
+    }
+    
+    for (QGraphicsItem *item : selectedItems) {
+        DrawingShape *shape = dynamic_cast<DrawingShape*>(item);
+        if (shape && shape->shapeType() == DrawingShape::Path) {
+            DrawingPath *drawingPath = dynamic_cast<DrawingPath*>(shape);
+            if (drawingPath) {
+                QPainterPath originalPath = drawingPath->path();
+                QPainterPath smoothedPath = PathEditor::smoothPath(originalPath, 0.5);
+                drawingPath->setPath(smoothedPath);
+                m_statusLabel->setText("路径已平滑");
+            }
+        }
+    }
+    
+    m_scene->update();
+    m_scene->setModified(true);
+}
+
+void MainWindow::pathReverse()
+{
+    if (!m_scene) return;
+    
+    QList<QGraphicsItem*> selectedItems = m_scene->selectedItems();
+    if (selectedItems.isEmpty()) {
+        m_statusLabel->setText("请先选择要反转的路径");
+        return;
+    }
+    
+    for (QGraphicsItem *item : selectedItems) {
+        DrawingShape *shape = dynamic_cast<DrawingShape*>(item);
+        if (shape && shape->shapeType() == DrawingShape::Path) {
+            DrawingPath *drawingPath = dynamic_cast<DrawingPath*>(shape);
+            if (drawingPath) {
+                QPainterPath originalPath = drawingPath->path();
+                QPainterPath reversedPath;
+                
+                // 反转路径：创建一个新路径，按相反顺序添加元素
+                for (int i = originalPath.elementCount() - 1; i >= 0; --i) {
+                    QPainterPath::Element element = originalPath.elementAt(i);
+                    if (element.isMoveTo()) {
+                        reversedPath.moveTo(element.x, element.y);
+                    } else if (element.isLineTo()) {
+                        reversedPath.lineTo(element.x, element.y);
+                    } else if (element.isCurveTo()) {
+                        reversedPath.cubicTo(element.x, element.y, element.x, element.y, element.x, element.y);
+                    } else if (element.type == QPainterPath::CurveToDataElement) {
+                        reversedPath.cubicTo(element.x, element.y, element.x, element.y, element.x, element.y);
+                    }
+                }
+                
+                drawingPath->setPath(reversedPath);
+                m_statusLabel->setText("路径已反转");
+            }
+        }
+    }
+    
+    m_scene->update();
+    m_scene->setModified(true);
+}
+
+void MainWindow::generateShape()
+{
+    if (!m_scene) return;
+    
+    QList<QGraphicsItem*> selectedItems = m_scene->selectedItems();
+    if (selectedItems.isEmpty()) {
+        m_statusLabel->setText("请先选择要生成图形的路径");
+        return;
+    }
+    
+    for (QGraphicsItem *item : selectedItems) {
+        DrawingShape *shape = dynamic_cast<DrawingShape*>(item);
+        if (shape && shape->shapeType() == DrawingShape::Path) {
+            DrawingPath *drawingPath = dynamic_cast<DrawingPath*>(shape);
+            if (drawingPath) {
+                QPainterPath originalPath = drawingPath->path();
+                
+                // 尝试生成标准图形：星形
+                QPointF center = originalPath.boundingRect().center();
+                qreal radius = qMax(originalPath.boundingRect().width(), originalPath.boundingRect().height()) / 2;
+                QPainterPath starPath = PathEditor::createStar(center, radius, 5);
+                
+                drawingPath->setPath(starPath);
+                m_statusLabel->setText("已生成星形");
+            }
+        }
+    }
+    
+    m_scene->update();
+    m_scene->setModified(true);
+}
+
 // 执行路径布尔运算的通用方法
 void MainWindow::performPathBooleanOperation(int op, const QString &opName)
 {
@@ -2755,14 +3186,14 @@ void MainWindow::performPathBooleanOperation(int op, const QString &opName)
     QList<DrawingShape*> shapes;
     
     for (QGraphicsItem *item : selectedItems) {
-        DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(item);
+        DrawingShape *shape = dynamic_cast<DrawingShape*>(item);
         if (shape) {
             // 获取图形的路径
             QPainterPath shapePath;
             
             // 根据图形类型获取路径
             if (shape->shapeType() == DrawingShape::Path) {
-                DrawingPath *drawingPath = qgraphicsitem_cast<DrawingPath*>(shape);
+                DrawingPath *drawingPath = dynamic_cast<DrawingPath*>(shape);
                 if (drawingPath) {
                     shapePath = drawingPath->path();
                 }
@@ -2830,6 +3261,363 @@ void MainWindow::performPathBooleanOperation(int op, const QString &opName)
     m_scene->setModified(true);
     
     m_statusLabel->setText(QString("%1操作完成").arg(opName));
+}
+
+// 执行布尔运算
+void MainWindow::executeBooleanOperation(int op)
+{
+    if (!m_scene) return;
+    
+    QList<QGraphicsItem *> selected = m_scene->selectedItems();
+    if (selected.size() < 2) {
+        m_statusLabel->setText("需要选择至少两个路径进行布尔运算");
+        return;
+    }
+    
+    // 获取前两个选中的形状
+    DrawingShape *shape1 = qgraphicsitem_cast<DrawingShape*>(selected[0]);
+    DrawingShape *shape2 = qgraphicsitem_cast<DrawingShape*>(selected[1]);
+    
+    if (!shape1 || !shape2) {
+        m_statusLabel->setText("选择的对象不是有效的路径");
+        return;
+    }
+    
+    // 执行布尔运算
+    QPainterPath result;
+    try {
+        // 获取形状的实际位置
+        QPointF pos1 = shape1->pos();
+        QPointF pos2 = shape2->pos();
+        
+        // 获取基础路径（不包含位置）
+        QPainterPath path1Base = shape1->transformedShape();
+        QPainterPath path2Base = shape2->transformedShape();
+        
+        // 创建包含位置信息的路径
+        QPainterPath path1WithPos;
+        QPainterPath path2WithPos;
+        
+        // 将路径平移到正确的位置
+        QTransform transform1;
+        transform1.translate(pos1.x(), pos1.y());
+        path1WithPos = transform1.map(path1Base);
+        
+        QTransform transform2;
+        transform2.translate(pos2.x(), pos2.y());
+        path2WithPos = transform2.map(path2Base);
+        
+        result = PathEditor::booleanOperation(
+            path1WithPos, 
+            path2WithPos, 
+            static_cast<PathEditor::BooleanOperation>(op)
+        );
+    } catch (...) {
+        m_statusLabel->setText("布尔运算异常");
+        return;
+    }
+    
+    // 检查结果是否为空
+    if (result.isEmpty()) {
+        m_statusLabel->setText("布尔运算结果为空");
+        return;
+    }
+    
+    // 创建新的路径对象
+    DrawingPath *newPath = new DrawingPath();
+    
+    // 计算结果路径的边界框
+    QRectF resultBounds = result.boundingRect();
+    
+    // 布尔运算的结果已经包含了正确的位置信息
+    // 我们需要将结果路径转换为相对于图形原点的路径
+    // 计算结果路径的实际位置（使用第一个路径的位置作为参考）
+    QPointF resultPos = shape1->pos();
+    
+    // 创建一个变换，将路径移动到相对于图形原点的位置
+    QTransform offsetTransform;
+    offsetTransform.translate(-resultBounds.left(), -resultBounds.top());
+    QPainterPath adjustedPath = offsetTransform.map(result);
+    
+    // 设置调整后的路径
+    newPath->setPath(adjustedPath);
+    
+    // 设置新路径的位置为第一个形状的位置
+    newPath->setPos(shape1->pos());
+    
+    // 复制样式
+    newPath->setStrokePen(shape1->strokePen());
+    newPath->setFillBrush(shape1->fillBrush());
+    
+    // 从场景中移除原始形状，并从图层中移除
+    // 获取形状所属的图层
+    DrawingLayer *layer1 = nullptr;
+    DrawingLayer *layer2 = nullptr;
+    
+    // 查找形状所属的图层
+    LayerManager *layerManager = LayerManager::instance();
+    for (int i = 0; i < layerManager->layerCount(); ++i) {
+        DrawingLayer *layer = layerManager->layer(i);
+        if (layer->shapes().contains(shape1)) {
+            layer1 = layer;
+        }
+        if (layer->shapes().contains(shape2)) {
+            layer2 = layer;
+        }
+    }
+    
+    // 从场景中移除原始形状
+    m_scene->removeItem(shape1);
+    m_scene->removeItem(shape2);
+    
+    // 从图层中移除原始形状
+    if (layer1) {
+        layer1->removeShape(shape1);
+    }
+    if (layer2 && layer2 != layer1) {
+        layer2->removeShape(shape2);
+    }
+    
+    // 添加新路径到场景
+    m_scene->addItem(newPath);
+    newPath->setSelected(true);
+    
+    // 将新路径添加到第一个形状的图层中
+    if (layer1) {
+        layer1->addShape(newPath);
+    }
+    
+    // 更新图层面板显示
+    LayerManager::instance()->updateLayerPanel();
+    
+    // 删除原始形状
+    delete shape1;
+    delete shape2;
+    
+    // 标记场景已修改
+    m_scene->setModified(true);
+    
+    QString opName;
+    switch (static_cast<PathEditor::BooleanOperation>(op)) {
+        case PathEditor::Union: opName = "合并"; break;
+        case PathEditor::Intersection: opName = "相交"; break;
+        case PathEditor::Subtraction: opName = "减去"; break;
+        case PathEditor::Xor: opName = "异或"; break;
+        default: opName = "布尔运算"; break;
+    }
+    
+    m_statusLabel->setText(QString("%1操作完成").arg(opName));
+}
+
+// 执行路径操作
+void MainWindow::executePathOperation(const QString &operation)
+{
+    if (!m_scene) return;
+    
+    QList<QGraphicsItem *> selected = m_scene->selectedItems();
+    if (selected.isEmpty()) {
+        m_statusLabel->setText("需要选择一个路径进行操作");
+        return;
+    }
+    
+    DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(selected[0]);
+    if (!shape) {
+        m_statusLabel->setText("选择的对象不是有效的路径");
+        return;
+    }
+    
+    // 使用变换后的路径
+    QPainterPath transformedPath = shape->transformedShape();
+    QPainterPath resultPath;
+    
+    if (operation == "simplify") {
+        resultPath = PathEditor::simplifyPath(transformedPath, 0.5);
+    } else if (operation == "smooth") {
+        resultPath = PathEditor::smoothPath(transformedPath, 0.5);
+    } else if (operation == "curve") {
+        resultPath = PathEditor::convertToCurve(transformedPath);
+    } else if (operation == "offset") {
+        resultPath = PathEditor::offsetPath(transformedPath, 5);
+    } else if (operation == "clip") {
+        // 使用图形的边界框作为裁剪区域
+        QRectF bounds = transformedPath.boundingRect();
+        QRectF clipRect = bounds.adjusted(10, 10, -10, -10); // 稍微缩小边界框
+        resultPath = PathEditor::clipPath(transformedPath, clipRect);
+    }
+    
+    if (resultPath.isEmpty()) {
+        m_statusLabel->setText("路径操作失败");
+        return;
+    }
+    
+    // 创建一个新的DrawingPath来存储结果
+    DrawingPath *newPath = new DrawingPath();
+    
+    // 重置路径的位置信息
+    QRectF bounds = resultPath.boundingRect();
+    QTransform offsetTransform;
+    offsetTransform.translate(-bounds.left(), -bounds.top());
+    QPainterPath adjustedPath = offsetTransform.map(resultPath);
+    newPath->setPath(adjustedPath);
+    newPath->setPos(shape->pos() + bounds.topLeft());
+    newPath->setStrokePen(shape->strokePen());
+    newPath->setFillBrush(shape->fillBrush());
+    
+    // 获取形状所属的图层
+    DrawingLayer *layer = nullptr;
+    LayerManager *layerManager = LayerManager::instance();
+    for (int i = 0; i < layerManager->layerCount(); ++i) {
+        DrawingLayer *checkLayer = layerManager->layer(i);
+        if (checkLayer->shapes().contains(shape)) {
+            layer = checkLayer;
+            break;
+        }
+    }
+    
+    // 从场景中移除原始形状
+    m_scene->removeItem(shape);
+    
+    // 从图层中移除原始形状
+    if (layer) {
+        layer->removeShape(shape);
+    }
+    
+    // 添加新路径到场景
+    m_scene->addItem(newPath);
+    newPath->setSelected(true);
+    
+    // 将新路径添加到原形状的图层中
+    if (layer) {
+        layer->addShape(newPath);
+    }
+    
+    // 更新图层面板显示
+    LayerManager::instance()->updateLayerPanel();
+    
+    // 删除原始形状
+    delete shape;
+    
+    // 标记场景已修改
+    m_scene->setModified(true);
+    
+    QString opName;
+    if (operation == "simplify") opName = "简化";
+    else if (operation == "smooth") opName = "平滑";
+    else if (operation == "curve") opName = "转换为曲线";
+    else if (operation == "offset") opName = "偏移";
+    else if (operation == "clip") opName = "裁剪";
+    else opName = "路径操作";
+    
+    m_statusLabel->setText(QString("%1操作完成").arg(opName));
+}
+
+// 在指定位置创建形状
+void MainWindow::createShapeAtPosition(const QString &shapeType, const QPointF &pos)
+{
+    if (!m_scene) return;
+    
+    QPainterPath shape;
+    
+    if (shapeType == "arrow") {
+        shape = PathEditor::createArrow(
+            QPointF(pos.x() - 50, pos.y()),
+            QPointF(pos.x() + 50, pos.y())
+        );
+    } else if (shapeType == "star") {
+        shape = PathEditor::createStar(pos, 50, 5);
+    } else if (shapeType == "gear") {
+        shape = PathEditor::createGear(pos, 50, 8);
+    }
+    
+    if (shape.isEmpty()) {
+        m_statusLabel->setText("创建形状失败");
+        return;
+    }
+    
+    DrawingPath *newPath = new DrawingPath();
+    newPath->setPath(shape);
+    newPath->setPos(0, 0);
+    newPath->setStrokePen(QPen(Qt::black, 2));
+    
+    if (shapeType == "star") {
+        newPath->setFillBrush(QBrush(Qt::yellow));
+    } else if (shapeType == "gear") {
+        newPath->setFillBrush(QBrush(Qt::gray));
+    } else {
+        newPath->setFillBrush(Qt::NoBrush);
+    }
+    
+    m_scene->addItem(newPath);
+    newPath->setSelected(true);
+    
+    // 标记场景已修改
+    m_scene->setModified(true);
+    
+    QString shapeName;
+    if (shapeType == "arrow") shapeName = "箭头";
+    else if (shapeType == "star") shapeName = "星形";
+    else if (shapeType == "gear") shapeName = "齿轮";
+    else shapeName = "形状";
+    
+    m_statusLabel->setText(QString("创建%1完成").arg(shapeName));
+}
+
+// 将选中的文本转换为路径
+void MainWindow::convertSelectedTextToPath()
+{
+    if (!m_scene) return;
+    
+    QList<QGraphicsItem *> selected = m_scene->selectedItems();
+    QList<DrawingShape*> convertedShapes;
+    
+    for (QGraphicsItem *item : selected) {
+        DrawingText *textShape = qgraphicsitem_cast<DrawingText*>(item);
+        if (textShape) {
+            // 将文本转换为路径
+            DrawingPath *pathShape = textShape->convertToPath();
+            if (pathShape) {
+                // 添加到场景
+                m_scene->addItem(pathShape);
+                pathShape->setSelected(true);
+                convertedShapes.append(pathShape);
+                
+                // 获取文本所属的图层
+                DrawingLayer *layer = nullptr;
+                LayerManager *layerManager = LayerManager::instance();
+                for (int i = 0; i < layerManager->layerCount(); ++i) {
+                    DrawingLayer *checkLayer = layerManager->layer(i);
+                    if (checkLayer->shapes().contains(textShape)) {
+                        layer = checkLayer;
+                        break;
+                    }
+                }
+                
+                // 安全地移除原始文本
+                textShape->setSelected(false);
+                m_scene->removeItem(textShape);
+                
+                // 从图层中移除原始文本
+                if (layer) {
+                    layer->removeShape(textShape);
+                }
+                
+                // 将新路径添加到原文本的图层中
+                if (layer) {
+                    layer->addShape(pathShape);
+                }
+                
+                delete textShape;
+            }
+        }
+    }
+    
+    if (!convertedShapes.isEmpty()) {
+        m_scene->setModified(true);
+        m_statusLabel->setText(QString("已将 %1 个文本转换为路径").arg(convertedShapes.size()));
+        
+        // 更新图层面板显示
+        LayerManager::instance()->updateLayerPanel();
+    }
 }
 
 

@@ -72,7 +72,7 @@ private slots:
     void eraserTool();
     void lineTool();
     void pathEditTool();
-    // void textTool()  // Not implemented yet
+    void textTool();
     
     // 工具面板槽函数
     void onBrushSizeChanged(int size);
@@ -93,6 +93,7 @@ private slots:
     void copySelected();
     void paste();
     void duplicate();  // Ctrl+D 快速复制粘贴
+    void convertTextToPath();  // 文本转路径
     void selectAll();
     void deselectAll();
     void zoomIn();
@@ -103,6 +104,10 @@ private slots:
     void toggleGridAlignment();
     void groupSelected();
     void ungroupSelected();
+    void bringToFront();
+    void sendToBack();
+    void bringForward();
+    void sendBackward();
     void alignLeft();
     void alignCenter();
     void alignRight();
@@ -119,6 +124,7 @@ private slots:
     void updateRulerSelection();
     void onObjectStateChanged(DrawingShape* shape);
     void updateStatusBar(const QString &message);
+    void showContextMenu(const QPointF &pos);
     
     // 调色板颜色应用槽函数
     void onApplyColorToSelection(const QColor &color, bool isFill);
@@ -133,8 +139,20 @@ private slots:
     void pathIntersect();
     void pathXor();
     
+    // 路径编辑槽函数
+    void pathSimplify();
+    void pathSmooth();
+    void pathReverse();
+    void generateShape();
+    
     // 执行路径布尔运算的通用方法
     void performPathBooleanOperation(int op, const QString &opName);
+    
+    // 新增路径编辑功能
+    void executeBooleanOperation(int op);  // 使用int代替PathEditor::BooleanOperation
+    void executePathOperation(const QString &operation);
+    void createShapeAtPosition(const QString &shapeType, const QPointF &pos);
+    void convertSelectedTextToPath();
 
 protected:
     void mouseMoveEvent(QMouseEvent *event) override;
@@ -204,14 +222,20 @@ private:
     QAction *m_eraserToolAction;
     QAction *m_lineToolAction;
     QAction *m_pathEditToolAction;
+    QAction *m_textToolAction;
     QAction *m_pathUnionAction;
     QAction *m_pathSubtractAction;
     QAction *m_pathIntersectAction;
     QAction *m_pathXorAction;
+    QAction *m_pathSimplifyAction;
+    QAction *m_pathSmoothAction;
+    QAction *m_pathReverseAction;
+    QAction *m_generateShapeAction;
     QAction *m_deleteAction;
     QAction *m_copyAction;
     QAction *m_pasteAction;
     QAction *m_duplicateAction;
+    QAction *m_convertTextToPathAction;
     QAction *m_selectAllAction;
     QAction *m_deselectAllAction;
     QAction *m_zoomInAction;
@@ -225,6 +249,10 @@ private:
     QAction *m_clearAllGuidesAction;
     QAction *m_groupAction;
     QAction *m_ungroupAction;
+    QAction *m_bringToFrontAction;
+    QAction *m_sendToBackAction;
+    QAction *m_bringForwardAction;
+    QAction *m_sendBackwardAction;
     QAction *m_alignLeftAction;
     QAction *m_alignCenterAction;
     QAction *m_alignRightAction;

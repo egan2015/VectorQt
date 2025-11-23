@@ -1,6 +1,6 @@
+#include <QDebug>
 #include "../core/drawing-document.h"
 #include "../core/drawing-shape.h"
-#include <QDebug>
 
 DrawingDocument::DrawingDocument(QObject *parent)
     : QObject(parent)

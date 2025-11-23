@@ -1,4 +1,3 @@
-#include "../ui/scrollable-toolbar.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QPushButton>
@@ -12,6 +11,7 @@
 #include <QApplication>
 #include <QFrame>
 #include <QScrollBar>
+#include "../ui/scrollable-toolbar.h"
 
 ScrollableToolBar::ScrollableToolBar(const QString &title, QWidget *parent)
     : QToolBar(title, parent), m_scrollingEnabled(true)
@@ -28,8 +28,8 @@ ScrollableToolBar::ScrollableToolBar(const QString &title, QWidget *parent)
     m_scrollArea->setWidgetResizable(true);
     m_scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    m_scrollArea->setMinimumWidth(36);
-    m_scrollArea->setMaximumWidth(40);
+    m_scrollArea->setMinimumWidth(30);
+    m_scrollArea->setMaximumWidth(32);
     m_scrollArea->setMinimumHeight(0);
     m_scrollArea->setMaximumHeight(QWIDGETSIZE_MAX);
     m_scrollArea->setFrameShape(QFrame::NoFrame);
@@ -100,9 +100,9 @@ QAction *ScrollableToolBar::addAction(QAction *action)
     QToolButton *button = new QToolButton();
     button->setDefaultAction(action);
     button->setAutoRaise(true);
-    button->setIconSize(QSize(32, 32));
+    button->setIconSize(QSize(24, 24));
     button->setToolButtonStyle(Qt::ToolButtonIconOnly);
-    button->setFixedSize(36, 36);           // 固定大小，减少额外空间
+    button->setFixedSize(28, 28);           // 固定大小，减少额外空间
     button->setContentsMargins(0, 0, 0, 0); // 移除内容边距
 
     // 保存按钮引用

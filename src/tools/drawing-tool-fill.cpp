@@ -1,12 +1,12 @@
+#include <QGraphicsScene>
+#include <QMouseEvent>
+#include <QBrush>
 #include "../tools/drawing-tool-fill.h"
 #include "../ui/drawingscene.h"
 #include "../ui/drawingview.h"
 #include "../core/drawing-shape.h"
 #include "../ui/mainwindow.h"
 #include "../ui/colorpalette.h"
-#include <QGraphicsScene>
-#include <QMouseEvent>
-#include <QBrush>
 
 DrawingToolFill::DrawingToolFill(QObject *parent)
     : ToolBase(parent)

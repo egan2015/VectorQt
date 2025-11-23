@@ -1,8 +1,8 @@
-#include "../core/patheditor.h"
-#include "../core/drawing-shape.h"
 #include <QDebug>
 #include <QVector2D>
 #include <qmath.h>
+#include "../core/patheditor.h"
+#include "../core/drawing-shape.h"
 
 PathEditor::PathEditor(QObject *parent)
     : QObject(parent)

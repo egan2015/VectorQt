@@ -1,3 +1,6 @@
+#include <QTabWidget>
+#include <QVBoxLayout>
+#include <QIcon>
 #include "../ui/tabbed-property-panel.h"
 #include "../ui/propertypanel.h"
 #include "../ui/layer-panel.h"
@@ -6,15 +9,14 @@
 #include "../ui/page-settings-panel.h"
 #include "../ui/drawingscene.h"
 #include "../ui/drawingview.h"
-#include <QTabWidget>
-#include <QVBoxLayout>
-#include <QIcon>
+#include "../ui/object-tree-view.h"
 
 TabbedPropertyPanel::TabbedPropertyPanel(QWidget *parent)
     : QTabWidget(parent)
     , m_propertiesPanel(nullptr)
     , m_layersPanel(nullptr)
     , m_toolsPanel(nullptr)
+    , m_objectTreeView(nullptr)
     , m_pageSettingsPanel(nullptr)
     , m_scene(nullptr)
     , m_view(nullptr)
@@ -31,7 +33,7 @@ TabbedPropertyPanel::TabbedPropertyPanel(QWidget *parent)
     addPageSettingsPanel();
     
     // 连接标签切换信号
-    connect(this, &QTabWidget::currentChanged, this, &TabbedPropertyPanel::currentPanelChanged);
+    connect(this, &QTabWidget::currentChanged, this, &TabbedPropertyPanel::onCurrentPanelChanged);
 }
 
 void TabbedPropertyPanel::addPropertiesPanel()
@@ -56,7 +58,7 @@ void TabbedPropertyPanel::addLayersPanel()
     }
     
     // 添加为第二个标签
-    addTab(m_layersPanel, tr("图层"));
+    addTab(m_layersPanel, tr("图层与对象"));
     
     // 注意：LayerManager将在setLayerManager中设置场景引用
 }
@@ -74,6 +76,12 @@ void TabbedPropertyPanel::addToolsPanel()
     
     // 添加为第三个标签
     addTab(m_toolsPanel, tr("工具"));
+}
+
+void TabbedPropertyPanel::addObjectTreePanel()
+{
+    // 对象标签页已移除，对象树现在集成在图层与对象标签页中
+    // 此方法保留以保持兼容性，但不执行任何操作
 }
 
 void TabbedPropertyPanel::addPageSettingsPanel()
@@ -117,6 +125,13 @@ void TabbedPropertyPanel::switchToToolsPanel()
 {
     if (m_toolsPanel) {
         setCurrentWidget(m_toolsPanel);
+    }
+}
+
+void TabbedPropertyPanel::switchToObjectTreePanel()
+{
+    if (m_objectTreeView) {
+        setCurrentWidget(m_objectTreeView);
     }
 }
 
@@ -194,5 +209,14 @@ void TabbedPropertyPanel::setView(DrawingView *view)
     // 更新页面设置面板的视图引用
     if (m_pageSettingsPanel) {
         m_pageSettingsPanel->setView(m_view);
+    }
+}
+
+void TabbedPropertyPanel::onCurrentPanelChanged(int index)
+{
+    // 当切换到图层与对象标签页时，刷新图层树
+    if (index == indexOf(m_layersPanel) && m_layersPanel) {
+        qDebug() << "TabbedPropertyPanel: Switched to layers panel, refreshing layer tree";
+        m_layersPanel->updateLayerList();
     }
 }

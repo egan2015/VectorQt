@@ -1,7 +1,7 @@
+#include <QMouseEvent>
 #include "../tools/drawing-tool.h"
 #include "../ui/drawingscene.h"
 #include "../ui/drawingview.h"
-#include <QMouseEvent>
 
 DrawingTool::DrawingTool(QObject *parent)
     : QObject(parent)

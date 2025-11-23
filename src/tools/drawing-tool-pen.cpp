@@ -1,11 +1,3 @@
-#include "../tools/drawing-tool-pen.h"
-#include "../ui/drawingscene.h"
-#include "../ui/drawingview.h"
-#include "../core/drawing-shape.h"
-#include "../core/drawing-layer.h"
-#include "../core/layer-manager.h"
-#include "../ui/mainwindow.h"
-#include "../ui/colorpalette.h"
 #include <QGraphicsScene>
 #include <QMouseEvent>
 #include <QKeyEvent>
@@ -18,6 +10,14 @@
 #include <QElapsedTimer>
 #include <QtMath>
 #include <QDebug>
+#include "../tools/drawing-tool-pen.h"
+#include "../ui/drawingscene.h"
+#include "../ui/drawingview.h"
+#include "../core/drawing-shape.h"
+#include "../core/drawing-layer.h"
+#include "../core/layer-manager.h"
+#include "../ui/mainwindow.h"
+#include "../ui/colorpalette.h"
 
 DrawingToolPen::DrawingToolPen(QObject *parent)
     : ToolBase(parent)

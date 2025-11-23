@@ -65,6 +65,9 @@ private:
     QPushButton *m_applyButton;
     
     bool m_updating;
+    double m_lastKnownRotation;  // 用于递归检测和微小变化过滤
+    double m_lastKnownWidth;     // 用于宽度变化检测
+    double m_lastKnownHeight;    // 用于高度变化检测
 };
 
 #endif // PROPERTYPANEL_H

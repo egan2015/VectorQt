@@ -49,6 +49,21 @@ private:
     // 解析SVG元素
     static DrawingShape* parseSvgElement(const QDomElement &element);
     
+    // 收集所有有id的元素（用于use元素）
+    static void collectDefinedElements(const QDomElement &parent);
+    
+    // 解析use元素
+    static DrawingShape* parseUseElement(const QDomElement &element);
+    
+    // 调整use元素的变换，考虑位置偏移
+    static QString adjustTransformForUseElement(const QString &transformStr, qreal x, qreal y);
+    
+    // 解析变换字符串为QTransform
+    static QTransform parseTransform(const QString &transformStr);
+    
+    // 应用样式到图形
+    static void applyStyleToShape(DrawingShape *shape, const QString &style);
+    
     // 解析路径元素
     static DrawingPath* parsePathElement(const QDomElement &element);
     
@@ -119,7 +134,9 @@ private:
     static void parseMarkerElements(const QDomElement &root);
     static void renderMarkerToCache(const QString &id, const QDomElement &markerElement);
     static QPainterPath createMarkerPath(const QString &markerId, const QPointF &startPoint, const QPointF &endPoint);
-    static void applyMarkerToPath(DrawingPath *path, const QString &markerId);
+    // 应用Marker到路径
+    static void applyMarkers(DrawingPath *path, const QString &markerStart, const QString &markerMid, const QString &markerEnd);
+    static void applyMarkerToPath(DrawingPath *path, const QString &markerId, const QString &position = "end");
     
     // 从字符串解析长度值
     static qreal parseLength(const QString &lengthStr);
@@ -155,6 +172,11 @@ private:
     static void parseSvgPathData(const QString &data, QPainterPath &path);
     static QString pathDataToString(const QPainterPath &path);
     static void parseGroupElement(const QDomElement &groupElement);
+    
+    // 椭圆弧转换函数
+    static void convertEllipticalArcToBezier(QPainterPath &path, const QPointF &start, const QPointF &end, 
+                                           qreal rx, qreal ry, qreal xAxisRotation, 
+                                           bool largeArcFlag, bool sweepFlag);
     
     // 导出辅助函数
     static QDomElement exportLayerToSvgElement(QDomDocument &doc, DrawingLayer *layer);

@@ -1,3 +1,8 @@
+#include <QGraphicsScene>
+#include <QMouseEvent>
+#include <QPainterPath>
+#include <QPen>
+#include <QDebug>
 #include "../tools/drawing-tool-brush.h"
 #include "../core/drawing-throttle.h"
 #include "../core/brush-engine.h"
@@ -6,11 +11,6 @@
 #include "../core/drawing-shape.h"
 #include "../core/drawing-layer.h"
 #include "../core/layer-manager.h"
-#include <QGraphicsScene>
-#include <QMouseEvent>
-#include <QPainterPath>
-#include <QPen>
-#include <QDebug>
 
 DrawingToolBrush::DrawingToolBrush(QObject *parent)
     : ToolBase(parent)

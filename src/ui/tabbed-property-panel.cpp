@@ -9,12 +9,14 @@
 #include "../ui/page-settings-panel.h"
 #include "../ui/drawingscene.h"
 #include "../ui/drawingview.h"
+#include "../ui/object-tree-view.h"
 
 TabbedPropertyPanel::TabbedPropertyPanel(QWidget *parent)
     : QTabWidget(parent)
     , m_propertiesPanel(nullptr)
     , m_layersPanel(nullptr)
     , m_toolsPanel(nullptr)
+    , m_objectTreeView(nullptr)
     , m_pageSettingsPanel(nullptr)
     , m_scene(nullptr)
     , m_view(nullptr)
@@ -56,7 +58,7 @@ void TabbedPropertyPanel::addLayersPanel()
     }
     
     // 添加为第二个标签
-    addTab(m_layersPanel, tr("图层"));
+    addTab(m_layersPanel, tr("图层与对象"));
     
     // 注意：LayerManager将在setLayerManager中设置场景引用
 }
@@ -74,6 +76,12 @@ void TabbedPropertyPanel::addToolsPanel()
     
     // 添加为第三个标签
     addTab(m_toolsPanel, tr("工具"));
+}
+
+void TabbedPropertyPanel::addObjectTreePanel()
+{
+    // 对象标签页已移除，对象树现在集成在图层与对象标签页中
+    // 此方法保留以保持兼容性，但不执行任何操作
 }
 
 void TabbedPropertyPanel::addPageSettingsPanel()
@@ -117,6 +125,13 @@ void TabbedPropertyPanel::switchToToolsPanel()
 {
     if (m_toolsPanel) {
         setCurrentWidget(m_toolsPanel);
+    }
+}
+
+void TabbedPropertyPanel::switchToObjectTreePanel()
+{
+    if (m_objectTreeView) {
+        setCurrentWidget(m_objectTreeView);
     }
 }
 

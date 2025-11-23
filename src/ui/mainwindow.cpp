@@ -657,6 +657,13 @@ void MainWindow::setupDocks()
         m_tabbedPropertyPanel->setView(m_canvas->view());
     }
     
+    // 添加所有面板
+    m_tabbedPropertyPanel->addPropertiesPanel();
+    m_tabbedPropertyPanel->addLayersPanel();
+    m_tabbedPropertyPanel->addToolsPanel();
+    // m_tabbedPropertyPanel->addObjectTreePanel(); // 已移除，对象树集成在图层与对象中
+    m_tabbedPropertyPanel->addPageSettingsPanel();
+    
     // 连接图层管理器
     if (m_layerManager) {
         qDebug() << "Connecting layer manager in setupDocks";

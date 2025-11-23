@@ -1,4 +1,6 @@
 #include <QListWidget>
+#include <QTreeWidget>
+#include <QTreeWidgetItem>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
@@ -18,13 +20,17 @@
 #include "../ui/drawingscene.h"
 #include "../core/drawing-layer.h"
 #include "../core/layer-manager.h"
+#include "../core/object-tree-model.h"
+#include "../core/drawing-shape.h"
+#include "../core/drawing-group.h"
 
 LayerPanel::LayerPanel(QWidget *parent)
     : QWidget(parent)
     , m_scene(nullptr)
     , m_layerManager(nullptr)
-    , m_layerList(nullptr)
+    , m_layerTree(nullptr)
     , m_layerCountLabel(nullptr)
+    , m_objectTreeModel(nullptr)
     , m_addLayerAction(nullptr)
     , m_deleteLayerAction(nullptr)
     , m_moveUpAction(nullptr)
@@ -51,7 +57,18 @@ void LayerPanel::setLayerManager(LayerManager *layerManager)
         return;
     }
     
+    // 断开之前的连接
+    if (m_layerManager) {
+        disconnect(m_layerManager, nullptr, this, nullptr);
+    }
+    
     m_layerManager = layerManager;
+    
+    // 创建ObjectTreeModel
+    if (m_layerManager && !m_objectTreeModel) {
+        m_objectTreeModel = new ObjectTreeModel(this);
+        m_objectTreeModel->setLayerManager(m_layerManager);
+    }
     
     // 连接LayerManager的信号
     if (m_layerManager) {
@@ -118,17 +135,23 @@ void LayerPanel::setupUI()
     
     mainLayout->addWidget(toolBar);
     
-    // 创建图层列表
-    m_layerList = new QListWidget(this);
-    m_layerList->setSelectionMode(QAbstractItemView::SingleSelection);
-    m_layerList->setDragDropMode(QAbstractItemView::InternalMove);
-    m_layerList->setDefaultDropAction(Qt::MoveAction);
+    // 创建图层树
+    m_layerTree = new QTreeWidget(this);
+    m_layerTree->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_layerTree->setDragDropMode(QAbstractItemView::InternalMove);
+    m_layerTree->setDefaultDropAction(Qt::MoveAction);
+    m_layerTree->setHeaderHidden(true);
     
-    connect(m_layerList, &QListWidget::itemChanged, this, &LayerPanel::onLayerItemChanged);
-    connect(m_layerList, &QListWidget::itemClicked, this, &LayerPanel::onLayerItemClicked);
-    connect(m_layerList, &QListWidget::itemDoubleClicked, this, &LayerPanel::onLayerItemDoubleClicked);
+    // 设置列
+    m_layerTree->setColumnCount(2);
+    m_layerTree->setColumnWidth(0, 150);  // 名称列
+    m_layerTree->setColumnWidth(1, 30);   // 可见性列
     
-    mainLayout->addWidget(m_layerList);
+    connect(m_layerTree, &QTreeWidget::itemChanged, this, &LayerPanel::onLayerItemChanged);
+    connect(m_layerTree, &QTreeWidget::itemClicked, this, &LayerPanel::onLayerItemClicked);
+    connect(m_layerTree, &QTreeWidget::itemDoubleClicked, this, &LayerPanel::onLayerItemDoubleClicked);
+    
+    mainLayout->addWidget(m_layerTree);
     
     // 创建图层计数标签
     m_layerCountLabel = new QLabel(tr("图层数量: 0"), this);
@@ -141,17 +164,39 @@ void LayerPanel::setupUI()
 
 void LayerPanel::updateLayerList()
 {
-    qDebug() << "LayerPanel::updateLayerList called";
+    populateLayerTree();
+}
+
+void LayerPanel::populateLayerTree()
+{
+    qDebug() << "LayerPanel::populateLayerTree called";
     
-    if (!m_layerList) {
-        qDebug() << "No layer list widget";
+    if (!m_layerTree) {
+        qDebug() << "No layer tree widget";
         return;
     }
     
-    m_layerList->clear();
+    // 保存当前的展开状态
+    QStringList expandedLayers;
+    QTreeWidgetItem *currentItem = m_layerTree->currentItem();
+    QString currentPath;
+    
+    for (int i = 0; i < m_layerTree->topLevelItemCount(); ++i) {
+        QTreeWidgetItem *item = m_layerTree->topLevelItem(i);
+        if (item && item->isExpanded()) {
+            expandedLayers.append(item->text(0));
+        }
+    }
+    
+    // 保存当前选中项的路径
+    if (currentItem) {
+        currentPath = getItemPath(currentItem);
+    }
+    
+    m_layerTree->clear();
     
     if (!m_layerManager) {
-        qDebug() << "No layer manager in updateLayerList";
+        qDebug() << "No layer manager in populateLayerTree";
         m_layerCountLabel->setText(tr("图层数量: 0"));
         updateLayerButtons();
         return;
@@ -171,45 +216,249 @@ void LayerPanel::updateLayerList()
         QString layerName = layer->name();
         qDebug() << "Adding layer item:" << layerName;
         
-        QListWidgetItem *item = new QListWidgetItem(layerName);
-        item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
-        item->setCheckState(layer->isVisible() ? Qt::Checked : Qt::Unchecked);
+        QTreeWidgetItem *layerItem = new QTreeWidgetItem();
+        layerItem->setText(0, layerName);
+        layerItem->setFlags(layerItem->flags() | Qt::ItemIsUserCheckable);
+        layerItem->setCheckState(1, layer->isVisible() ? Qt::Checked : Qt::Unchecked);
         
         // 设置用户数据，存储图层索引
-        item->setData(Qt::UserRole, i);
+        layerItem->setData(0, Qt::UserRole, i);
+        layerItem->setData(0, Qt::UserRole + 1, "layer");  // 标识为图层类型
         
         // 如果是活动图层，高亮显示
         if (layer == m_layerManager->activeLayer()) {
-            QFont font = item->font();
+            QFont font = layerItem->font(0);
             font.setBold(true);
-            item->setFont(font);
+            layerItem->setFont(0, font);
         }
         
-        m_layerList->addItem(item);
-        qDebug() << "Layer item added to list";
+        // 添加图层下的对象 - 使用try-catch防止崩溃
+        try {
+            addObjectsToLayerItem(layerItem, layer);
+        } catch (...) {
+            qDebug() << "Error adding objects to layer item for layer:" << layerName;
+        }
+        
+        // 恢复展开状态
+        if (expandedLayers.contains(layerName)) {
+            layerItem->setExpanded(true);
+        }
+        
+        m_layerTree->addTopLevelItem(layerItem);
+        qDebug() << "Layer item added to tree";
     }
     
     m_layerCountLabel->setText(tr("图层数量: %1").arg(layers.count()));
     
-    // 选择活动图层
-    int activeIndex = m_layerManager->activeLayerIndex();
-    if (activeIndex >= 0 && activeIndex < m_layerList->count()) {
-        m_layerList->setCurrentRow(activeIndex);
+    // 恢复当前选中项
+    if (!currentPath.isEmpty()) {
+        QTreeWidgetItem *itemToSelect = findItemByPath(currentPath);
+        if (itemToSelect) {
+            m_layerTree->setCurrentItem(itemToSelect);
+        }
+    } else {
+        // 选择活动图层
+        int activeIndex = m_layerManager->activeLayerIndex();
+        if (activeIndex >= 0 && activeIndex < m_layerTree->topLevelItemCount()) {
+            m_layerTree->setCurrentItem(m_layerTree->topLevelItem(activeIndex));
+        }
     }
     
     updateLayerButtons();
     
     // 强制刷新UI
-    m_layerList->update();
+    m_layerTree->update();
     update();
+}
+
+QString LayerPanel::getItemPath(QTreeWidgetItem *item) const
+{
+    if (!item) {
+        return QString();
+    }
+    
+    QStringList path;
+    QTreeWidgetItem *current = item;
+    while (current) {
+        path.prepend(current->text(0));
+        current = current->parent();
+    }
+    return path.join("/");
+}
+
+QTreeWidgetItem* LayerPanel::findItemByPath(const QString &path) const
+{
+    if (!m_layerTree || path.isEmpty()) {
+        return nullptr;
+    }
+    
+    QStringList parts = path.split("/");
+    QTreeWidgetItem *current = nullptr;
+    
+    // 查找顶级图层项
+    for (int i = 0; i < m_layerTree->topLevelItemCount(); ++i) {
+        QTreeWidgetItem *item = m_layerTree->topLevelItem(i);
+        if (item && item->text(0) == parts.first()) {
+            current = item;
+            break;
+        }
+    }
+    
+    // 查找子项
+    if (current && parts.size() > 1) {
+        for (int i = 1; i < parts.size(); ++i) {
+            bool found = false;
+            for (int j = 0; j < current->childCount(); ++j) {
+                QTreeWidgetItem *child = current->child(j);
+                if (child && child->text(0) == parts[i]) {
+                    current = child;
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                return nullptr;
+            }
+        }
+    }
+    
+    return current;
+}
+
+void LayerPanel::addObjectsToLayerItem(QTreeWidgetItem *layerItem, DrawingLayer *layer)
+{
+    if (!layerItem || !layer) {
+        return;
+    }
+    
+    // 获取图层中的所有对象
+    QList<DrawingShape*> shapes = layer->shapes();
+    qDebug() << "Processing layer with" << shapes.count() << "shapes";
+    
+    for (int i = 0; i < shapes.count(); ++i) {
+        DrawingShape *shape = shapes.at(i);
+        
+        if (shape) {
+            try {
+                QTreeWidgetItem *shapeItem = new QTreeWidgetItem(layerItem);
+                QString shapeName = getShapeName(shape);
+                shapeItem->setText(0, shapeName);
+                shapeItem->setFlags(shapeItem->flags() | Qt::ItemIsUserCheckable);
+                shapeItem->setCheckState(1, shape->isVisible() ? Qt::Checked : Qt::Unchecked);
+                
+                // 设置用户数据，存储形状指针 - 使用quintptr避免指针转换问题
+            shapeItem->setData(0, Qt::UserRole, reinterpret_cast<quintptr>(shape));
+            shapeItem->setData(0, Qt::UserRole + 1, "shape");  // 标识为形状类型
+                
+                qDebug() << "Added shape item:" << shapeName;
+                
+                // 如果是组对象，递归添加子对象
+            DrawingGroup *group = dynamic_cast<DrawingGroup*>(shape);
+            if (group) {
+                addGroupChildrenToShapeItem(shapeItem, group);
+            }
+            } catch (...) {
+                qDebug() << "Error processing shape at index" << i;
+            }
+        } else {
+            qDebug() << "Null shape at index" << i;
+        }
+    }
+}
+
+QString LayerPanel::getShapeName(DrawingShape *shape) const
+{
+    if (!shape) {
+        return tr("未知对象");
+    }
+    
+    try {
+        // 根据形状类型返回中文名称
+        switch (shape->shapeType()) {
+            case DrawingShape::Rectangle:
+                return tr("矩形");
+            case DrawingShape::Ellipse:
+                return tr("椭圆");
+            case DrawingShape::Path:
+                return tr("路径");
+            case DrawingShape::Line:
+                return tr("直线");
+            case DrawingShape::Polyline:
+                return tr("折线");
+            case DrawingShape::Polygon:
+                return tr("多边形");
+            case DrawingShape::Text:
+                return tr("文本");
+            case DrawingShape::Group:
+                return tr("组");
+            default:
+                return tr("对象");
+        }
+    } catch (...) {
+        qDebug() << "Error getting shape name";
+        return tr("对象");
+    }
+}
+
+void LayerPanel::addGroupChildrenToShapeItem(QTreeWidgetItem *shapeItem, DrawingGroup *group)
+{
+    if (!shapeItem || !group) {
+        return;
+    }
+    
+    QList<DrawingShape*> children = group->items();
+    qDebug() << "Processing group with" << children.count() << "children";
+    
+    for (int i = 0; i < children.count(); ++i) {
+        DrawingShape *shape = children.at(i);
+        
+        if (shape) {
+            try {
+                QTreeWidgetItem *childItem = new QTreeWidgetItem(shapeItem);
+                QString shapeName = getShapeName(shape);
+                childItem->setText(0, shapeName);
+                childItem->setFlags(childItem->flags() | Qt::ItemIsUserCheckable);
+                childItem->setCheckState(1, shape->isVisible() ? Qt::Checked : Qt::Unchecked);
+                
+                // 设置用户数据，存储形状指针 - 使用quintptr避免指针转换问题
+            childItem->setData(0, Qt::UserRole, reinterpret_cast<quintptr>(shape));
+            childItem->setData(0, Qt::UserRole + 1, "shape");  // 标识为形状类型
+                
+                qDebug() << "Added group child item:" << shapeName;
+                
+                // 递归处理嵌套组
+                DrawingGroup *childGroup = dynamic_cast<DrawingGroup*>(shape);
+                if (childGroup) {
+                    addGroupChildrenToShapeItem(childItem, childGroup);
+                }
+            } catch (...) {
+                qDebug() << "Error processing group child at index" << i;
+            }
+        } else {
+            qDebug() << "Null group child at index" << i;
+        }
+    }
 }
 
 void LayerPanel::updateLayerButtons()
 {
     bool hasScene = (m_scene != nullptr);
-    bool hasSelection = m_layerList && m_layerList->currentItem() != nullptr;
-    int currentIndex = m_layerList ? m_layerList->currentRow() : -1;
-    int layerCount = m_layerList ? m_layerList->count() : 0;
+    bool hasSelection = m_layerTree && m_layerTree->currentItem() != nullptr;
+    int currentIndex = -1;
+    int layerCount = m_layerTree ? m_layerTree->topLevelItemCount() : 0;
+    
+    // 获取当前选中的图层索引
+    if (m_layerTree && m_layerTree->currentItem()) {
+        QTreeWidgetItem *currentItem = m_layerTree->currentItem();
+        // 如果是图层项
+        if (currentItem->data(0, Qt::UserRole + 1).toString() == "layer") {
+            currentIndex = m_layerTree->indexOfTopLevelItem(currentItem);
+        }
+        // 如果是形状项，找到其父图层
+        else if (currentItem->parent()) {
+            currentIndex = m_layerTree->indexOfTopLevelItem(currentItem->parent());
+        }
+    }
     
     m_addLayerAction->setEnabled(hasScene);
     m_deleteLayerAction->setEnabled(hasSelection && layerCount > 1);
@@ -250,7 +499,7 @@ void LayerPanel::onAddLayer()
 
 void LayerPanel::onDeleteLayer()
 {
-    if (!m_layerManager || !m_layerList || !m_layerList->currentItem()) {
+    if (!m_layerManager || !m_layerTree || !m_layerTree->currentItem()) {
         return;
     }
     
@@ -259,8 +508,22 @@ void LayerPanel::onDeleteLayer()
                                    QMessageBox::Yes | QMessageBox::No);
     
     if (ret == QMessageBox::Yes) {
-        int currentIndex = m_layerList->currentRow();
-        m_layerManager->deleteLayer(currentIndex);
+        // 获取当前选中的图层索引
+        QTreeWidgetItem *currentItem = m_layerTree->currentItem();
+        int currentIndex = -1;
+        
+        // 如果是图层项
+        if (currentItem->data(0, Qt::UserRole + 1).toString() == "layer") {
+            currentIndex = m_layerTree->indexOfTopLevelItem(currentItem);
+        }
+        // 如果是形状项，找到其父图层
+        else if (currentItem->parent()) {
+            currentIndex = m_layerTree->indexOfTopLevelItem(currentItem->parent());
+        }
+        
+        if (currentIndex >= 0) {
+            m_layerManager->deleteLayer(currentIndex);
+        }
     }
 }
 
@@ -270,9 +533,21 @@ void LayerPanel::onMoveLayerUp()
         return;
     }
     
-    int currentRow = m_layerList->currentRow();
-    if (currentRow > 0) {
-        m_layerManager->moveLayerUp(currentRow);
+    // 获取当前选中的图层索引
+    QTreeWidgetItem *currentItem = m_layerTree->currentItem();
+    int currentIndex = -1;
+    
+    // 如果是图层项
+    if (currentItem->data(0, Qt::UserRole + 1).toString() == "layer") {
+        currentIndex = m_layerTree->indexOfTopLevelItem(currentItem);
+    }
+    // 如果是形状项，找到其父图层
+    else if (currentItem->parent()) {
+        currentIndex = m_layerTree->indexOfTopLevelItem(currentItem->parent());
+    }
+    
+    if (currentIndex > 0) {
+        m_layerManager->moveLayerUp(currentIndex);
     }
 }
 
@@ -282,9 +557,21 @@ void LayerPanel::onMoveLayerDown()
         return;
     }
     
-    int currentRow = m_layerList->currentRow();
-    if (currentRow >= 0 && currentRow < m_layerList->count() - 1) {
-        m_layerManager->moveLayerDown(currentRow);
+    // 获取当前选中的图层索引
+    QTreeWidgetItem *currentItem = m_layerTree->currentItem();
+    int currentIndex = -1;
+    
+    // 如果是图层项
+    if (currentItem->data(0, Qt::UserRole + 1).toString() == "layer") {
+        currentIndex = m_layerTree->indexOfTopLevelItem(currentItem);
+    }
+    // 如果是形状项，找到其父图层
+    else if (currentItem->parent()) {
+        currentIndex = m_layerTree->indexOfTopLevelItem(currentItem->parent());
+    }
+    
+    if (currentIndex >= 0 && currentIndex < m_layerTree->topLevelItemCount() - 1) {
+        m_layerManager->moveLayerDown(currentIndex);
     }
 }
 
@@ -294,9 +581,21 @@ void LayerPanel::onDuplicateLayer()
         return;
     }
     
-    int currentRow = m_layerList->currentRow();
-    if (currentRow >= 0) {
-        m_layerManager->duplicateLayer(currentRow);
+    // 获取当前选中的图层索引
+    QTreeWidgetItem *currentItem = m_layerTree->currentItem();
+    int currentIndex = -1;
+    
+    // 如果是图层项
+    if (currentItem->data(0, Qt::UserRole + 1).toString() == "layer") {
+        currentIndex = m_layerTree->indexOfTopLevelItem(currentItem);
+    }
+    // 如果是形状项，找到其父图层
+    else if (currentItem->parent()) {
+        currentIndex = m_layerTree->indexOfTopLevelItem(currentItem->parent());
+    }
+    
+    if (currentIndex >= 0) {
+        m_layerManager->duplicateLayer(currentIndex);
     }
 }
 
@@ -306,8 +605,20 @@ void LayerPanel::onMergeLayerDown()
         return;
     }
     
-    int currentRow = m_layerList->currentRow();
-    if (currentRow <= 0) {
+    // 获取当前选中的图层索引
+    QTreeWidgetItem *currentItem = m_layerTree->currentItem();
+    int currentIndex = -1;
+    
+    // 如果是图层项
+    if (currentItem->data(0, Qt::UserRole + 1).toString() == "layer") {
+        currentIndex = m_layerTree->indexOfTopLevelItem(currentItem);
+    }
+    // 如果是形状项，找到其父图层
+    else if (currentItem->parent()) {
+        currentIndex = m_layerTree->indexOfTopLevelItem(currentItem->parent());
+    }
+    
+    if (currentIndex <= 0) {
         return;
     }
     
@@ -316,83 +627,141 @@ void LayerPanel::onMergeLayerDown()
                                    QMessageBox::Yes | QMessageBox::No);
     
     if (ret == QMessageBox::Yes) {
-        m_layerManager->mergeLayerDown(currentRow);
+        m_layerManager->mergeLayerDown(currentIndex);
     }
 }
 
-void LayerPanel::onLayerItemChanged(QListWidgetItem *item)
+void LayerPanel::onLayerItemChanged(QTreeWidgetItem *item, int column)
 {
     if (!item || !m_layerManager) {
         return;
     }
     
-    int layerIndex = item->data(Qt::UserRole).toInt();
-    DrawingLayer *layer = m_layerManager->layer(layerIndex);
-    if (!layer) {
+    // 只处理可见性列的变化
+    if (column != 1) {
         return;
     }
     
-    // 处理可见性变化
-    bool visible = (item->checkState() == Qt::Checked);
-    m_layerManager->setLayerVisible(layer, visible);
+    QString itemType = item->data(0, Qt::UserRole + 1).toString();
+    
+    if (itemType == "layer") {
+        // 处理图层可见性变化
+        int layerIndex = item->data(0, Qt::UserRole).toInt();
+        DrawingLayer *layer = m_layerManager->layer(layerIndex);
+        if (layer) {
+            bool visible = (item->checkState(1) == Qt::Checked);
+            m_layerManager->setLayerVisible(layer, visible);
+        }
+    } else if (itemType == "shape") {
+        // 处理形状可见性变化
+        quintptr ptr = item->data(0, Qt::UserRole).value<quintptr>();
+        DrawingShape *shape = reinterpret_cast<DrawingShape*>(ptr);
+        if (shape) {
+            bool visible = (item->checkState(1) == Qt::Checked);
+            shape->setVisible(visible);
+        }
+    }
 }
 
-void LayerPanel::onLayerItemClicked(QListWidgetItem *item)
+void LayerPanel::onLayerItemClicked(QTreeWidgetItem *item, int column)
 {
     if (!item || !m_layerManager) {
         return;
     }
     
-    int index = item->data(Qt::UserRole).toInt();
-    m_layerManager->setActiveLayer(index);
-    updateLayerButtons();
+    QString itemType = item->data(0, Qt::UserRole + 1).toString();
+    
+    if (itemType == "layer") {
+        // 点击图层项，设置为活动图层
+        int index = item->data(0, Qt::UserRole).toInt();
+        m_layerManager->setActiveLayer(index);
+        updateLayerButtons();
+    } else if (itemType == "shape") {
+        // 点击形状项，选中该形状
+        quintptr ptr = item->data(0, Qt::UserRole).value<quintptr>();
+        DrawingShape *shape = reinterpret_cast<DrawingShape*>(ptr);
+        if (shape && m_scene) {
+            m_scene->clearSelection();
+            shape->setSelected(true);
+            
+            // 同时选中形状所在的图层
+            QTreeWidgetItem *layerItem = item->parent();
+            if (layerItem) {
+                int layerIndex = layerItem->data(0, Qt::UserRole).toInt();
+                // 避免循环调用，检查是否已经是活动图层
+                if (m_layerManager->activeLayerIndex() != layerIndex) {
+                    m_layerManager->setActiveLayer(layerIndex);
+                }
+            }
+        }
+    }
 }
 
-void LayerPanel::onLayerItemDoubleClicked(QListWidgetItem *item)
+void LayerPanel::onLayerItemDoubleClicked(QTreeWidgetItem *item, int column)
 {
     if (!item) {
         return;
     }
     
-    int index = m_layerList->row(item);
-    renameLayer(index);
+    QString itemType = item->data(0, Qt::UserRole + 1).toString();
+    
+    if (itemType == "layer") {
+        // 双击图层项，重命名图层
+        int index = m_layerTree->indexOfTopLevelItem(item);
+        renameLayer(index);
+    } else if (itemType == "shape") {
+        // 双击形状项，可以在这里添加形状重命名功能
+        // 目前暂不实现
+    }
 }
 
 void LayerPanel::addLayer(const QString &name)
 {
-    if (!m_layerList) {
+    if (!m_layerTree) {
         return;
     }
     
     QString layerName = name.isEmpty() ? tr("新图层") : name;
-    QListWidgetItem *item = new QListWidgetItem(layerName);
+    QTreeWidgetItem *item = new QTreeWidgetItem();
+    item->setText(0, layerName);
     item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
-    item->setCheckState(Qt::Checked);
+    item->setCheckState(1, Qt::Checked);
+    item->setData(0, Qt::UserRole + 1, "layer");
     
-    m_layerList->insertItem(0, item); // 插入到顶部
-    m_layerList->setCurrentRow(0);
+    m_layerTree->insertTopLevelItem(0, item); // 插入到顶部
+    m_layerTree->setCurrentItem(item);
     
-    m_layerCountLabel->setText(tr("图层数量: %1").arg(m_layerList->count()));
+    m_layerCountLabel->setText(tr("图层数量: %1").arg(m_layerTree->topLevelItemCount()));
     updateLayerButtons();
     emit layerChanged();
 }
 
 void LayerPanel::deleteCurrentLayer()
 {
-    if (!m_layerList || !m_layerList->currentItem()) {
+    if (!m_layerTree || !m_layerTree->currentItem()) {
         return;
     }
     
-    int currentRow = m_layerList->currentRow();
-    delete m_layerList->takeItem(currentRow);
+    QTreeWidgetItem *currentItem = m_layerTree->currentItem();
+    int currentIndex = -1;
     
-    // 选择其他图层
-    if (m_layerList->count() > 0) {
-        int selectRow = qMin(currentRow, m_layerList->count() - 1);
-        m_layerList->setCurrentRow(selectRow);
+    // 如果是图层项
+    if (currentItem->data(0, Qt::UserRole + 1).toString() == "layer") {
+        currentIndex = m_layerTree->indexOfTopLevelItem(currentItem);
+        delete m_layerTree->takeTopLevelItem(currentIndex);
+    }
+    // 如果是形状项，不允许删除图层
+    else {
+        return;
     }
     
-    m_layerCountLabel->setText(tr("图层数量: %1").arg(m_layerList->count()));
+    // 选择其他图层
+    if (m_layerTree->topLevelItemCount() > 0) {
+        int selectRow = qMin(currentIndex, m_layerTree->topLevelItemCount() - 1);
+        m_layerTree->setCurrentItem(m_layerTree->topLevelItem(selectRow));
+    }
+    
+    m_layerCountLabel->setText(tr("图层数量: %1").arg(m_layerTree->topLevelItemCount()));
     updateLayerButtons();
     emit layerChanged();
 }
@@ -419,14 +788,14 @@ void LayerPanel::mergeLayerDown()
 
 void LayerPanel::toggleLayerVisibility(int index)
 {
-    if (!m_layerList || index < 0 || index >= m_layerList->count()) {
+    if (!m_layerTree || index < 0 || index >= m_layerTree->topLevelItemCount()) {
         return;
     }
     
-    QListWidgetItem *item = m_layerList->item(index);
+    QTreeWidgetItem *item = m_layerTree->topLevelItem(index);
     if (item) {
-        Qt::CheckState newState = (item->checkState() == Qt::Checked) ? Qt::Unchecked : Qt::Checked;
-        item->setCheckState(newState);
+        Qt::CheckState newState = (item->checkState(1) == Qt::Checked) ? Qt::Unchecked : Qt::Checked;
+        item->setCheckState(1, newState);
     }
 }
 
@@ -438,11 +807,11 @@ void LayerPanel::toggleLayerLock(int index)
 
 void LayerPanel::renameLayer(int index)
 {
-    if (!m_layerList || index < 0 || index >= m_layerList->count()) {
+    if (!m_layerTree || index < 0 || index >= m_layerTree->topLevelItemCount()) {
         return;
     }
     
-    QListWidgetItem *item = m_layerList->item(index);
+    QTreeWidgetItem *item = m_layerTree->topLevelItem(index);
     if (!item) {
         return;
     }
@@ -450,11 +819,11 @@ void LayerPanel::renameLayer(int index)
     bool ok;
     QString newName = QInputDialog::getText(this, tr("重命名图层"),
                                            tr("新图层名称:"), QLineEdit::Normal,
-                                           item->text(), &ok);
+                                           item->text(0), &ok);
     
     if (ok && !newName.isEmpty()) {
         if (m_layerManager) {
-            int layerIndex = item->data(Qt::UserRole).toInt();
+            int layerIndex = item->data(0, Qt::UserRole).toInt();
             DrawingLayer *layer = m_layerManager->layer(layerIndex);
             if (layer) {
                 m_layerManager->setLayerName(layer, newName);
@@ -465,19 +834,19 @@ void LayerPanel::renameLayer(int index)
 
 void LayerPanel::selectLayer(int index)
 {
-    if (!m_layerList || index < 0 || index >= m_layerList->count()) {
+    if (!m_layerTree || index < 0 || index >= m_layerTree->topLevelItemCount()) {
         return;
     }
     
-    m_layerList->setCurrentRow(index);
+    m_layerTree->setCurrentItem(m_layerTree->topLevelItem(index));
     
     // TODO: 实现图层选择逻辑
     // emit layerSelected(layer);
 }
 
-QListWidgetItem* LayerPanel::createLayerItem(DrawingLayer *layer, int index)
+QTreeWidgetItem* LayerPanel::createLayerItem(DrawingLayer *layer, int index)
 {
-    // TODO: 实现从DrawingLayer创建QListWidgetItem的逻辑
+    // TODO: 实现从DrawingLayer创建QTreeWidgetItem的逻辑
     Q_UNUSED(layer);
     Q_UNUSED(index);
     return nullptr;

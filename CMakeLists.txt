@@ -38,6 +38,9 @@ set(SOURCES
     src/ui/cursor-manager.cpp
     src/core/layer-manager.cpp
     src/core/patheditor.cpp
+    src/core/object-tree-item.cpp
+    src/core/object-tree-model.cpp
+    src/ui/object-tree-view.cpp
     src/ui/ruler.cpp
     src/ui/scrollable-toolbar.cpp
     src/core/svghandler.cpp
@@ -64,6 +67,7 @@ set(SOURCES
     src/ui/layer-panel.cpp
     src/ui/tools-panel.cpp
     src/ui/page-settings-panel.cpp
+    src/ui/tabbed-property-panel.cpp
     
     # 工具模块（包含变换系统）
     src/tools/transform-handle.cpp
@@ -95,6 +99,9 @@ set(HEADERS
     src/ui/cursor-manager.h
     src/core/layer-manager.h
     src/core/patheditor.h
+    src/core/object-tree-item.h
+    src/core/object-tree-model.h
+    src/ui/object-tree-view.h
     src/ui/ruler.h
     src/ui/scrollable-toolbar.h
     src/core/svghandler.h
@@ -121,6 +128,7 @@ set(HEADERS
     src/ui/layer-panel.h
     src/ui/tools-panel.h
     src/ui/page-settings-panel.h
+    src/ui/object-tree-view.h
     
     # 工具模块（包含变换系统）
     src/tools/transform-handle.h

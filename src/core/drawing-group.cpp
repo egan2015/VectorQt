@@ -54,7 +54,7 @@ void DrawingGroup::addItem(DrawingShape *item)
 
     // 🌟 关键修复：重置子项的变换，避免二次变换
     // 子项的位置已经转换为本地坐标，所以变换应该是单位矩阵
-    //item->applyTransform(QTransform());
+    // item->applyTransform(QTransform());
 
     // 保存到列表
     m_items.append(item);
@@ -89,7 +89,6 @@ void DrawingGroup::addItem(DrawingShape *item)
     }
 
     m_currentBounds = combinedBounds;
-
 }
 
 void DrawingGroup::removeItem(DrawingShape *item)
@@ -117,8 +116,6 @@ void DrawingGroup::removeItem(DrawingShape *item)
     // 恢复子项的所有能力
     item->setFlag(QGraphicsItem::ItemIsMovable, true);
     item->setFlag(QGraphicsItem::ItemIsSelectable, true);
-
- 
 }
 
 QList<DrawingShape *> DrawingGroup::ungroup()
@@ -180,7 +177,7 @@ QPainterPath DrawingGroup::shape() const
 
 void DrawingGroup::mousePressEvent(QGraphicsSceneMouseEvent *event)
 {
- 
+
     // 🌟 调用QGraphicsItem的基类方法，确保拖动功能正常工作
     DrawingShape::mousePressEvent(event);
 }

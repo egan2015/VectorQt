@@ -1127,8 +1127,24 @@ void DrawingPath::updatePathFromControlPoints()
                 i++;
             }
         } else if (type == QPainterPath::CurveToDataElement) {
-            // 孤立的数据点，跳过
-            i++;
+            // 检查是否是QuadTo（某些Qt版本中可能使用不同的枚举值）
+            if (i > 0 && i < m_controlPointTypes.size()) {
+                QPainterPath::ElementType prevType = m_controlPointTypes[i-1];
+                if (prevType == QPainterPath::LineToElement && 
+                    i + 1 < m_controlPointTypes.size()) {
+                    // 这可能是QuadTo的情况：LineTo + CurveToDataElement
+                    QPointF endPoint = m_controlPoints[i];
+                    QPointF nextPoint = m_controlPoints[i + 1];
+                    newPath.quadTo(point, endPoint);
+                    i += 2;
+                } else {
+                    // 真正的CurveToDataElement，跳过
+                    i++;
+                }
+            } else {
+                // 真正的CurveToDataElement，跳过
+                i++;
+            }
         } else {
             // 未知类型，跳过
             i++;

@@ -2064,7 +2064,15 @@ void MainWindow::about()
 void MainWindow::onSelectionChanged()
 {
     if (m_scene) {
-        qDebug() << "MainWindow::onSelectionChanged: selected items count:" << m_scene->selectedItems().count();
+        int selectedCount = m_scene->selectedItems().count();
+        qDebug() << "MainWindow::onSelectionChanged: selected items count:" << selectedCount;
+        
+        // 如果有选中的图形，提示用户可以使用空格键切换到选择工具
+        if (selectedCount > 0) {
+            updateStatusBar("选中图形 - 按空格键切换到选择工具");
+        } else {
+            updateStatusBar("就绪");
+        }
     }
     updateUI();
     if (m_propertyPanel)

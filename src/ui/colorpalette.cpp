@@ -72,7 +72,7 @@ void ColorPalette::setupUI()
     QWidget *fillColorWidget = new QWidget();
     QHBoxLayout *fillColorLayout = new QHBoxLayout(fillColorWidget);
     fillColorLayout->setContentsMargins(0, 0, 0, 0);
-    fillColorLayout->setSpacing(1);
+    fillColorLayout->setSpacing(0);
     
     // 填充色颜色按钮将在这里动态添加
     m_fillColorArea = fillColorWidget;
@@ -117,7 +117,7 @@ void ColorPalette::setupUI()
     QWidget *strokeColorWidget = new QWidget();
     QHBoxLayout *strokeColorLayout = new QHBoxLayout(strokeColorWidget);
     strokeColorLayout->setContentsMargins(0, 0, 0, 0);
-    strokeColorLayout->setSpacing(1);
+    strokeColorLayout->setSpacing(0);
     
     // 边框色颜色按钮将在这里动态添加
     m_strokeColorArea = strokeColorWidget;
@@ -171,24 +171,6 @@ void ColorPalette::createColorActions()
         // 添加无填充选项（第一个位置）
         QPushButton *noFillButton = new QPushButton();
         noFillButton->setFixedSize(18, 18);
-        noFillButton->setStyleSheet(
-            "QPushButton {"
-            "  background-color: white;"
-            "  border: 1px solid red;"
-            "  background-image: none;"
-            "}"
-            "QPushButton::before {"
-            "  content: 'X';"
-            "  position: absolute;"
-            "  top: 1px;"
-            "  left: 1px;"
-            "  right: 1px;"
-            "  bottom: 1px;"
-            "  color: red;"
-            "  font-weight: bold;"
-            "  font-size: 10px;"
-            "}"
-        );
         noFillButton->setToolTip("无填充");
         
         connect(noFillButton, &QPushButton::clicked, [this]() {
@@ -197,18 +179,13 @@ void ColorPalette::createColorActions()
         
         fillColorLayout->addWidget(noFillButton);
         
-        // 添加分隔线
-        QFrame *separator = new QFrame();
-        separator->setFrameShape(QFrame::VLine);
-        separator->setFrameShadow(QFrame::Sunken);
-        separator->setFixedWidth(1);
-        separator->setStyleSheet("background-color: palette(mid);");
-        fillColorLayout->addWidget(separator);
+        // 设置无填充按钮的初始样式
+        updateColorButton(noFillButton, QColor(Qt::transparent));
         
         for (const NamedColor &namedColor : m_w3cColors) {
             QPushButton *colorButton = new QPushButton();
             colorButton->setFixedSize(18, 18);
-            colorButton->setStyleSheet(QString("background-color: %1; border: 1px solid palette(mid);").arg(namedColor.color.name()));
+            colorButton->setStyleSheet(QString("background-color: %1; border: none;").arg(namedColor.color.name()));
             colorButton->setToolTip(namedColor.name);
             
             connect(colorButton, &QPushButton::clicked, [this, namedColor]() {
@@ -219,7 +196,7 @@ void ColorPalette::createColorActions()
         }
         
         // 设置填充色区域的最小宽度，确保颜色按钮可见（包括无填充按钮和分隔线）
-        m_fillColorArea->setMinimumWidth((m_w3cColors.size() + 1) * 20); // 额外2个位置：无填充按钮和分隔线
+        m_fillColorArea->setMinimumWidth((m_w3cColors.size() + 1) * 20); // 额外2个位置：无填充按钮和分隔线，按钮大小18px
     }
     
     // 为边框色创建颜色按钮
@@ -228,22 +205,6 @@ void ColorPalette::createColorActions()
         // 添加无边框选项（第一个位置）
         QPushButton *noStrokeButton = new QPushButton();
         noStrokeButton->setFixedSize(18, 18);
-        noStrokeButton->setStyleSheet(
-            "QPushButton {"
-            "  background-color: white;"
-            "  border: 1px solid blue;"
-            "  background-image: none;"
-            "}"
-            "QPushButton::before {"
-            "  content: 'X';"
-            "  position: absolute;"
-            "  top: 1px;"
-            "  left: 1px;"
-            "  color: blue;"
-            "  font-weight: bold;"
-            "  font-size: 10px;"
-            "}"
-        );
         noStrokeButton->setToolTip("无边框");
         
         connect(noStrokeButton, &QPushButton::clicked, [this]() {
@@ -252,18 +213,13 @@ void ColorPalette::createColorActions()
         
         strokeColorLayout->addWidget(noStrokeButton);
         
-        // 添加分隔线
-        QFrame *separator = new QFrame();
-        separator->setFrameShape(QFrame::VLine);
-        separator->setFrameShadow(QFrame::Sunken);
-        separator->setFixedWidth(1);
-        separator->setStyleSheet("background-color: palette(mid);");
-        strokeColorLayout->addWidget(separator);
+        // 设置无边框按钮的初始样式
+        updateColorButton(noStrokeButton, QColor(Qt::transparent));
         
         for (const NamedColor &namedColor : m_w3cColors) {
             QPushButton *colorButton = new QPushButton();
             colorButton->setFixedSize(18, 18);
-            colorButton->setStyleSheet(QString("background-color: %1; border: 1px solid palette(mid);").arg(namedColor.color.name()));
+            colorButton->setStyleSheet(QString("background-color: %1; border: none;").arg(namedColor.color.name()));
             colorButton->setToolTip(namedColor.name);
             
             connect(colorButton, &QPushButton::clicked, [this, namedColor]() {
@@ -274,7 +230,7 @@ void ColorPalette::createColorActions()
         }
         
         // 设置边框色区域的最小宽度，确保颜色按钮可见（包括无边框按钮和分隔线）
-        m_strokeColorArea->setMinimumWidth((m_w3cColors.size() + 1) * 20); // 额外2个位置：无边框按钮和分隔线
+        m_strokeColorArea->setMinimumWidth((m_w3cColors.size() + 1) * 20); // 额外2个位置：无边框按钮和分隔线，按钮大小18px
     }
 }
 
@@ -467,7 +423,21 @@ QList<ColorPalette::NamedColor> ColorPalette::getW3CColors() const
 
 void ColorPalette::updateColorButton(QPushButton *button, const QColor &color)
 {
-    button->setStyleSheet(QString("background-color: %1; border: 1px solid palette(text);").arg(color.name()));
+    if (color == Qt::transparent) {
+        // 对于透明色，使用CSS背景图案实现平铺
+        button->setStyleSheet(
+            "QPushButton {"
+            "  background-color: white;"
+            "  background-image: url(:/icons/icons/no-fill-pattern.svg);"
+            "  background-repeat: repeat-xy;"
+            "  border: 1px solid #888;"
+            "}"
+        );
+        button->setIcon(QIcon()); // 清除图标，使用CSS背景
+    } else {
+        button->setStyleSheet(QString("background-color: %1; border: 1px solid palette(text);").arg(color.name()));
+        button->setIcon(QIcon()); // 清除图标
+    }
 }
 
 void ColorPalette::selectFillColor(const QColor &color)

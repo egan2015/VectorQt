@@ -163,7 +163,7 @@ protected:
     bool m_editHandlesEnabled = false;
     
     // 选择边框显示控制
-    bool m_showSelectionIndicator = true;
+    bool m_showSelectionIndicator = false;
     
     // 网格对齐
     bool m_gridAlignmentEnabled = false;
@@ -308,6 +308,10 @@ public:
     void setControlPoints(const QVector<QPointF> &points);
     QVector<QPointF> controlPoints() const { return m_controlPoints; }
     void updatePathFromControlPoints();
+    
+    // 控制点类型相关 - 用于保存原始路径元素信息
+    void setControlPointTypes(const QVector<QPainterPath::ElementType> &types) { m_controlPointTypes = types; }
+    QVector<QPainterPath::ElementType> controlPointTypes() const { return m_controlPointTypes; }
     
     // 控制点连线显示
     void setShowControlPolygon(bool show);

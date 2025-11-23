@@ -1,5 +1,17 @@
 <RCC>
     <qresource prefix="/icons">
+        <!-- Modern Icons -->
+        <file>icons/modern/select-tool.svg</file>
+        <file>icons/modern/rectangle-tool.svg</file>
+        <file>icons/modern/circle-tool.svg</file>
+        <file>icons/modern/pen-tool.svg</file>
+        <file>icons/modern/node-edit-tool.svg</file>
+        <file>icons/modern/brush-tool.svg</file>
+        <file>icons/modern/fill-tool.svg</file>
+        <file>icons/modern/eraser-tool.svg</file>
+        <file>icons/modern/line-tool.svg</file>
+        <file>icons/modern/text-tool.svg</file>
+        <!-- Legacy Icons (暂时保留，后续可删除) -->
         <file>icons/select-tool.svg</file>
         <file>icons/rectangle-tool.svg</file>
         <file>icons/ellipse-tool.svg</file>
@@ -21,5 +33,6 @@
         <file>icons/polyline-tool-new.svg</file>
         <file>icons/polygon-tool-new.svg</file>
         <file>icons/path-edit-tool-new.svg</file>
+        <file>icons/no-fill-pattern.svg</file>
     </qresource>
 </RCC>

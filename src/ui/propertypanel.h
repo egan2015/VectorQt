@@ -83,6 +83,9 @@ private:
     double m_lastKnownRotation;
     double m_lastKnownWidth;
     double m_lastKnownHeight;
+    
+    // 原始变换矩阵存储
+    QTransform m_originalTransform;
 };
 
 #endif // PROPERTYPANEL_H

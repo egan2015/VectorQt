@@ -1323,9 +1323,17 @@ void MainWindow::newFile()
     m_currentFile.clear();
     m_isModified = false;
     
-    // 重置图层管理器
+    // 清除所有图层
     if (m_layerManager) {
+        qDebug() << "newFile: Clearing all layers";
+        m_layerManager->clearAllLayers();
+        // 确保SVG导入标志被重置
+        m_layerManager->setSvgImporting(false);
+        qDebug() << "newFile: SVG importing flag set to false";
+        // 重新设置场景以创建默认背景图层
+        qDebug() << "newFile: Calling setScene to create default layer";
         m_layerManager->setScene(m_scene);
+        qDebug() << "newFile: Layer count after setScene:" << m_layerManager->layerCount();
     }
     updateUI();
     m_statusLabel->setText("新文档已创建");
@@ -1340,6 +1348,15 @@ void MainWindow::openFile()
     {
         QFileInfo fileInfo(fileName);
         m_lastOpenDir = fileInfo.absolutePath(); // 更新记住的目录
+        
+        // 清除现有内容
+        m_scene->clearScene();
+        if (m_layerManager) {
+            m_layerManager->clearAllLayers();
+            m_layerManager->setScene(m_scene);
+        }
+        m_currentFile.clear();
+        m_isModified = false;
         
         // 重置选择状态
         if (m_scene) {

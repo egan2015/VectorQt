@@ -1405,6 +1405,11 @@ DrawingText::DrawingText(const QString &text, QGraphicsItem *parent)
 
 QRectF DrawingText::localBounds() const
 {
+    // 安全检查：如果文本为空，返回小的默认边界框
+    if (m_text.isEmpty()) {
+        return QRectF(m_position.x(), m_position.y(), 1, 1);
+    }
+    
     QFontMetricsF metrics(m_font);
     // 使用tightBoundingRect获得更准确的边界框
     QRectF textRect = metrics.tightBoundingRect(m_text);
@@ -1531,6 +1536,15 @@ void DrawingText::endNodeDrag(int index)
 
 void DrawingText::paintShape(QPainter *painter)
 {
+    if (!painter) {
+        return;
+    }
+    
+    // 安全检查：确保文本不为空
+    if (m_text.isEmpty()) {
+        return;
+    }
+    
     painter->setFont(m_font);
     
     // 文本颜色应该使用填充色而不是描边色
@@ -1563,7 +1577,17 @@ void DrawingText::paintShape(QPainter *painter)
 
 void DrawingText::mousePressEvent(QGraphicsSceneMouseEvent *event)
 {
+    if (!event) {
+        return;
+    }
+    
     if (event->button() == Qt::LeftButton) {
+        // 安全检查：如果文本为空，调用基类方法
+        if (m_text.isEmpty()) {
+            QGraphicsItem::mousePressEvent(event);
+            return;
+        }
+        
         // 检查是否点击了文本区域，使用与边界框相同的计算方式
         QFontMetricsF metrics(m_font);
         QRectF textRect = metrics.tightBoundingRect(m_text);

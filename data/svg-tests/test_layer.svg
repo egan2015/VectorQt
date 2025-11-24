@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300">
+<svg xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300">
   <defs>
     <!-- 定义一个渐变 -->
     <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -19,12 +19,12 @@
   </defs>
   
   <!-- 背景图层 -->
-  <g id="background" opacity="0.3">
+  <g id="background" inkscape:label="背景图层" inkscape:groupmode="layer" opacity="0.3">
     <rect x="0" y="0" width="400" height="300" fill="lightgray" />
   </g>
   
   <!-- 形状图层 -->
-  <g id="shapes">
+  <g id="shapes" inkscape:label="形状图层" inkscape:groupmode="layer">
     <!-- 使用渐变的矩形 -->
     <rect x="50" y="50" width="100" height="80" fill="url(#grad1)" />
     
@@ -37,7 +37,7 @@
   </g>
   
   <!-- 文本图层 -->
-  <g id="text" opacity="0.8">
+  <g id="text" inkscape:label="文本图层" inkscape:groupmode="layer" opacity="0.8">
     <text x="200" y="250" font-family="Arial" font-size="20" text-anchor="middle" fill="darkblue">
       SVG图层测试
     </text>

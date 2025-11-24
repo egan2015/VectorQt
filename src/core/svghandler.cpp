@@ -38,9 +38,13 @@ static QHash<QString, QDomElement> s_definedElements;
 bool SvgHandler::importFromSvg(DrawingScene *scene, const QString &fileName)
 {
     // qDebug() << "开始导入SVG文件:" << fileName;
+    
+    // 设置SVG导入标志，防止创建默认图层
+    LayerManager::instance()->setSvgImporting(true);
     QFile file(fileName);
     if (!file.open(QIODevice::ReadOnly)) {
         qDebug() << "无法打开SVG文件:" << fileName;
+        LayerManager::instance()->setSvgImporting(false);
         return false;
     }
     
@@ -50,7 +54,7 @@ bool SvgHandler::importFromSvg(DrawingScene *scene, const QString &fileName)
     
     if (!doc.setContent(&file, &errorMsg, &errorLine, &errorCol)) {
         qDebug() << "解析SVG文件失败:" << errorMsg << "行:" << errorLine << "列:" << errorCol;
-        file.close();
+        LayerManager::instance()->setSvgImporting(false);
         return false;
     }
     
@@ -105,9 +109,11 @@ bool SvgHandler::parseSvgDocument(DrawingScene *scene, const QDomDocument &doc)
             // qDebug() << "解析SVG元素:" << tagName;
             
             if (tagName == "g") {
-                // 处理组元素，并获取组中元素的计数
-                int groupElementCount = parseGroupElement(scene, element, nullptr);
-                elementCount += groupElementCount;
+                // 处理组元素
+                DrawingGroup *group = parseGroupElement(scene, element);
+                if (group) {
+                    elementCount++;
+                }
             } else {
                 DrawingShape *shape = parseSvgElement(element);
                 if (shape) {
@@ -120,6 +126,31 @@ bool SvgHandler::parseSvgDocument(DrawingScene *scene, const QDomDocument &doc)
             }
         }
     }
+    
+    // SVG导入完成后，只删除现有的背景图层，保持导入图层的原始名称
+    LayerManager *layerManager = LayerManager::instance();
+    if (layerManager->layerCount() > 0) {
+        // 删除现有的背景图层
+        QList<DrawingLayer*> layersToDelete;
+        for (DrawingLayer *layer : layerManager->layers()) {
+            if (layer->name() == "背景图层") {
+                layersToDelete.append(layer);
+            }
+        }
+        
+        for (DrawingLayer *layer : layersToDelete) {
+            layerManager->deleteLayer(layer);
+        }
+        
+        // 设置第一个导入图层为活动图层
+        if (layerManager->layerCount() > 0) {
+            DrawingLayer *firstLayer = layerManager->layer(0);
+            layerManager->setActiveLayer(firstLayer);
+        }
+    }
+    
+    // 重置SVG导入标志
+    LayerManager::instance()->setSvgImporting(false);
     
     // qDebug() << "总共解析了" << elementCount << "个元素";
     return elementCount > 0;
@@ -180,7 +211,7 @@ DrawingShape* SvgHandler::parseSvgElement(const QDomElement &element)
     }
 }
 
-int SvgHandler::parseGroupElement(DrawingScene *scene, const QDomElement &groupElement, QGraphicsItem *parentItem)
+DrawingGroup* SvgHandler::parseGroupElement(DrawingScene *scene, const QDomElement &groupElement)
 {
     // 检查是否是图层（带有 inkscape:label 属性）
     QString layerId = groupElement.attribute("inkscape:label");
@@ -192,39 +223,37 @@ int SvgHandler::parseGroupElement(DrawingScene *scene, const QDomElement &groupE
     DrawingGroup *group = nullptr;
     
     if (isLayer) {
-        // 创建图层
-        layer = LayerManager::instance()->createLayer(layerId);
-        // qDebug() << "创建图层:" << layerId;
+        // 为SVG导入创建图层，保持顺序
+        layer = LayerManager::instance()->createLayerForSvg(layerId);
+        
+        // 解析图层属性
+        // 可见性
+        QString visibility = groupElement.attribute("visibility", "visible");
+        layer->setVisible(visibility != "hidden");
+        
+        // 不透明度
+        QString opacity = groupElement.attribute("opacity", "1.0");
+        layer->setOpacity(opacity.toDouble());
+        
+        // 锁定状态（使用自定义属性或style）
+        QString style = groupElement.attribute("style", "");
+        bool isLocked = false;
+        if (style.contains("display:none") || style.contains("visibility:hidden")) {
+            isLocked = true;
+        }
+        layer->setLocked(isLocked);
+        
+        // qDebug() << "创建图层:" << layerId << "可见:" << layer->isVisible() << "锁定:" << isLocked;
     } else {
         // 创建组合对象
         group = new DrawingGroup();
         
-        // 首先添加到场景或父项，再处理变换
-        // 如果有父项（说明是嵌套组），添加到父项；否则添加到场景
-        if (parentItem) {
-            group->setParentItem(parentItem);
-            // qDebug() << "创建嵌套组合对象并添加到父项";
-        } else {
-            scene->addItem(group);
-            // qDebug() << "创建组合对象并添加到场景";
-        }
-        
-        // 解析组的样式属性（在添加到场景后）
+        // 解析组的样式属性
         parseStyleAttributes(group, groupElement);
-        
-        // 解析变换属性（在添加子元素之后）
-        // 这样变换会应用到已经添加的子元素
-        if (groupElement.hasAttribute("transform")) {
-            QString transform = groupElement.attribute("transform");
-            if (!transform.isEmpty()) {
-                parseTransformAttribute(group, transform);
-            }
-        }
     }
     
     // 遍历组中的所有子元素
     QDomNodeList children = groupElement.childNodes();
-    int elementCount = 0;
     for (int i = 0; i < children.size(); ++i) {
         QDomNode node = children.at(i);
         if (node.isElement()) {
@@ -232,24 +261,32 @@ int SvgHandler::parseGroupElement(DrawingScene *scene, const QDomElement &groupE
             QString tagName = element.tagName();
             
             if (tagName == "g") {
-                // 递归处理嵌套组，传递当前组作为父项
-                int groupElementCount = 0;
-                if (group) {
-                    groupElementCount = parseGroupElement(scene, element, group);
-                } else {
-                    groupElementCount = parseGroupElement(scene, element, nullptr);
+                // 递归处理嵌套组
+                DrawingGroup *nestedGroup = parseGroupElement(scene, element);
+                if (nestedGroup && group) {
+                    // 将嵌套组添加到父组中
+                    group->addItem(nestedGroup);
                 }
-                elementCount += groupElementCount;
             } else {
                 try {
                     DrawingShape *shape = parseSvgElement(element);
                     if (shape) {
+                        // 应用子对象自己的变换（如果有）
+                        if (element.hasAttribute("transform")) {
+                            QString transform = element.attribute("transform");
+                            if (!transform.isEmpty()) {
+                                parseTransformAttribute(shape, transform);
+                            }
+                        }
+                        
                         if (layer) {
                             // 添加到图层
                             layer->addShape(shape);
                             // qDebug() << "添加形状到图层" << layerId << "，元素:" << tagName;
                         } else if (group) {
-                            // 添加到组合对象
+                            // 先添加到场景以获得正确的场景坐标
+                            scene->addItem(shape);
+                            // 然后添加到组合对象（会自动转换为相对坐标）
                             group->addItem(shape);
                             // qDebug() << "添加形状到组合对象，元素:" << tagName;
                         } else {
@@ -257,7 +294,7 @@ int SvgHandler::parseGroupElement(DrawingScene *scene, const QDomElement &groupE
                             scene->addItem(shape);
                             // qDebug() << "从组中添加形状到场景，元素:" << tagName;
                         }
-                        elementCount++;
+                        // 元素已添加
                     } else {
                         // qDebug() << "无法解析元素:" << tagName << "，跳过";
                     }
@@ -268,8 +305,31 @@ int SvgHandler::parseGroupElement(DrawingScene *scene, const QDomElement &groupE
         }
     }
     
-    // 变换已在添加子元素之前应用
-    return elementCount;
+    // 为图层应用变换（如果有）
+    if (layer && groupElement.hasAttribute("transform")) {
+        QString transform = groupElement.attribute("transform");
+        if (!transform.isEmpty()) {
+            // 图层的变换需要应用到所有子元素
+            for (DrawingShape *shape : layer->shapes()) {
+                parseTransformAttribute(shape, transform);
+            }
+        }
+    }
+    
+    // 应用变换到组合
+    if (group && groupElement.hasAttribute("transform")) {
+        QString transform = groupElement.attribute("transform");
+        if (!transform.isEmpty()) {
+            parseTransformAttribute(group, transform);
+        }
+    }
+    
+    // 最后将组合添加到场景
+    if (group) {
+        scene->addItem(group);
+    }
+    
+    return group;
 }
 
 DrawingLayer* SvgHandler::parseLayerElement(const QDomElement &element)
@@ -646,7 +706,10 @@ DrawingRectangle* SvgHandler::parseRectElement(const QDomElement &element)
         return nullptr;
     }
     
-    DrawingRectangle *rect = new DrawingRectangle(QRectF(x, y, width, height));
+    DrawingRectangle *rect = new DrawingRectangle(QRectF(0, 0, width, height));
+    
+    // 设置位置
+    rect->setPos(x, y);
     
     // 解析样式属性
     parseStyleAttributes(rect, element);
@@ -654,7 +717,9 @@ DrawingRectangle* SvgHandler::parseRectElement(const QDomElement &element)
     // 解析变换属性
     QString transform = element.attribute("transform");
     if (!transform.isEmpty()) {
+        qDebug() << "矩形变换:" << transform;
         parseTransformAttribute(rect, transform);
+        qDebug() << "矩形变换后matrix:" << rect->transform();
     }
     
     return rect;
@@ -671,8 +736,11 @@ DrawingEllipse* SvgHandler::parseEllipseElement(const QDomElement &element)
         return nullptr;
     }
     
-    QRectF rect(cx - rx, cy - ry, 2 * rx, 2 * ry);
+    QRectF rect(0, 0, 2 * rx, 2 * ry);
     DrawingEllipse *ellipse = new DrawingEllipse(rect);
+    
+    // 设置位置（椭圆的位置是中心点）
+    ellipse->setPos(cx, cy);
     
     // 解析样式属性
     parseStyleAttributes(ellipse, element);
@@ -1020,56 +1088,7 @@ void SvgHandler::parseTransformAttribute(DrawingShape *shape, const QString &tra
     shape->applyTransform(currentTransform);
 }
 
-void SvgHandler::parseTransformAttribute(DrawingGroup *group, const QString &transformStr)
-{
-    // 解析SVG变换字符串，如 "translate(10,20) rotate(45) scale(2,1)"
-    QRegularExpression regex("(\\S+)\\s*\\(\\s*([^)]+)\\s*\\)");
-    QRegularExpressionMatchIterator iter = regex.globalMatch(transformStr);
-    
-    QTransform combinedTransform;
-    
-    while (iter.hasNext()) {
-        QRegularExpressionMatch match = iter.next();
-        QString func = match.captured(1);
-        QString paramsStr = match.captured(2);
-        
-        QStringList params = paramsStr.split(QRegularExpression("\\s*,\\s*|\\s+"), Qt::SkipEmptyParts);
-        
-        if (func == "translate" && params.size() >= 2) {
-            qreal tx = params[0].toDouble();
-            qreal ty = params.size() > 1 ? params[1].toDouble() : 0.0;
-            combinedTransform.translate(tx, ty);
-        } else if (func == "rotate" && params.size() >= 1) {
-            qreal angle = params[0].toDouble();
-            qreal cx = 0, cy = 0;
-            if (params.size() >= 3) {
-                cx = params[1].toDouble();
-                cy = params[2].toDouble();
-            }
-            combinedTransform.translate(cx, cy);
-            combinedTransform.rotate(angle);
-            combinedTransform.translate(-cx, -cy);
-        } else if (func == "scale" && params.size() >= 1) {
-            qreal sx = params[0].toDouble();
-            qreal sy = params.size() > 1 ? params[1].toDouble() : sx;
-            combinedTransform.scale(sx, sy);
-        } else if (func == "matrix" && params.size() >= 6) {
-            // 解析6参数仿射变换矩阵
-            qreal a = params[0].toDouble();
-            qreal b = params[1].toDouble();
-            qreal c = params[2].toDouble();
-            qreal d = params[3].toDouble();
-            qreal e = params[4].toDouble();
-            qreal f = params[5].toDouble();
-            
-            QTransform qtTransform(a, b, c, d, e, f);
-            combinedTransform = qtTransform;
-        }
-    }
-    
-    // 应用组合变换到组
-    group->applyTransform(combinedTransform);
-}
+
 
 QColor SvgHandler::parseColor(const QString &colorStr)
 {
@@ -2742,9 +2761,12 @@ DrawingShape* SvgHandler::parseUseElement(const QDomElement &element)
     // 解析并应用变换
     QString transform = element.attribute("transform");
     if (!transform.isEmpty()) {
+        qDebug() << "use元素变换:" << transform << "位置:" << QPointF(x, y);
         // 对于use元素，需要调整旋转中心，考虑位置偏移
         QString adjustedTransform = adjustTransformForUseElement(transform, x, y);
+        qDebug() << "调整后的变换:" << adjustedTransform;
         parseTransformAttribute(shape, adjustedTransform);
+        qDebug() << "use元素变换后matrix:" << shape->transform();
     }
     
     // 解析样式属性（use元素的样式会覆盖引用元素的样式）

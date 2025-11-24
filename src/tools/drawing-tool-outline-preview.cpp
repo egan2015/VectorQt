@@ -1161,26 +1161,27 @@ void OutlinePreviewTransformTool::updateOutlinePreview()
     QRectF unifiedBounds;
 
     // 如果在变换中，直接使用Group的边界
-    if (m_state == STATE_GRABBED && !m_selectedShapes.isEmpty())
-    {
-        // 计算所有选中图形的统一边界框
-        for (DrawingShape *shape : m_selectedShapes)
-        {
-            if (!shape || !shape->scene())
-                continue; // 跳过无效的图形
-            QRectF shapeBounds = shape->sceneBoundingRect();
+    // if (m_state == STATE_GRABBED && !m_selectedShapes.isEmpty())
+    // {
+    //     // 计算所有选中图形的统一边界框
+    //     for (DrawingShape *shape : m_selectedShapes)
+    //     {
+    //         if (!shape || !shape->scene())
+    //             continue; // 跳过无效的图形
+    //         QRectF shapeBounds = shape->sceneBoundingRect();
 
-            if (unifiedBounds.isEmpty())
-            {
-                unifiedBounds = shapeBounds;
-            }
-            else
-            {
-                unifiedBounds = unifiedBounds.united(shapeBounds);
-            }
-        }
-    }
-    else if (m_scene)
+    //         if (unifiedBounds.isEmpty())
+    //         {
+    //             unifiedBounds = shapeBounds;
+    //         }
+    //         else
+    //         {
+    //             unifiedBounds = unifiedBounds.united(shapeBounds);
+    //         }
+    //     }
+    // }
+    // else 
+    if (m_scene)
     {
         // 否则从场景获取选中的图形
         QList<QGraphicsItem *> items = m_scene->selectedItems();

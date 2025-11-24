@@ -317,6 +317,11 @@ void PropertyPanel::updateValues()
         QGraphicsItem *item = selected.first();
         DrawingShape *shape = dynamic_cast<DrawingShape*>(item);
         
+        // 保存当前对象的原始变换矩阵
+        if (shape) {
+            m_originalTransform = shape->transform();
+        }
+        
         QRectF bounds = item->boundingRect();
         QPointF pos = item->pos();
         
@@ -473,6 +478,11 @@ void PropertyPanel::onRotationChanged()
         return;
     }
     
+    // 避免重复调用
+    if (qAbs(m_rotationSpinBox->value() - m_lastKnownRotation) < 0.01) {
+        return;
+    }
+    
     QList<QGraphicsItem*> selected = m_scene->selectedItems();
     if (selected.size() == 1) {
         QGraphicsItem *item = selected.first();
@@ -504,12 +514,11 @@ void PropertyPanel::onRotationChanged()
             qDebug() << "Current Scale:" << scaleX << scaleY;
             // 创建新的变换：保留缩放和位移，设置绝对角度
             // 使用变换分量系统，链式调用：缩放 → 旋转 → 平移
-            QTransform newTransform = 
-                Scale{QPointF(scaleX, scaleY), center} *
-                Rotate{-newAngle, center} ;
-                //Translate{QPointF(translateX, translateY)};
             
-            // 使用applyTransform而不是setTransform，确保通知机制正常工作
+            // 在原始矩阵基础上应用旋转
+            QTransform newTransform ;
+            newTransform = Rotate{-newAngle, center} *Scale{QPointF(scaleX, scaleY), center} ;
+            
             shape->applyTransform(newTransform, center);
             
         } else {

@@ -55,6 +55,7 @@ public slots:
     void onLayerAdded(DrawingLayer *layer);
     void onLayerRemoved(DrawingLayer *layer);
     void onActiveLayerChanged(DrawingLayer *layer);
+    void onLayerContentChanged(DrawingLayer *layer);
 
 private:
     void buildTree();

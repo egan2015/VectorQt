@@ -490,7 +490,6 @@ void PropertyPanel::onRotationChanged()
             // 对于DrawingShape，设置绝对角度（不是增量），但保留位移和缩放
             // 使用变换中心（场景原点）而不是图形中心
             QPointF center = shape->transformOriginPoint();
-            
             // 获取当前变换并提取各分量
             QTransform currentTransform = shape->transform();
             
@@ -511,6 +510,7 @@ void PropertyPanel::onRotationChanged()
             
             // 使用applyTransform而不是setTransform，确保通知机制正常工作
             shape->applyTransform(newTransform, center);
+            
         } else {
             // 对于其他图形项，使用标准旋转
             // 注意：Qt的setRotation()也是顺时针为正，需要转换

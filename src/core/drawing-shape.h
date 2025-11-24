@@ -12,6 +12,7 @@
 #include <QFont>
 #include <QUndoCommand>
 #include <memory>
+#include "smart-render-manager.h"
 
 class DrawingDocument;
 
@@ -101,17 +102,17 @@ public:
     // 视觉反馈和高亮支持
     virtual void highlightNode(int index) { Q_UNUSED(index); }
     virtual void highlightPath(const QPointF& point) { Q_UNUSED(point); }
-    virtual void clearHighlights() { m_highlightedNode = -1; m_highlightedPath = false; update(); }
+    virtual void clearHighlights() { m_highlightedNode = -1; m_highlightedPath = false; smartUpdate(); }
     
     // 获取节点在指定位置的索引
     virtual int findNodeAt(const QPointF& pos, qreal threshold = 5.0) const { Q_UNUSED(pos); Q_UNUSED(threshold); return -1; }
     virtual bool isPointOnPath(const QPointF& pos, qreal threshold = 5.0) const { Q_UNUSED(pos); Q_UNUSED(threshold); return false; }
     
     // 样式属性
-    void setFillBrush(const QBrush &brush) { m_fillBrush = brush; update(); notifyObjectStateChanged(); }
+    void setFillBrush(const QBrush &brush) { m_fillBrush = brush; smartUpdate(); notifyObjectStateChanged(); }
     QBrush fillBrush() const { return m_fillBrush; }
     
-    void setStrokePen(const QPen &pen) { m_strokePen = pen; update(); notifyObjectStateChanged(); }
+    void setStrokePen(const QPen &pen) { m_strokePen = pen; smartUpdate(); notifyObjectStateChanged(); }
     QPen strokePen() const { return m_strokePen; }
     
     // 网格对齐支持
@@ -130,8 +131,12 @@ public:
     bool isEditHandlesEnabled() const { return false; }
     
     // 选择边框显示控制
-    void setShowSelectionIndicator(bool show) { m_showSelectionIndicator = show; update(); }
+    void setShowSelectionIndicator(bool show) { m_showSelectionIndicator = show; smartUpdate(); }
     bool showSelectionIndicator() const { return m_showSelectionIndicator; }
+    
+    // 智能更新支持
+    void smartUpdate();
+    void smartUpdate(const QRectF& rect);
     
     // 节点编辑相关 - 为每个图形类提供编辑点接口
     virtual QVector<QPointF> getNodePoints() const { return QVector<QPointF>(); }

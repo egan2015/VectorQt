@@ -10,6 +10,7 @@
 
 #include "../core/drawing-shape.h"
 #include "../core/drawing-document.h"
+#include "../core/smart-render-manager.h"
 
 #include "../ui/drawingview.h"
 #include "../core/toolbase.h"
@@ -2027,6 +2028,21 @@ QPointF DrawingPolygon::point(int index) const
         return m_points[index];
     }
     return QPointF();
+}
+
+// DrawingShape 智能更新方法实现
+void DrawingShape::smartUpdate()
+{
+    // 对于QGraphicsItem，我们直接调用update()
+    // 但可以添加一些优化逻辑
+    update();
+}
+
+void DrawingShape::smartUpdate(const QRectF& rect)
+{
+    // 对于QGraphicsItem，我们直接调用update()
+    // 但可以添加一些优化逻辑
+    update(rect);
 }
 
 QVector<QPointF> DrawingPolygon::getNodePoints() const

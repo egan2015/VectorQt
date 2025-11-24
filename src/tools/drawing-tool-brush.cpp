@@ -6,6 +6,9 @@
 #include "../tools/drawing-tool-brush.h"
 #include "../core/drawing-throttle.h"
 #include "../core/brush-engine.h"
+#include "../core/object-pool.h"
+#include "../core/smart-render-manager.h"
+#include "../core/performance-monitor.h"
 #include "../ui/drawingscene.h"
 #include "../ui/drawingview.h"
 #include "../core/drawing-shape.h"
@@ -56,14 +59,16 @@ void DrawingToolBrush::deactivate()
 
 bool DrawingToolBrush::mousePressEvent(QMouseEvent *event, const QPointF &scenePos)
 {
+    PERF_MONITOR_SCOPE("BrushMousePress");
+    
     if (event->button() == Qt::LeftButton && m_scene) {
         m_drawing = true;
         m_points.clear();
         m_points.append(scenePos);
         m_lastPoint = scenePos;
         
-        // 立即创建路径对象
-        m_currentPath = new DrawingPath();
+        // 从对象池获取路径对象
+        m_currentPath = GlobalObjectPoolManager::instance().getPool<DrawingPath>()->acquire();
         QPainterPath path;
         path.moveTo(scenePos);
         m_currentPath->setPath(path);
@@ -99,6 +104,8 @@ bool DrawingToolBrush::mousePressEvent(QMouseEvent *event, const QPointF &sceneP
 
 bool DrawingToolBrush::mouseMoveEvent(QMouseEvent *event, const QPointF &scenePos)
 {
+    PERF_MONITOR_SCOPE("BrushMouseMove");
+    
     if (m_drawing && m_currentPath && m_scene) {
         // 计算与上一个点的距离
         qreal distance = QLineF(m_lastPoint, scenePos).length();
@@ -128,6 +135,8 @@ bool DrawingToolBrush::mouseMoveEvent(QMouseEvent *event, const QPointF &scenePo
 
 bool DrawingToolBrush::mouseReleaseEvent(QMouseEvent *event, const QPointF &scenePos)
 {
+    PERF_MONITOR_SCOPE("BrushMouseRelease");
+    
     if (event->button() == Qt::LeftButton && m_drawing) {
         m_drawing = false;
         

@@ -34,6 +34,9 @@ set(SOURCES
     src/core/drawing-layer.cpp
     src/core/drawing-throttle.cpp
     src/core/brush-engine.cpp
+    src/core/object-pool.cpp
+    src/core/smart-render-manager.cpp
+    src/core/performance-monitor.cpp
     src/ui/colorpalette.cpp
     src/ui/cursor-manager.cpp
     src/core/layer-manager.cpp
@@ -68,6 +71,7 @@ set(SOURCES
     src/ui/tools-panel.cpp
     src/ui/page-settings-panel.cpp
     src/ui/tabbed-property-panel.cpp
+    src/ui/performance-panel-tab.cpp
     
     # 工具模块（包含变换系统）
     src/tools/transform-handle.cpp
@@ -95,6 +99,9 @@ set(HEADERS
     src/core/drawing-layer.h
     src/core/drawing-throttle.h
     src/core/brush-engine.h
+    src/core/object-pool.h
+    src/core/smart-render-manager.h
+    src/core/performance-monitor.h
     src/ui/colorpalette.h
     src/ui/cursor-manager.h
     src/core/layer-manager.h
@@ -129,6 +136,7 @@ set(HEADERS
     src/ui/tools-panel.h
     src/ui/page-settings-panel.h
     src/ui/object-tree-view.h
+    src/ui/performance-panel-tab.h
     
     # 工具模块（包含变换系统）
     src/tools/transform-handle.h

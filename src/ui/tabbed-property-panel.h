@@ -11,6 +11,7 @@ class PropertyPanel;
 class ToolsPanel;
 class PageSettingsPanel;
 class ObjectTreeView;
+class PerformancePanelTab;
 
 /**
  * Tab属性面板 - 使用TabBar布局组织不同功能面板
@@ -28,6 +29,7 @@ public:
     void addToolsPanel();
     void addObjectTreePanel();
     void addPageSettingsPanel();
+    void addPerformancePanel();
     
     // 获取特定面板
     PropertyPanel* getPropertiesPanel() const { return m_propertiesPanel; }
@@ -55,21 +57,22 @@ public:
 signals:
     void currentPanelChanged(int index);
     
-private slots:
-    void onCurrentPanelChanged(int index);
-
 private:
-    // 面板实例
+    // 面板引用
     PropertyPanel *m_propertiesPanel;
     LayerPanel *m_layersPanel;
     ToolsPanel *m_toolsPanel;
     ObjectTreeView *m_objectTreeView;
     PageSettingsPanel *m_pageSettingsPanel;
+    PerformancePanelTab *m_performancePanelTab;
     
-    // 图层管理器引用
+    // 场景引用
     DrawingScene *m_scene;
-    class DrawingView *m_view;
+    DrawingView *m_view;
     LayerManager *m_layerManager;
+    
+    // 标签页切换处理
+    void onCurrentPanelChanged(int index);
 };
 
 #endif // TABBED_PROPERTY_PANEL_H

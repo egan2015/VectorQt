@@ -28,6 +28,7 @@
 #include "../ui/tools-panel.h"
 #include "../tools/drawing-tool-brush.h"
 #include "../tools/drawing-tool-pen.h"
+
 #include "../tools/drawing-tool-eraser.h"
 #include "../core/patheditor.h"
 #include "../core/layer-manager.h"
@@ -300,6 +301,12 @@ void MainWindow::setupUI()
     m_pathEditTool = new DrawingToolPathEdit(this);
     // m_textTool = new TextTool(this);  // Not implemented yet
     
+    // 性能监控现在集成在属性面板的tab页中，不需要单独的浮动窗口
+    
+    // 创建一个空的停靠widget用于菜单控制（保留兼容性）
+    m_performanceDock = new QDockWidget("性能监控", this);
+    m_performanceDock->setVisible(false);  // 隐藏停靠widget
+    
     // Connect color palette signals to fill tool (moved after all tools are created)
     // This connection will be made later after all initialization is complete
 
@@ -476,6 +483,8 @@ void MainWindow::setupMenus()
     viewMenu->addSeparator();
     viewMenu->addAction(m_toggleGridAction);
     viewMenu->addAction(m_toggleGridAlignmentAction);
+    viewMenu->addSeparator();
+    viewMenu->addAction(m_togglePerformancePanelAction);
     viewMenu->addSeparator();
     viewMenu->addAction(m_clearAllGuidesAction);
     viewMenu->addAction(m_gridSizeAction);
@@ -1017,6 +1026,14 @@ void MainWindow::createActions()
     m_textToolAction->setIcon(QIcon(":/icons/icons/draw-text.svg"));
     m_toolGroup->addAction(m_textToolAction);
 
+    // Performance panel action
+    m_togglePerformancePanelAction = new QAction("性能监控面板", this);
+    m_togglePerformancePanelAction->setCheckable(true);
+    m_togglePerformancePanelAction->setChecked(true);
+    m_togglePerformancePanelAction->setShortcut(QKeySequence("F12"));
+    m_togglePerformancePanelAction->setStatusTip("显示或隐藏性能监控面板");
+    m_togglePerformancePanelAction->setIcon(QIcon(":/icons/icons/modern/preview.html"));  // 临时图标
+
     // Path boolean operations
     m_pathUnionAction = new QAction("联合(&U)", this);
     m_pathUnionAction->setStatusTip("将选中的图形联合成一个路径");
@@ -1072,6 +1089,7 @@ void MainWindow::connectActions()
     connect(m_gridColorAction, &QAction::triggered, this, &MainWindow::showGridSettings);
     connect(m_toggleGridAlignmentAction, &QAction::triggered, this, &MainWindow::toggleGridAlignment);
     connect(m_clearAllGuidesAction, &QAction::triggered, this, &MainWindow::clearAllGuides);
+    connect(m_togglePerformancePanelAction, &QAction::triggered, this, &MainWindow::togglePerformancePanel);
     
     // Group connections
     connect(m_groupAction, &QAction::triggered, this, &MainWindow::groupSelected);
@@ -3617,6 +3635,26 @@ void MainWindow::convertSelectedTextToPath()
         
         // 更新图层面板显示
         LayerManager::instance()->updateLayerPanel();
+    }
+}
+
+void MainWindow::togglePerformancePanel()
+{
+    // 性能监控现在集成在属性面板的tab页中
+    // 切换到性能监控tab页
+    if (m_tabbedPropertyPanel) {
+        // 找到性能监控tab的索引
+        for (int i = 0; i < m_tabbedPropertyPanel->count(); ++i) {
+            if (m_tabbedPropertyPanel->tabText(i) == "性能监控") {
+                m_tabbedPropertyPanel->setCurrentIndex(i);
+                break;
+            }
+        }
+    }
+    
+    // 更新菜单状态
+    if (m_togglePerformancePanelAction) {
+        m_togglePerformancePanelAction->setChecked(true);
     }
 }
 

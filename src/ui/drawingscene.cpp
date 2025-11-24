@@ -15,6 +15,7 @@
 #include "../core/drawing-group.h"
 #include "../core/drawing-layer.h"
 #include "../core/layer-manager.h"
+#include "../core/performance-monitor.h"
 
 class AddItemCommand : public QUndoCommand
 {
@@ -789,6 +790,11 @@ void DrawingScene::deactivateSelectionTool()
 
 void DrawingScene::drawBackground(QPainter *painter, const QRectF &rect)
 {
+    PERF_MONITOR_SCOPE("SceneDrawBackground");
+    
+    // 记录绘制调用统计 - 每帧只记录一次
+    PerformanceMonitor::instance().recordRenderStats(1, 0, 0);
+    
     // 设置亮色背景
     painter->fillRect(rect, QColor(255, 255, 255)); // 白色背景
     
@@ -1427,8 +1433,12 @@ void DrawingScene::drawSnapIndicators(QPainter *painter)
         QPointF textPos = m_lastSnapResult.snappedPos + QPointF(12, -8);
         painter->drawText(textPos, m_lastSnapResult.snapDescription);
     }
-}void DrawingScene::drawForeground(QPainter *painter, const QRectF &rect)
+}
+
+void DrawingScene::drawForeground(QPainter *painter, const QRectF &rect)
 {
+    PERF_MONITOR_SCOPE("SceneDrawForeground");
+    
     // Draw object snap indicators in foreground, ensuring they're on top
     if (m_snapIndicatorsVisible && m_hasActiveSnap && m_lastSnapResult.snappedToObject) {
         // 安全检查目标对象是否仍然有效

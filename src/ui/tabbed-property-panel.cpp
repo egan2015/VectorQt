@@ -10,6 +10,7 @@
 #include "../ui/drawingscene.h"
 #include "../ui/drawingview.h"
 #include "../ui/object-tree-view.h"
+#include "../ui/performance-panel-tab.h"
 
 TabbedPropertyPanel::TabbedPropertyPanel(QWidget *parent)
     : QTabWidget(parent)
@@ -18,6 +19,7 @@ TabbedPropertyPanel::TabbedPropertyPanel(QWidget *parent)
     , m_toolsPanel(nullptr)
     , m_objectTreeView(nullptr)
     , m_pageSettingsPanel(nullptr)
+    , m_performancePanelTab(nullptr)
     , m_scene(nullptr)
     , m_view(nullptr)
 {
@@ -30,7 +32,9 @@ TabbedPropertyPanel::TabbedPropertyPanel(QWidget *parent)
     addPropertiesPanel();
     addLayersPanel();
     addToolsPanel();
+    addObjectTreePanel();
     addPageSettingsPanel();
+    addPerformancePanel();
     
     // 连接标签切换信号
     connect(this, &QTabWidget::currentChanged, this, &TabbedPropertyPanel::onCurrentPanelChanged);
@@ -90,16 +94,16 @@ void TabbedPropertyPanel::addPageSettingsPanel()
         m_pageSettingsPanel = new PageSettingsPanel(this);
     }
     
-    // 设置场景和视图引用
-    if (m_scene) {
-        m_pageSettingsPanel->setScene(m_scene);
-    }
-    if (m_view) {
-        m_pageSettingsPanel->setView(m_view);
+    addTab(m_pageSettingsPanel, "页面设置");
+}
+
+void TabbedPropertyPanel::addPerformancePanel()
+{
+    if (!m_performancePanelTab) {
+        m_performancePanelTab = new PerformancePanelTab(this);
     }
     
-    // 添加为第四个标签
-    addTab(m_pageSettingsPanel, tr("页面"));
+    addTab(m_performancePanelTab, "性能监控");
 }
 
 QWidget* TabbedPropertyPanel::getCurrentPanel() const

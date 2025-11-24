@@ -98,6 +98,9 @@ private:
     // 旋转模式专用手柄（4个角点的旋转手柄）
     QList<CustomHandleItem*> m_rotateCornerHandles;
     
+    // 斜切手柄（4个边缘中心点）
+    QList<CustomHandleItem*> m_skewHandles;
+    
     TransformHandle::HandleType m_activeHandle;
     
     // 控制手柄是否应该显示

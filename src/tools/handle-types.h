@@ -18,7 +18,11 @@ public:
         Top,
         Bottom,
         Center,
-        Rotate  // 旋转手柄
+        Rotate,     // 旋转手柄
+        SkewXTop,    // X轴斜切手柄（上边）
+        SkewXBottom, // X轴斜切手柄（下边）
+        SkewYLeft,   // Y轴斜切手柄（左边）
+        SkewYRight   // Y轴斜切手柄（右边）
     };
 };
 
@@ -30,7 +34,7 @@ class HandleMode
 public:
     enum Mode {
         Scale,      // 缩放模式：显示8个缩放手柄
-        RotateMode  // 旋转模式：显示4个旋转手柄+中心手柄
+        RotateMode  // 旋转模式：显示4个旋转手柄+4个斜切手柄+中心手柄
     };
 };
 

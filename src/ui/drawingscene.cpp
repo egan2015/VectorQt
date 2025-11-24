@@ -135,6 +135,7 @@ public:
         Move,
         Scale,
         Rotate,
+        Skew,
         Generic
     };
     
@@ -166,6 +167,7 @@ public:
             case Move: return "移动";
             case Scale: return "缩放";
             case Rotate: return "旋转";
+            case Skew: return "斜切";
             default: return "变换";
         }
     }
@@ -176,6 +178,7 @@ public:
             case Move: baseText = "移动"; break;
             case Scale: baseText = "缩放"; break;
             case Rotate: baseText = "旋转"; break;
+            case Skew: baseText = "斜切"; break;
             default: baseText = "变换"; break;
         }
         
@@ -636,6 +639,7 @@ void DrawingScene::endTransform()
         case Move: commandType = TransformCommand::Move; break;
         case Scale: commandType = TransformCommand::Scale; break;
         case Rotate: commandType = TransformCommand::Rotate; break;
+        case Skew: commandType = TransformCommand::Skew; break;
         default: commandType = TransformCommand::Generic; break;
     }
     
@@ -674,6 +678,7 @@ void DrawingScene::endTransformWithStates(const QList<TransformState>& newStates
         case Move: commandType = TransformCommand::Move; break;
         case Scale: commandType = TransformCommand::Scale; break;
         case Rotate: commandType = TransformCommand::Rotate; break;
+        case Skew: commandType = TransformCommand::Skew; break;
         default: commandType = TransformCommand::Generic; break;
     }
     

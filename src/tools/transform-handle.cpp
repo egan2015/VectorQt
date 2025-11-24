@@ -105,6 +105,28 @@ void HandleManager::createHandles()
         m_rotateCornerHandles.append(handle);
     }
     
+    // 创建4个斜切手柄（用于旋转模式的边缘中心）- 菱形
+    for (int i = 0; i < 4; ++i)
+    {
+        TransformHandle::HandleType type = TransformHandle::None;
+        switch (i) {
+        case 0: type = TransformHandle::SkewXTop; break;
+        case 1: type = TransformHandle::SkewYRight; break;
+        case 2: type = TransformHandle::SkewXBottom; break;
+        case 3: type = TransformHandle::SkewYLeft; break;
+        }
+        
+        CustomHandleItem *handle = new CustomHandleItem(type);
+        handle->setSize(getHandleSize() * 1.1);
+        handle->setStyle(HandleItemBase::Diamond); // 斜切手柄用菱形
+        handle->setSpecificColor(QColor(255, 140, 0, 200)); // 橙色
+        handle->setZValue(2000);
+        handle->setVisible(false);
+        handle->setOpacity(0.9);
+        m_scene->addItem(handle);
+        m_skewHandles.append(handle);
+    }
+    
     // 创建选择边框线
     m_selectionBorder = new QGraphicsRectItem();
     m_selectionBorder->setBrush(Qt::NoBrush);
@@ -247,6 +269,17 @@ void HandleManager::destroyHandles()
     }
     m_rotateCornerHandles.clear();
     
+    // 销毁斜切手柄
+    for (CustomHandleItem *handle : m_skewHandles)
+    {
+        if (handle && handle->scene())
+        {
+            m_scene->removeItem(handle);
+        }
+        delete handle;
+    }
+    m_skewHandles.clear();
+    
     // 销毁选择边框线
     if (m_selectionBorder)
     {
@@ -286,6 +319,9 @@ void HandleManager::updateHandlesVisibility()
     for (auto handle : m_rotateCornerHandles) {
         if (handle) handle->setVisible(false);
     }
+    for (auto handle : m_skewHandles) {
+        if (handle) handle->setVisible(false);
+    }
     if (m_centerHandle) m_centerHandle->setVisible(false);
     if (m_rotateHandle) m_rotateHandle->setVisible(false);
     
@@ -302,8 +338,11 @@ void HandleManager::updateHandlesVisibility()
     }
     else if (m_handleMode == HandleMode::RotateMode)
     {
-        // 旋转模式：显示4个旋转手柄+中心手柄
+        // 旋转模式：显示4个旋转手柄+4个斜切手柄+中心手柄
         for (auto handle : m_rotateCornerHandles) {
+            if (handle) handle->setVisible(true);
+        }
+        for (auto handle : m_skewHandles) {
             if (handle) handle->setVisible(true);
         }
         if (m_centerHandle) m_centerHandle->setVisible(true);
@@ -340,6 +379,9 @@ void HandleManager::hideHandles()
         {
             handle->setVisible(false);
         }
+    }
+    for (CustomHandleItem *handle : m_skewHandles) {
+        if (handle) handle->setVisible(false);
     }
     if (m_centerHandle)
     {
@@ -386,13 +428,19 @@ void HandleManager::updateHandles(const QRectF &bounds)
     }
     else if (m_handleMode == HandleMode::RotateMode)
     {
-        // 旋转模式：更新4个旋转手柄+中心手柄
+        // 旋转模式：更新4个旋转手柄+4个斜切手柄+中心手柄
         // 4个角点的旋转手柄位置（比缩放手柄更远一些）
         const qreal rotateOffset = offset;
         updateRotateCornerHandle(0, bounds.topLeft() + QPointF(-rotateOffset, -rotateOffset));     // TopLeft
         updateRotateCornerHandle(1, bounds.topRight() + QPointF(rotateOffset, -rotateOffset));    // TopRight
         updateRotateCornerHandle(2, bounds.bottomLeft() + QPointF(-rotateOffset, rotateOffset));   // BottomLeft
         updateRotateCornerHandle(3, bounds.bottomRight() + QPointF(rotateOffset, rotateOffset));  // BottomRight
+        
+        // 4个斜切手柄位置（边缘中心）
+        updateHandlePosition(TransformHandle::SkewXTop, QPointF(bounds.center().x(), bounds.top() - offset));
+        updateHandlePosition(TransformHandle::SkewYRight, QPointF(bounds.right() + offset, bounds.center().y()));
+        updateHandlePosition(TransformHandle::SkewXBottom, QPointF(bounds.center().x(), bounds.bottom() + offset));
+        updateHandlePosition(TransformHandle::SkewYLeft, QPointF(bounds.left() - offset, bounds.center().y()));
         
         // 更新中心手柄
         updateHandlePosition(TransformHandle::Center, bounds.center());
@@ -482,6 +530,22 @@ void HandleManager::updateHandlePosition(TransformHandle::HandleType type, const
         break;
     case TransformHandle::Rotate:
         handle = m_rotateHandle;
+        break;
+    case TransformHandle::SkewXTop:
+        if (m_skewHandles.size() > 0)
+            handle = m_skewHandles[0];
+        break;
+    case TransformHandle::SkewYRight:
+        if (m_skewHandles.size() > 1)
+            handle = m_skewHandles[1];
+        break;
+    case TransformHandle::SkewXBottom:
+        if (m_skewHandles.size() > 2)
+            handle = m_skewHandles[2];
+        break;
+    case TransformHandle::SkewYLeft:
+        if (m_skewHandles.size() > 3)
+            handle = m_skewHandles[3];
         break;
     default:
         return;
@@ -630,6 +694,29 @@ TransformHandle::HandleType HandleManager::getHandleAtPosition(const QPointF &sc
         }
     }
 
+    // 检查斜切手柄
+    for (int i = 0; i < m_skewHandles.size(); ++i)
+    {
+        if (m_skewHandles[i] && m_skewHandles[i]->isVisible() && m_skewHandles[i]->scene() == m_scene)
+        {
+            QPointF handlePos = m_skewHandles[i]->sceneBoundingRect().center();
+            if (QLineF(scenePos, handlePos).length() <= tolerance)
+            {
+                switch (i)
+                {
+                case 0:
+                    return TransformHandle::SkewXTop;
+                case 1:
+                    return TransformHandle::SkewYRight;
+                case 2:
+                    return TransformHandle::SkewXBottom;
+                case 3:
+                    return TransformHandle::SkewYLeft;
+                }
+            }
+        }
+    }
+
     return TransformHandle::None;
 }
 
@@ -666,6 +753,14 @@ QPointF HandleManager::getHandlePosition(TransformHandle::HandleType type) const
         return m_bounds.center();
     case TransformHandle::Rotate:
         return QPointF(m_bounds.center().x(), m_bounds.top() - 8.0);  // 与其他手柄保持一致的偏移
+    case TransformHandle::SkewXTop:
+        return QPointF(m_bounds.center().x(), m_bounds.top());
+    case TransformHandle::SkewYRight:
+        return QPointF(m_bounds.right(), m_bounds.center().y());
+    case TransformHandle::SkewXBottom:
+        return QPointF(m_bounds.center().x(), m_bounds.bottom());
+    case TransformHandle::SkewYLeft:
+        return QPointF(m_bounds.left(), m_bounds.center().y());
     default:
         return QPointF();
     }

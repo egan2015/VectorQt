@@ -46,6 +46,7 @@ public:
         Move,
         Scale,
         Rotate,
+        Skew,
         Generic
     };
     

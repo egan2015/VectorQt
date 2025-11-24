@@ -303,16 +303,19 @@ void DrawingBezierTool::finishDrawing()
         m_currentItem->setStrokePen(QPen(Qt::black, 2));
         m_currentItem->setFillBrush(Qt::NoBrush);
         
-        // 检查并移除重叠的节点（特别是结束点）
+        // 检查并移除所有重叠的节点
         QVector<QPointF> cleanedControlPoints = m_controlPoints;
-        if (cleanedControlPoints.size() >= 2) {
-            QPointF lastPoint = cleanedControlPoints.last();
-            QPointF secondLastPoint = cleanedControlPoints[cleanedControlPoints.size() - 2];
+        const qreal overlapThreshold = 2.0; // 重叠阈值（像素）
+        
+        // 从后向前遍历，移除所有重叠的相邻点
+        for (int i = cleanedControlPoints.size() - 1; i > 0; i--) {
+            QPointF currentPoint = cleanedControlPoints[i];
+            QPointF previousPoint = cleanedControlPoints[i - 1];
             
-            // 如果最后两个点太接近（距离小于2像素），移除最后一个点
-            if (QLineF(lastPoint, secondLastPoint).length() < 2.0) {
-                cleanedControlPoints.removeLast();
-                qDebug() << "Removed overlapping endpoint, remaining points:" << cleanedControlPoints.size();
+            // 如果两个相邻点距离小于阈值，移除当前点
+            if (QLineF(currentPoint, previousPoint).length() < overlapThreshold) {
+                cleanedControlPoints.removeAt(i);
+                qDebug() << "Removed overlapping point at index" << i << ", remaining points:" << cleanedControlPoints.size();
             }
         }
         

@@ -1032,7 +1032,21 @@ QVector<QPointF> DrawingPath::getNodePoints() const
 void DrawingPath::setNodePoint(int index, const QPointF &pos)
 {
     if (index >= 0 && index < m_controlPoints.size()) {
-        m_controlPoints[index] = pos;
+        // 如果传入的是场景坐标，需要转换为本地坐标
+        // 检查坐标是否需要转换（通过判断是否在合理范围内）
+        QPointF localPos = pos;
+        
+        // 如果坐标看起来像是场景坐标（超出路径边界很多），进行转换
+        QRectF bounds = boundingRect();
+        if (pos.x() < bounds.left() - 100 || pos.x() > bounds.right() + 100 ||
+            pos.y() < bounds.top() - 100 || pos.y() > bounds.bottom() + 100) {
+            // 可能是场景坐标，转换为本地坐标
+            localPos = mapFromScene(pos);
+            // 应用DrawingTransform的逆变换来获取真正的本地坐标
+            localPos = m_transform.inverted().map(localPos);
+        }
+        
+        m_controlPoints[index] = localPos;
         updatePathFromControlPoints(); // 更新路径
     }
 }

@@ -732,11 +732,46 @@ void DrawingNodeEditTool::onObjectStateChanged(DrawingShape *shape)
     {
         updateNodeHandles();
     }
+    else if (m_selectedShape && !m_selectedShape->scene())
+    {
+        // 如果当前选中的图形已经不在场景中（比如被转换为其他类型），清除选择
+        clearNodeHandles();
+        m_selectedShape = nullptr;
+        
+        // 尝试获取当前选中的图形
+        if (m_scene)
+        {
+            QList<QGraphicsItem *> selectedItems = m_scene->selectedItems();
+            for (QGraphicsItem *item : selectedItems)
+            {
+                // 跳过DrawingLayer
+                if (item->type() == QGraphicsItem::UserType + 100)
+                {
+                    continue;
+                }
+                
+                DrawingShape *newShape = dynamic_cast<DrawingShape *>(item);
+                if (newShape)
+                {
+                    qDebug() << "NodeEditTool: Found new shape after conversion, type:" << newShape->shapeType() 
+                             << "node count:" << newShape->getNodePointCount();
+                    m_selectedShape = newShape;
+                    updateNodeHandles();
+                    break;
+                }
+            }
+        }
+    }
 }
 
 void DrawingNodeEditTool::updateNodeHandles()
 {
     if (!m_handleManager) return;
+    
+    if (m_selectedShape) {
+        qDebug() << "updateNodeHandles: shape type:" << m_selectedShape->shapeType() 
+                 << "node count:" << m_selectedShape->getNodePointCount();
+    }
     
     m_handleManager->updateHandles(m_selectedShape);
     

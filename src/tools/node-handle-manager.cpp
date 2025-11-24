@@ -8,11 +8,11 @@
 const qreal NodeHandleManager::DEFAULT_HANDLE_SIZE = 8.0;
 const QColor NodeHandleManager::CORNER_RADIUS_COLOR = QColor(255, 165, 0, 200);  // 橙色
 const QColor NodeHandleManager::SIZE_CONTROL_COLOR = QColor(70, 130, 180, 200);  // 钢蓝色
-const QColor NodeHandleManager::PATH_NODE_COLOR = QColor(50, 205, 50, 200);     // 青绿色
-const QColor NodeHandleManager::PATH_CONTROL_COLOR = QColor(238, 130, 238, 200); // 紫罗兰色
-const QColor NodeHandleManager::BEZIER_NODE_COLOR = QColor(25, 25, 112, 200);    // 深蓝色（节点）
-const QColor NodeHandleManager::BEZIER_CONTROL_IN_COLOR = QColor(30, 144, 255, 200); // 道奇蓝（进入控制点）
-const QColor NodeHandleManager::BEZIER_CONTROL_OUT_COLOR = QColor(60, 179, 113, 200); // 中海绿（离开控制点）
+const QColor NodeHandleManager::PATH_NODE_COLOR = QColor(255, 255, 255, 230);     // 白色
+const QColor NodeHandleManager::PATH_CONTROL_COLOR = QColor(255, 255, 255, 200); // 白色（稍微透明）
+const QColor NodeHandleManager::BEZIER_NODE_COLOR = QColor(255, 255, 255, 230);    // 白色（节点）
+const QColor NodeHandleManager::BEZIER_CONTROL_IN_COLOR = QColor(255, 255, 255, 200); // 白色（进入控制点）
+const QColor NodeHandleManager::BEZIER_CONTROL_OUT_COLOR = QColor(255, 255, 255, 200); // 白色（离开控制点）
 
 NodeHandleManager::NodeHandleManager(DrawingScene *scene, QObject *parent)
     : QObject(parent)
@@ -454,8 +454,12 @@ void NodeHandleManager::createHandlesForPath(DrawingPath *path)
         info.originalPos = scenePos;
         
         // 根据元素类型确定手柄类型
-        if (elementType == QPainterPath::MoveToElement || elementType == QPainterPath::LineToElement) {
-            // 路径节点（锚点）- 使用方形手柄
+        if (elementType == QPainterPath::MoveToElement) {
+            // 路径起点（移动到点）- 使用方形手柄
+            info.type = PathNodeHandle;
+            info.handle = createPathNodeHandle(scenePos);
+        } else if (elementType == QPainterPath::LineToElement) {
+            // 直线终点 - 使用方形手柄
             info.type = PathNodeHandle;
             info.handle = createPathNodeHandle(scenePos);
         } else if (elementType == QPainterPath::CurveToElement) {
@@ -463,21 +467,46 @@ void NodeHandleManager::createHandlesForPath(DrawingPath *path)
             info.type = PathControlHandle;
             info.handle = createPathControlHandle(scenePos);
         } else if (elementType == QPainterPath::CurveToDataElement) {
-            // 需要判断这是控制点还是终点
-            // 查看下一个元素类型来确定当前元素的角色
-            if (i + 1 < controlTypes.size()) {
-                QPainterPath::ElementType nextType = controlTypes[i + 1];
-                if (nextType == QPainterPath::CurveToDataElement) {
-                    // 下一个还是CurveToDataElement，说明当前是第二个控制点
-                    info.type = PathControlHandle;
-                    info.handle = createPathControlHandle(scenePos);
-                } else {
-                    // 下一个不是CurveToDataElement，说明当前是终点（锚点）
-                    info.type = PathNodeHandle;
-                    info.handle = createPathNodeHandle(scenePos);
+            // CurveToDataElement需要根据上下文判断
+            // 查找前面的CurveToElement来确定当前在贝塞尔曲线中的位置
+            bool isControlPoint = false;
+            bool isEndPoint = false;
+            
+            // 向前查找最近的CurveToElement
+            for (int j = i - 1; j >= 0; j--) {
+                if (controlTypes[j] == QPainterPath::CurveToElement) {
+                    // 找到了对应的CurveToElement
+                    int curveToIndex = j;
+                    int dataPointCount = i - curveToIndex; // 当前是第几个数据点
+                    
+                    if (dataPointCount == 1) {
+                        // 第一个CurveToDataElement，是第二个控制点
+                        isControlPoint = true;
+                    } else if (dataPointCount == 2) {
+                        // 第二个CurveToDataElement，是贝塞尔曲线的终点
+                        isEndPoint = true;
+                    }
+                    break;
+                } else if (controlTypes[j] == QPainterPath::MoveToElement || 
+                          controlTypes[j] == QPainterPath::LineToElement) {
+                    // 遇到了新的路径段开始，说明当前数据点不属于前面的贝塞尔曲线
+                    // 这种情况下可能是二次贝塞尔或者其他特殊情况，当作终点处理
+                    isEndPoint = true;
+                    break;
                 }
+            }
+            
+            // 如果没有找到前面的CurveToElement，当作终点处理
+            if (!isControlPoint && !isEndPoint) {
+                isEndPoint = true;
+            }
+            
+            if (isControlPoint) {
+                // 贝塞尔控制点 - 使用圆形手柄
+                info.type = PathControlHandle;
+                info.handle = createPathControlHandle(scenePos);
             } else {
-                // 最后一个元素，是终点（锚点）
+                // 贝塞尔终点 - 使用方形手柄
                 info.type = PathNodeHandle;
                 info.handle = createPathNodeHandle(scenePos);
             }
@@ -579,9 +608,9 @@ void NodeHandleManager::updateExistingHandlePositions(DrawingShape *shape)
         }
     }
     
-    // 如果是路径，不绘制任何连线，保持最简洁
+    // 如果是路径，更新控制点连线
     if (shape->shapeType() == DrawingShape::Path) {
-        // updatePathControlLines(); // 禁用蓝线
+        updatePathControlLines(); // 恢复蓝线
         // createSimpleControlArm(shape); // 禁用红线
     }
 }

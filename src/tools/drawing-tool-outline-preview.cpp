@@ -131,11 +131,33 @@ void OutlinePreviewTransformTool::activate(DrawingScene *scene, DrawingView *vie
         connect(scene, &DrawingScene::objectStateChanged, this,
                 &OutlinePreviewTransformTool::onObjectStateChanged, Qt::UniqueConnection);
 
+        // 填充选中的图形列表
+        m_selectedShapes.clear();
+        m_originalTransforms.clear();
+        QList<QGraphicsItem *> selectedItems = scene->selectedItems();
+        for (QGraphicsItem *item : selectedItems)
+        {
+            DrawingShape *shape = dynamic_cast<DrawingShape *>(item);
+            if (shape && shape->scene())
+            {
+                m_selectedShapes.append(shape);
+                m_originalTransforms[shape] = shape->transform();
+            }
+        }
+
         // 禁用所有选中图形的内部选择框
         disableInternalSelectionIndicators();
 
-        // 初始显示手柄
+        // 初始显示手柄和轮廓
         updateHandlePositions();
+        
+        // 创建轮廓预览（如果还没有创建）
+        if (!m_outlinePreview) {
+            createVisualHelpers();
+        } else {
+            // 如果已存在，更新轮廓
+            updateOutlinePreview();
+        }
     }
 }
 
@@ -854,7 +876,10 @@ void OutlinePreviewTransformTool::onSelectionChanged()
 
     // 延迟更新手柄，确保选择状态完全更新
     QTimer::singleShot(0, this, [this]()
-                       { updateHandlePositions(); });
+                       { 
+                           updateHandlePositions(); 
+                           updateOutlinePreview();
+                       });
 }
 
 void OutlinePreviewTransformTool::onObjectStateChanged(DrawingShape *shape)
@@ -1009,6 +1034,9 @@ void OutlinePreviewTransformTool::destroyVisualHelpers()
         delete m_outlinePreview;
         m_outlinePreview = nullptr;
     }
+
+    // 清理所有图形轮廓预览
+    destroyShapeOutlines();
 
     if (m_dashTimer)
     {
@@ -1202,4 +1230,71 @@ void OutlinePreviewTransformTool::setMode(HandleMode::Mode mode)
 HandleMode::Mode OutlinePreviewTransformTool::currentMode() const
 {
     return m_currentMode;
+}
+
+void OutlinePreviewTransformTool::createShapeOutlines()
+{
+    if (!m_scene)
+        return;
+
+    // 清理现有的轮廓
+    destroyShapeOutlines();
+
+    // 为每个选中的图形创建轮廓预览
+    for (DrawingShape *shape : m_selectedShapes)
+    {
+        if (!shape || !shape->scene())
+            continue;
+
+        // 创建轮廓预览项
+        QGraphicsPathItem *outline = new QGraphicsPathItem();
+        
+        // 设置轮廓样式 - 与整体轮廓略有区别
+        QPen outlinePen(QColor(100, 150, 255, 120), 1.5); // 浅蓝色，半透明
+        outlinePen.setCosmetic(true);
+        outlinePen.setDashPattern({4, 2}); // 更细的虚线
+        outline->setPen(outlinePen);
+        outline->setBrush(Qt::NoBrush);
+        outline->setZValue(1998); // 在整体轮廓下方
+        
+        // 添加到场景
+        m_scene->addItem(outline);
+        m_shapeOutlines[shape] = outline;
+        
+        // 设置初始轮廓
+        QPainterPath shapePath = shape->transformedShape();
+        outline->setPath(shapePath);
+    }
+}
+
+void OutlinePreviewTransformTool::destroyShapeOutlines()
+{
+    // 清理所有图形轮廓预览
+    for (auto it = m_shapeOutlines.begin(); it != m_shapeOutlines.end(); ++it)
+    {
+        QGraphicsPathItem *outline = it.value();
+        if (outline && m_scene)
+        {
+            m_scene->removeItem(outline);
+            delete outline;
+        }
+    }
+    m_shapeOutlines.clear();
+}
+
+void OutlinePreviewTransformTool::updateShapeOutlines()
+{
+    // 更新所有图形轮廓预览
+    for (auto it = m_shapeOutlines.begin(); it != m_shapeOutlines.end(); ++it)
+    {
+        DrawingShape *shape = it.key();
+        QGraphicsPathItem *outline = it.value();
+        
+        if (shape && outline && shape->scene())
+        {
+            // 获取图形的当前变换后的形状
+            QPainterPath shapePath = shape->transformedShape();
+            outline->setPath(shapePath);
+        }
+    }
 }

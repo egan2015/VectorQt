@@ -181,9 +181,8 @@ bool DrawingNodeEditTool::mousePressEvent(QMouseEvent *event, const QPointF &sce
                 if (shape->shapeType() == DrawingShape::Path)
                 {
                     DrawingPath *path = static_cast<DrawingPath *>(shape);
-                    path->setShowControlPolygon(true);
-                    // 不创建手柄，让路径自己处理控制点
-                    return false; // 让事件传播到DrawingPath
+                    path->setShowControlPolygon(false); // 禁用自绘控制点，使用手柄系统
+                    // 现在使用统一的手柄系统
                 }
 
                 updateNodeHandles();
@@ -266,15 +265,19 @@ bool DrawingNodeEditTool::mouseMoveEvent(QMouseEvent *event, const QPointF &scen
         // 获取图形的变换
         QTransform transform = m_selectedShape->transform();
 
-        // 直接传递场景坐标给setNodePoint，让图形自己处理坐标转换
-        m_selectedShape->setNodePoint(handleInfo.nodeIndex, alignedScenePos);
+        // 应用约束到节点位置
+        QPointF constrainedPos = m_selectedShape->constrainNodePoint(handleInfo.nodeIndex, alignedScenePos);
 
-        // 更新正在拖动的手柄位置到鼠标位置（确保视觉上跟随鼠标）
+        // 传递约束后的场景坐标给setNodePoint，让图形自己处理坐标转换
+        m_selectedShape->setNodePoint(handleInfo.nodeIndex, constrainedPos);
+
+        // 更新正在拖动的手柄位置到约束后的位置（确保视觉上跟随实际位置）
         if (m_handleManager) {
-            m_handleManager->updateHandlePosition(m_activeHandle, alignedScenePos);
+            m_handleManager->updateHandlePosition(m_activeHandle, constrainedPos);
             
-            // 对于椭圆等图形，需要更新所有相关手柄的位置
-            if (m_selectedShape->shapeType() == DrawingShape::Ellipse) {
+            // 对于椭圆和矩形，需要更新所有相关手柄的位置
+            if (m_selectedShape->shapeType() == DrawingShape::Ellipse || 
+                m_selectedShape->shapeType() == DrawingShape::Rectangle) {
                 m_handleManager->updateExistingHandlePositions(m_selectedShape);
             }
         }
@@ -493,7 +496,7 @@ void DrawingNodeEditTool::activate(DrawingScene *scene, DrawingView *view)
                 if (shape->shapeType() == DrawingShape::Path)
                 {
                     DrawingPath *path = static_cast<DrawingPath *>(shape);
-                    path->setShowControlPolygon(true);
+                    path->setShowControlPolygon(false); // 使用手柄系统
                 }
 
                 break;
@@ -527,7 +530,7 @@ void DrawingNodeEditTool::activate(DrawingScene *scene, DrawingView *view)
                     if (shape->shapeType() == DrawingShape::Path)
                     {
                         DrawingPath *path = static_cast<DrawingPath *>(shape);
-                        path->setShowControlPolygon(true);
+                        path->setShowControlPolygon(false); // 使用手柄系统
                     }
 
                     break;
@@ -542,15 +545,8 @@ void DrawingNodeEditTool::activate(DrawingScene *scene, DrawingView *view)
     {
         bool isPath = (m_selectedShape->shapeType() == DrawingShape::Path);
         // qDebug() << "Node edit tool: selected shape is path:" << (isPath ? "yes" : "no");
-        if (!isPath)
-        {
-            // qDebug() << "Node edit tool: calling updateNodeHandles for non-path shape";
-            updateNodeHandles();
-        }
-        else
-        {
-            // qDebug() << "Node edit tool: skipping updateNodeHandles for path shape";
-        }
+        // 对于所有图形类型，包括路径，都要调用updateNodeHandles来初始化控制杆系统
+        updateNodeHandles();
     }
     else
     {
@@ -563,6 +559,8 @@ void DrawingNodeEditTool::activate(DrawingScene *scene, DrawingView *view)
         connect(m_scene, &DrawingScene::selectionChanged, this, &DrawingNodeEditTool::onSceneSelectionChanged, Qt::UniqueConnection);
         // 连接对象状态变化信号，以便在撤销/重做时更新手柄位置
         connect(m_scene, &DrawingScene::objectStateChanged, this, &DrawingNodeEditTool::onObjectStateChanged, Qt::UniqueConnection);
+        // 连接清理手柄信号，用于删除操作后的强制清理
+        connect(m_scene, &DrawingScene::allToolsClearHandles, this, &DrawingNodeEditTool::clearNodeHandles, Qt::UniqueConnection);
     }
 }
 
@@ -713,7 +711,7 @@ void DrawingNodeEditTool::onSceneSelectionChanged()
             if (m_selectedShape->shapeType() == DrawingShape::Path)
             {
                 DrawingPath *path = static_cast<DrawingPath *>(m_selectedShape);
-                path->setShowControlPolygon(true);
+                path->setShowControlPolygon(false); // 使用手柄系统
             }
 
             // 更新节点手柄
@@ -771,7 +769,9 @@ void DrawingNodeEditTool::updateOtherNodeHandles(int draggedIndex, const QPointF
 void DrawingNodeEditTool::clearNodeHandles()
 {
     if (m_handleManager) {
+        qDebug() << "Clearing node handles, current handle count:" << m_handleManager->getHandleCount();
         m_handleManager->clearHandles();
+        qDebug() << "After clearing, handle count:" << m_handleManager->getHandleCount();
     }
     m_activeHandle = nullptr;
 }

@@ -115,6 +115,16 @@ void DrawingView::mouseReleaseEvent(QMouseEvent *event)
     QGraphicsView::mouseReleaseEvent(event);
 }
 
+void DrawingView::mouseDoubleClickEvent(QMouseEvent *event)
+{
+    QPointF scenePos = mapToScene(event->pos());
+    
+    if (m_currentTool && m_currentTool->mouseDoubleClickEvent(event, scenePos)) {
+        return;
+    }
+    QGraphicsView::mouseDoubleClickEvent(event);
+}
+
 void DrawingView::keyPressEvent(QKeyEvent *event)
 {
     if (m_currentTool && m_currentTool->keyPressEvent(event)) {

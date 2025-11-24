@@ -440,44 +440,45 @@ void DrawingRectangle::setCornerRadius(qreal radius)
 QVector<QPointF> DrawingRectangle::getNodePoints() const
 {
     QVector<QPointF> points;
-    points.reserve(2);
+    points.reserve(3);
     
-    // 1. 圆角控制点：简单放在左上角
-    if (m_cornerRadius > 0) {
-        points.append(QPointF(m_rect.left() + m_cornerRadius, m_rect.top()));
-    } else {
-        points.append(QPointF(m_rect.left() + 10, m_rect.top()));
-    }
+    // 1. 左上角 - 尺寸控制点
+    points.append(m_rect.topLeft());
     
-    // 2. 尺寸控制点：右下角
+    // 2. 右下角 - 尺寸控制点
     points.append(m_rect.bottomRight());
+    
+    // 3. 上边右半部分 - X轴圆角控制点
+    // 反转逻辑：圆角越大，手柄越靠近角落
+    qreal xRadiusPos = m_rect.right() - (m_rect.width() / 2.0) * m_fRatioX;
+    points.append(QPointF(xRadiusPos, m_rect.top()));
     
     return points;
 }
 
 void DrawingRectangle::setNodePoint(int index, const QPointF &pos)
 {
+    // 将场景坐标转换为本地坐标，考虑DrawingTransform
+    QPointF localPos = mapFromScene(pos);
+    // 应用DrawingTransform的逆变换来获取真正的本地坐标
+    localPos = m_transform.inverted().map(localPos);
+    
     switch (index) {
         case 0: {
-            // 圆角控制：简单的距离控制，实时更新
-            // 将场景坐标转换为本地坐标，考虑DrawingTransform
-            QPointF localPos = mapFromScene(pos);
-            // 应用DrawingTransform的逆变换来获取真正的本地坐标
-            localPos = m_transform.inverted().map(localPos);
+            // 左上角 - 尺寸控制
+            QRectF newRect = m_rect;
+            newRect.setLeft(localPos.x());
+            newRect.setTop(localPos.y());
             
-            qreal distance = localPos.x() - m_rect.left();
-            qreal maxRadius = qMin(m_rect.width(), m_rect.height()) / 2.0;
-            m_cornerRadius = qBound(0.0, distance, maxRadius);
-            update();
+            // 确保最小尺寸
+            if (newRect.width() < 20) newRect.setLeft(m_rect.right() - 20);
+            if (newRect.height() < 20) newRect.setTop(m_rect.bottom() - 20);
+            
+            setRectangle(newRect);
             break;
         }
         case 1: {
-            // 尺寸控制：简单的右下角拖动，实时更新
-            // 将场景坐标转换为本地坐标，考虑DrawingTransform
-            QPointF localPos = mapFromScene(pos);
-            // 应用DrawingTransform的逆变换来获取真正的本地坐标
-            localPos = m_transform.inverted().map(localPos);
-            
+            // 右下角 - 尺寸控制
             QRectF newRect = m_rect;
             newRect.setRight(localPos.x());
             newRect.setBottom(localPos.y());
@@ -487,6 +488,22 @@ void DrawingRectangle::setNodePoint(int index, const QPointF &pos)
             if (newRect.height() < 20) newRect.setHeight(20);
             
             setRectangle(newRect);
+            break;
+        }
+        case 2: {
+            // 上边右半部分 - X轴圆角控制
+            // 反转逻辑：向角落移动增加圆角，向中心移动减小圆角
+            qreal centerX = m_rect.left() + m_rect.width() / 2.0;
+            qreal distance = m_rect.right() - localPos.x(); // 距离右边框的距离
+            qreal maxDistance = m_rect.width() / 2.0;
+            m_fRatioX = qBound(0.0, distance / maxDistance, 1.0);
+            
+            // 为了保持等比，同时更新Y轴比例
+            m_fRatioY = m_fRatioX;
+            
+            // 更新实际的圆角半径
+            m_cornerRadius = qMin(m_rect.width() * m_fRatioX, m_rect.height() * m_fRatioY);
+            update();
             break;
         }
         default:
@@ -506,16 +523,25 @@ QPointF DrawingRectangle::constrainNodePoint(int index, const QPointF &pos) cons
     
     switch (index) {
         case 0: {
-            // 圆角控制：限制在旋转后的上边框上
+            // 左上角 - 尺寸控制：不限制，允许自由拖动
+            return pos;
+        }
+        case 1: {
+            // 右下角 - 尺寸控制：不限制，允许自由拖动
+            return pos;
+        }
+        case 2: {
+            // 上边右半部分 - X轴圆角控制：限制在旋转后的上边右半部分
             // 将点转换到旋转前的坐标系
             QPointF rotatedPos = localPos - m_rect.topLeft();
             QPointF unrotatedPos;
             unrotatedPos.setX(rotatedPos.x() * qCos(-rotationRad) - rotatedPos.y() * qSin(-rotationRad));
             unrotatedPos.setY(rotatedPos.x() * qSin(-rotationRad) + rotatedPos.y() * qCos(-rotationRad));
             
-            // 在未旋转坐标系中限制在上边框上
+            // 在未旋转坐标系中限制在上边的右半部分
             unrotatedPos.setY(0);
-            unrotatedPos.setX(qBound(0.0, unrotatedPos.x(), m_rect.width()));
+            qreal centerX = m_rect.width() / 2.0;
+            unrotatedPos.setX(qBound(centerX, unrotatedPos.x(), m_rect.width()));
             
             // 转换回旋转后的坐标系
             QPointF finalPos;
@@ -524,10 +550,6 @@ QPointF DrawingRectangle::constrainNodePoint(int index, const QPointF &pos) cons
             finalPos += m_rect.topLeft();
             
             return mapToScene(finalPos);
-        }
-        case 1: {
-            // 尺寸控制：不限制，允许自由拖动
-            return pos;
         }
         default:
             return pos;

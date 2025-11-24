@@ -7,6 +7,7 @@
 #include <QRectF>
 #include "../tools/handle-item.h"
 #include "../tools/handle-types.h"
+#include "../tools/bezier-control-arm.h"
 #include "../core/drawing-shape.h"
 
 class DrawingScene;
@@ -28,9 +29,13 @@ public:
     enum NodeHandleType {
         CornerRadiusHandle = 100,    // 圆角控制手柄
         SizeControlHandle = 101,     // 尺寸控制手柄
-        PathNodeHandle = 102,        // 路径节点手柄
-        PathControlHandle = 103,     // 路径控制点手柄
-        CustomNodeHandle = 104       // 自定义节点手柄
+        PathNodeHandle = 102,        // 路径节点手柄（锚点）- 方形
+        PathControlHandle = 103,     // 路径控制点手柄 - 圆形
+        BezierNodeIn = 104,          // 贝塞尔进入节点 - 方形
+        BezierNodeOut = 105,         // 贝塞尔离开节点 - 方形
+        BezierControlIn = 106,       // 贝塞尔进入控制点 - 圆形（蓝色）
+        BezierControlOut = 107,      // 贝塞尔离开控制点 - 圆形（绿色）
+        CustomNodeHandle = 108       // 自定义节点手柄
     };
 
     // 手柄信息结构
@@ -52,6 +57,9 @@ public:
     // 获取指定位置的手柄
     CustomHandleItem* getHandleAt(const QPointF &scenePos) const;
     
+    // 获取手柄数量（用于调试）
+    int getHandleCount() const { return m_handleInfos.size(); }
+    
     // 获取手柄信息
     NodeHandleInfo getHandleInfo(CustomHandleItem *handle) const;
     
@@ -61,6 +69,12 @@ public:
     // 显示/隐藏手柄
     void showHandles();
     void hideHandles();
+    
+    // 控制杆相关方法
+    void updateBezierControlArms(DrawingShape *shape);
+    void createBezierControlHandles(DrawingShape *shape);
+    void updateControlArmLines();
+    void createSimpleControlArm(DrawingShape *shape);
     
     // 设置活动手柄
     void setActiveHandle(CustomHandleItem *handle);
@@ -94,6 +108,10 @@ private:
     
     // 设置手柄样式
     void setupHandleStyle(CustomHandleItem *handle, NodeHandleType type);
+    
+    // 路径控制点连线管理
+    void updatePathControlLines();
+    void clearPathControlLines();
 
 private:
     DrawingScene *m_scene;
@@ -102,12 +120,22 @@ private:
     CustomHandleItem *m_activeHandle;
     bool m_handlesVisible;
     
+    // 控制点连线
+    QList<QGraphicsLineItem*> m_controlLines;
+    
+    // 贝塞尔控制杆系统
+    QList<BezierNode> m_bezierNodes;
+    QList<QGraphicsLineItem*> m_controlArmLines;  // 控制杆连线
+    
     // 手柄样式配置
     static const qreal DEFAULT_HANDLE_SIZE;
     static const QColor CORNER_RADIUS_COLOR;
     static const QColor SIZE_CONTROL_COLOR;
-    static const QColor PATH_NODE_COLOR;
-    static const QColor PATH_CONTROL_COLOR;
+    static const QColor PATH_NODE_COLOR;        // 节点（方形）- 深蓝色
+    static const QColor PATH_CONTROL_COLOR;     // 控制点（圆形）- 浅蓝色
+    static const QColor BEZIER_NODE_COLOR;      // 贝塞尔节点 - 深蓝色
+    static const QColor BEZIER_CONTROL_IN_COLOR; // 贝塞尔进入控制点 - 蓝色
+    static const QColor BEZIER_CONTROL_OUT_COLOR; // 贝塞尔离开控制点 - 绿色
 };
 
 #endif // NODE_HANDLE_MANAGER_H

@@ -37,7 +37,9 @@ public:
         if (m_item && m_item->scene() == m_scene) {
             m_scene->removeItem(m_item);
             m_item->setVisible(false);
-            qDebug() << "AddItemCommand::undo - removed item from scene";
+            // 强制通知所有工具清理手柄（针对撤销删除操作的特殊处理）
+            emit m_scene->allToolsClearHandles();
+            qDebug() << "AddItemCommand::undo - removed item from scene and cleared handles";
         } else {
             qDebug() << "AddItemCommand::undo - item not in scene or null";
         }
@@ -718,6 +720,12 @@ void DrawingScene::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
     QGraphicsScene::mouseReleaseEvent(event);
 }
 
+void DrawingScene::mouseDoubleClickEvent(QGraphicsSceneMouseEvent *event)
+{
+    // 直接传递给基类处理，让工具系统通过事件传播来处理
+    QGraphicsScene::mouseDoubleClickEvent(event);
+}
+
 void DrawingScene::contextMenuEvent(QGraphicsSceneContextMenuEvent *event)
 {
     // 发出右键菜单请求信号，让MainWindow处理
@@ -751,6 +759,9 @@ void DrawingScene::keyPressEvent(QKeyEvent *event)
                 // 强制触发selectionChanged信号，确保选择工具能清理无效引用
                 emit selectionChanged();
                 setModified(true);
+                
+                // 强制通知所有工具清理手柄（针对删除操作的特殊处理）
+                emit allToolsClearHandles();
                 
                 qDebug() << "Deleted" << deleteCommands.size() << "items from scene";
             }

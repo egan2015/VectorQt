@@ -12,6 +12,8 @@
 #include "../ui/drawingview.h"
 #include "../core/drawing-shape.h"
 #include "../core/patheditor.h"
+#include "../core/layer-manager.h"
+#include "../core/drawing-layer.h"
 
 DrawingToolPathEdit::DrawingToolPathEdit(QObject *parent)
     : ToolBase(parent)
@@ -124,6 +126,9 @@ public:
         , m_originalShapeInScene(false)
         , m_secondShapeInScene(false)
         , m_newPathInScene(false)
+        , m_originalLayer(nullptr)
+        , m_secondLayer(nullptr)
+        , m_targetLayer(nullptr)
     {
         // 记录对象初始状态
         if (m_originalShape) {
@@ -134,6 +139,15 @@ public:
         }
         if (m_newPath) {
             m_newPathInScene = (m_newPath->scene() != nullptr);
+        }
+        
+        // 记录图形所属的图层
+        LayerManager *layerManager = LayerManager::instance();
+        if (layerManager) {
+            m_originalLayer = layerManager->findLayerForShape(m_originalShape);
+            m_secondLayer = layerManager->findLayerForShape(m_secondShape);
+            // 新路径应该添加到活动图层
+            m_targetLayer = layerManager->activeLayer();
         }
     }
     
@@ -150,47 +164,87 @@ public:
     {
         if (!m_scene) return;
         
+        LayerManager *layerManager = LayerManager::instance();
+        
         // 移除新创建的路径
         if (m_newPath && m_newPath->scene()) {
             m_scene->removeItem(m_newPath);
             m_newPath->setSelected(false);
+            // 从图层中移除
+            if (layerManager && m_targetLayer) {
+                m_targetLayer->removeShape(m_newPath);
+            }
         }
         
         // 恢复原始形状，只有在它们不在场景中时才添加
         if (m_originalShape && !m_originalShape->scene()) {
             m_scene->addItem(m_originalShape);
             m_originalShape->setSelected(true);
+            // 添加到原始图层
+            if (layerManager && m_originalLayer) {
+                m_originalLayer->addShape(m_originalShape);
+            }
         }
         if (m_secondShape && !m_secondShape->scene()) {
             m_scene->addItem(m_secondShape);
             m_secondShape->setSelected(true);
+            // 添加到原始图层
+            if (layerManager && m_secondLayer) {
+                m_secondLayer->addShape(m_secondShape);
+            }
         }
         
         m_scene->update();
+        
+        // 刷新对象树模型
+        if (layerManager) {
+            if (m_originalLayer) emit layerManager->layerContentChanged(m_originalLayer);
+            if (m_secondLayer) emit layerManager->layerContentChanged(m_secondLayer);
+            if (m_targetLayer) emit layerManager->layerContentChanged(m_targetLayer);
+        }
     }
     
     void redo() override
     {
         if (!m_scene) return;
         
+        LayerManager *layerManager = LayerManager::instance();
+        
         // 移除原始形状，只有在它们在场景中时才移除
         if (m_originalShape && m_originalShape->scene()) {
             m_scene->removeItem(m_originalShape);
             m_originalShape->setSelected(false);
+            // 从图层中移除
+            if (layerManager && m_originalLayer) {
+                m_originalLayer->removeShape(m_originalShape);
+            }
         }
         if (m_secondShape && m_secondShape->scene()) {
             m_scene->removeItem(m_secondShape);
             m_secondShape->setSelected(false);
+            // 从图层中移除
+            if (layerManager && m_secondLayer) {
+                m_secondLayer->removeShape(m_secondShape);
+            }
         }
         
         // 添加新路径，只有在它不在场景中时才添加
         if (m_newPath && !m_newPath->scene()) {
             m_scene->addItem(m_newPath);
             m_newPath->setSelected(true);
+            // 添加到目标图层
+            if (layerManager && m_targetLayer) {
+                m_targetLayer->addShape(m_newPath);
+            }
         }
         
         m_scene->update();
         m_scene->setModified(true);
+        
+        // 刷新对象树模型
+        if (layerManager) {
+            emit layerManager->layerContentChanged(m_targetLayer);
+        }
     }
     
 private:
@@ -201,6 +255,9 @@ private:
     bool m_originalShapeInScene;
     bool m_secondShapeInScene;
     bool m_newPathInScene;
+    DrawingLayer *m_originalLayer;
+    DrawingLayer *m_secondLayer;
+    DrawingLayer *m_targetLayer;
 };
 
 void DrawingToolPathEdit::executePathOperation()
@@ -366,22 +423,7 @@ void DrawingToolPathEdit::executePathOperation()
     }
     PathOperationCommand *command = new PathOperationCommand(m_scene, shape1, shape2, newPath, operationText);
     
-    // 先从场景中移除原始形状
-    // qDebug() << "Removing original shapes";
-    if (shape1 && m_scene->items().contains(shape1)) {
-        m_scene->removeItem(shape1);
-    }
-    if (shape2 && m_scene->items().contains(shape2)) {
-        m_scene->removeItem(shape2);
-    }
-    
-    // 添加新路径到场景
-    // qDebug() << "Adding new path to scene";
-    if (newPath && m_scene) {
-        m_scene->addItem(newPath);
-    }
-    
-    // 推送撤销命令
+    // 推送撤销命令，让命令处理场景和图层的同步
     m_scene->undoStack()->push(command);
     
     // 清空剩余的选择列表
@@ -489,15 +531,7 @@ void DrawingToolPathEdit::showContextMenu(const QPointF &scenePos)
                 // 创建撤销命令 - 在修改场景之前创建
                 PathOperationCommand *command = new PathOperationCommand(m_scene, shape, nullptr, newPath, "简化路径");
                 
-                // 安全地从场景中移除原始形状
-                shape->setSelected(false);
-                m_scene->removeItem(shape);
-                
-                // 添加新路径到场景
-                m_scene->addItem(newPath);
-                m_scene->setModified(true);
-                
-                // 推送撤销命令
+                // 推送撤销命令，让命令处理场景和图层的同步
                 m_scene->undoStack()->push(command);
                 
                 // 更新选择列表
@@ -529,15 +563,7 @@ void DrawingToolPathEdit::showContextMenu(const QPointF &scenePos)
                 // 创建撤销命令 - 在修改场景之前创建
                 PathOperationCommand *command = new PathOperationCommand(m_scene, shape, nullptr, newPath, "平滑路径");
                 
-                // 安全地从场景中移除原始形状
-                shape->setSelected(false);
-                m_scene->removeItem(shape);
-                
-                // 添加新路径到场景
-                m_scene->addItem(newPath);
-                m_scene->setModified(true);
-                
-                // 推送撤销命令
+                // 推送撤销命令，让命令处理场景和图层的同步
                 m_scene->undoStack()->push(command);
                 
                 // 更新选择列表
@@ -569,15 +595,7 @@ void DrawingToolPathEdit::showContextMenu(const QPointF &scenePos)
                 // 创建撤销命令 - 在修改场景之前创建
                 PathOperationCommand *command = new PathOperationCommand(m_scene, shape, nullptr, newPath, "转换为曲线");
                 
-                // 安全地从场景中移除原始形状
-                shape->setSelected(false);
-                m_scene->removeItem(shape);
-                
-                // 添加新路径到场景
-                m_scene->addItem(newPath);
-                m_scene->setModified(true);
-                
-                // 推送撤销命令
+                // 推送撤销命令，让命令处理场景和图层的同步
                 m_scene->undoStack()->push(command);
                 
                 // 更新选择列表
@@ -603,7 +621,16 @@ void DrawingToolPathEdit::showContextMenu(const QPointF &scenePos)
                 newPath->setPos(shape->pos() + bounds.topLeft());
                 newPath->setStrokePen(shape->strokePen());
                 newPath->setFillBrush(shape->fillBrush());
+                
+                // 添加到场景和活动图层
                 m_scene->addItem(newPath);
+                LayerManager *layerManager = LayerManager::instance();
+                if (layerManager) {
+                    DrawingLayer *activeLayer = layerManager->activeLayer();
+                    if (activeLayer) {
+                        activeLayer->addShape(newPath);
+                    }
+                }
                 m_scene->setModified(true);
             }
         }
@@ -628,7 +655,16 @@ void DrawingToolPathEdit::showContextMenu(const QPointF &scenePos)
                 newPath->setPos(shape->pos() + clippedBounds.topLeft());
                 newPath->setStrokePen(shape->strokePen());
                 newPath->setFillBrush(shape->fillBrush());
+                
+                // 添加到场景和活动图层
                 m_scene->addItem(newPath);
+                LayerManager *layerManager = LayerManager::instance();
+                if (layerManager) {
+                    DrawingLayer *activeLayer = layerManager->activeLayer();
+                    if (activeLayer) {
+                        activeLayer->addShape(newPath);
+                    }
+                }
                 m_scene->setModified(true);
             }
         }
@@ -643,7 +679,16 @@ void DrawingToolPathEdit::showContextMenu(const QPointF &scenePos)
             newPath->setPos(0, 0);
             newPath->setStrokePen(QPen(Qt::black, 2));
             newPath->setFillBrush(Qt::NoBrush);
+            
+            // 添加到场景和活动图层
             m_scene->addItem(newPath);
+            LayerManager *layerManager = LayerManager::instance();
+            if (layerManager) {
+                DrawingLayer *activeLayer = layerManager->activeLayer();
+                if (activeLayer) {
+                    activeLayer->addShape(newPath);
+                }
+            }
             m_scene->setModified(true);
         }
     } else if (selectedAction == starAction) {
@@ -654,7 +699,16 @@ void DrawingToolPathEdit::showContextMenu(const QPointF &scenePos)
             newPath->setPos(0, 0);
             newPath->setStrokePen(QPen(Qt::black, 2));
             newPath->setFillBrush(QBrush(Qt::yellow));
+            
+            // 添加到场景和活动图层
             m_scene->addItem(newPath);
+            LayerManager *layerManager = LayerManager::instance();
+            if (layerManager) {
+                DrawingLayer *activeLayer = layerManager->activeLayer();
+                if (activeLayer) {
+                    activeLayer->addShape(newPath);
+                }
+            }
             m_scene->setModified(true);
         }
     } else if (selectedAction == gearAction) {
@@ -665,7 +719,16 @@ void DrawingToolPathEdit::showContextMenu(const QPointF &scenePos)
             newPath->setPos(0, 0);
             newPath->setStrokePen(QPen(Qt::black, 2));
             newPath->setFillBrush(QBrush(Qt::gray));
+            
+            // 添加到场景和活动图层
             m_scene->addItem(newPath);
+            LayerManager *layerManager = LayerManager::instance();
+            if (layerManager) {
+                DrawingLayer *activeLayer = layerManager->activeLayer();
+                if (activeLayer) {
+                    activeLayer->addShape(newPath);
+                }
+            }
             m_scene->setModified(true);
         }
     } else if (selectedAction == convertTextToPathAction) {
@@ -691,9 +754,27 @@ void DrawingToolPathEdit::showContextMenu(const QPointF &scenePos)
                         // 添加到选择列表
                         m_selectedPaths.append(pathShape);
                         
+                        // 添加到活动图层
+                        LayerManager *layerManager = LayerManager::instance();
+                        if (layerManager) {
+                            DrawingLayer *activeLayer = layerManager->activeLayer();
+                            if (activeLayer) {
+                                activeLayer->addShape(pathShape);
+                            }
+                        }
+                        
                         // 安全地移除原始文本
                         textShape->setSelected(false);
                         m_scene->removeItem(textShape);
+                        
+                        // 从图层中移除原始文本
+                        if (layerManager) {
+                            DrawingLayer *textLayer = layerManager->findLayerForShape(textShape);
+                            if (textLayer) {
+                                textLayer->removeShape(textShape);
+                            }
+                        }
+                        
                         delete textShape; // 现在可以安全删除，因为已经从选择列表中移除
                     }
                 }

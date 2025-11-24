@@ -38,6 +38,7 @@ void ObjectTreeModel::setLayerManager(LayerManager *layerManager)
         connect(m_layerManager, &LayerManager::layerAdded, this, &ObjectTreeModel::onLayerAdded);
         connect(m_layerManager, &LayerManager::layerRemoved, this, &ObjectTreeModel::onLayerRemoved);
         connect(m_layerManager, &LayerManager::activeLayerChanged, this, &ObjectTreeModel::onActiveLayerChanged);
+        connect(m_layerManager, &LayerManager::layerContentChanged, this, &ObjectTreeModel::onLayerContentChanged);
     }
     
     refreshModel();
@@ -298,6 +299,34 @@ void ObjectTreeModel::onActiveLayerChanged(DrawingLayer *layer)
 {
     Q_UNUSED(layer)
     // TODO: 更新活动图层的显示
+}
+
+void ObjectTreeModel::onLayerContentChanged(DrawingLayer *layer)
+{
+    if (!layer) {
+        return;
+    }
+    
+    // 查找对应的树项
+    for (int i = 0; i < m_rootItem->childCount(); ++i) {
+        LayerTreeItem *layerItem = static_cast<LayerTreeItem*>(m_rootItem->child(i));
+        if (layerItem && layerItem->layer() == layer) {
+            // 移除旧的图形项
+            while (layerItem->childCount() > 0) {
+                delete layerItem->takeChild(0);
+            }
+            
+            // 添加新的图形项
+            QList<DrawingShape*> shapes = layer->shapes();
+            for (int j = 0; j < shapes.count(); ++j) {
+                beginInsertRows(indexFromItem(layerItem), j, j);
+                new ShapeTreeItem(shapes[j], layerItem);
+                endInsertRows();
+            }
+            
+            break;
+        }
+    }
 }
 
 void ObjectTreeModel::buildTree()

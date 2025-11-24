@@ -497,6 +497,22 @@ void LayerManager::disconnectLayer(DrawingLayer *layer)
     disconnect(layer, nullptr, this, nullptr);
 }
 
+DrawingLayer* LayerManager::findLayerForShape(DrawingShape *shape) const
+{
+    if (!shape) {
+        return nullptr;
+    }
+    
+    // 遍历所有图层，查找包含该图形的图层
+    for (DrawingLayer *layer : m_layers) {
+        if (layer && layer->shapes().contains(shape)) {
+            return layer;
+        }
+    }
+    
+    return nullptr;
+}
+
 void LayerManager::onLayerPropertyChanged()
 {
     // 由于DrawingLayer不继承QObject，这里暂时不实现信号连接

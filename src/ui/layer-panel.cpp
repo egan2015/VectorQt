@@ -348,13 +348,29 @@ void LayerPanel::addObjectsToLayerItem(QTreeWidgetItem *layerItem, DrawingLayer 
     QList<DrawingShape*> shapes = layer->shapes();
     qDebug() << "Processing layer with" << shapes.count() << "shapes";
     
+    // 清理无效的图形（已从场景中删除但仍在图层列表中的图形）
+    for (int i = shapes.count() - 1; i >= 0; --i) {
+        DrawingShape *shape = shapes.at(i);
+        if (shape && !shape->scene()) {
+            qDebug() << "Removing invalid shape from layer:" << shape;
+            layer->removeShape(shape);
+        }
+    }
+    
+    // 重新获取清理后的图形列表
+    shapes = layer->shapes();
+    qDebug() << "After cleanup, layer has" << shapes.count() << "shapes";
+    
     // 调试：打印所有形状的详细信息
     for (int debugIdx = 0; debugIdx < shapes.count(); ++debugIdx) {
         DrawingShape *debugShape = shapes.at(debugIdx);
         if (debugShape) {
+            // 检查图形是否仍在场景中，避免访问已删除的对象
+            bool isInScene = debugShape->scene() != nullptr;
             qDebug() << "DEBUG shape" << debugIdx << "- type:" << debugShape->shapeType() 
                      << "- address:" << debugShape
                      << "- isGroup:" << (debugShape->shapeType() == DrawingShape::Group)
+                     << "- isInScene:" << isInScene
                      << "- dynamic_cast result:" << (dynamic_cast<DrawingGroup*>(debugShape) != nullptr);
         }
     }
@@ -363,6 +379,12 @@ void LayerPanel::addObjectsToLayerItem(QTreeWidgetItem *layerItem, DrawingLayer 
         DrawingShape *shape = shapes.at(i);
         
         if (shape) {
+            // 检查图形是否仍在场景中，避免访问已删除的对象
+            if (!shape->scene()) {
+                qDebug() << "Skipping shape at index" << i << "- not in scene (deleted)";
+                continue;
+            }
+            
             try {
                 qDebug() << "Processing shape at index" << i << "type:" << shape->shapeType() << "address:" << shape;
                 qDebug() << "Is DrawingShape:" << (dynamic_cast<DrawingShape*>(shape) != nullptr);

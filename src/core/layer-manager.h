@@ -7,6 +7,7 @@
 
 class DrawingScene;
 class DrawingLayer;
+class DrawingShape;
 class LayerPanel;
 
 /**
@@ -60,6 +61,9 @@ public:
     DrawingLayer* layer(const QString &name) const;
     int layerCount() const { return m_layers.count(); }
     int indexOf(DrawingLayer *layer) const;
+    
+    // 查找图形所属图层
+    DrawingLayer* findLayerForShape(DrawingShape *shape) const;
     
     // 图层操作信号
     void updateLayerPanel();

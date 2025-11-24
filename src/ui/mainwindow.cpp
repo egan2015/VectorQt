@@ -471,6 +471,10 @@ void MainWindow::setupMenus()
     editMenu->addAction(m_alignMiddleAction);
     editMenu->addAction(m_alignBottomAction);
     editMenu->addSeparator();
+    editMenu->addAction(m_sameWidthAction);
+    editMenu->addAction(m_sameHeightAction);
+    editMenu->addAction(m_sameSizeAction);
+    editMenu->addSeparator();
     editMenu->addAction(m_distributeHorizontalAction);
     editMenu->addAction(m_distributeVerticalAction);
 
@@ -658,6 +662,10 @@ void MainWindow::setupToolbars()
     viewToolBar->addAction(m_alignTopAction);
     viewToolBar->addAction(m_alignMiddleAction);
     viewToolBar->addAction(m_alignBottomAction);
+    viewToolBar->addSeparator();
+    viewToolBar->addAction(m_sameWidthAction);
+    viewToolBar->addAction(m_sameHeightAction);
+    viewToolBar->addAction(m_sameSizeAction);
     viewToolBar->addSeparator();
     viewToolBar->addAction(m_distributeHorizontalAction);
     viewToolBar->addAction(m_distributeVerticalAction);
@@ -909,6 +917,15 @@ void MainWindow::createActions()
     m_alignBottomAction = new QAction("底部对齐(&B)", this);
     m_alignBottomAction->setStatusTip("将选中的项目底部对齐");
     
+    m_sameWidthAction = new QAction("同宽(&W)", this);
+    m_sameWidthAction->setStatusTip("将选中的项目设置为相同宽度");
+    
+    m_sameHeightAction = new QAction("同高(&H)", this);
+    m_sameHeightAction->setStatusTip("将选中的项目设置为相同高度");
+    
+    m_sameSizeAction = new QAction("同大小(&S)", this);
+    m_sameSizeAction->setStatusTip("将选中的项目设置为相同大小");
+    
     // 分布动作
     m_distributeHorizontalAction = new QAction("水平分布(&H)", this);
     m_distributeHorizontalAction->setStatusTip("将选中的项目水平均匀分布");
@@ -1108,6 +1125,9 @@ void MainWindow::connectActions()
     connect(m_alignTopAction, &QAction::triggered, this, &MainWindow::alignTop);
     connect(m_alignMiddleAction, &QAction::triggered, this, &MainWindow::alignMiddle);
     connect(m_alignBottomAction, &QAction::triggered, this, &MainWindow::alignBottom);
+    connect(m_sameWidthAction, &QAction::triggered, this, &MainWindow::sameWidth);
+    connect(m_sameHeightAction, &QAction::triggered, this, &MainWindow::sameHeight);
+    connect(m_sameSizeAction, &QAction::triggered, this, &MainWindow::sameSize);
     connect(m_distributeHorizontalAction, &QAction::triggered, this, &MainWindow::distributeHorizontal);
     connect(m_distributeVerticalAction, &QAction::triggered, this, &MainWindow::distributeVertical);
 
@@ -2599,6 +2619,10 @@ void MainWindow::showContextMenu(const QPointF &pos)
     alignMenu->addAction(m_alignMiddleAction);
     alignMenu->addAction(m_alignBottomAction);
     alignMenu->addSeparator();
+    alignMenu->addAction(m_sameWidthAction);
+    alignMenu->addAction(m_sameHeightAction);
+    alignMenu->addAction(m_sameSizeAction);
+    alignMenu->addSeparator();
     alignMenu->addAction(m_distributeHorizontalAction);
     alignMenu->addAction(m_distributeVerticalAction);
     
@@ -2729,15 +2753,13 @@ void MainWindow::alignLeft()
     // 计算所有选中项目的最左边界
     qreal leftmost = std::numeric_limits<qreal>::max();
     for (QGraphicsItem* item : selectedItems) {
-        QRectF bounds = item->boundingRect();
-        bounds.translate(item->pos());
+        QRectF bounds = item->mapToScene(item->boundingRect()).boundingRect();
         leftmost = qMin(leftmost, bounds.left());
     }
     
     // 将所有项目对齐到最左边界
     for (QGraphicsItem* item : selectedItems) {
-        QRectF bounds = item->boundingRect();
-        bounds.translate(item->pos());
+        QRectF bounds = item->mapToScene(item->boundingRect()).boundingRect();
         qreal deltaX = leftmost - bounds.left();
         item->setPos(item->pos().x() + deltaX, item->pos().y());
     }
@@ -2761,8 +2783,7 @@ void MainWindow::alignCenter()
     qreal leftmost = std::numeric_limits<qreal>::max();
     qreal rightmost = std::numeric_limits<qreal>::lowest();
     for (QGraphicsItem* item : selectedItems) {
-        QRectF bounds = item->boundingRect();
-        bounds.translate(item->pos());
+        QRectF bounds = item->mapToScene(item->boundingRect()).boundingRect();
         leftmost = qMin(leftmost, bounds.left());
         rightmost = qMax(rightmost, bounds.right());
     }
@@ -2771,8 +2792,7 @@ void MainWindow::alignCenter()
     
     // 将所有项目水平居中对齐
     for (QGraphicsItem* item : selectedItems) {
-        QRectF bounds = item->boundingRect();
-        bounds.translate(item->pos());
+        QRectF bounds = item->mapToScene(item->boundingRect()).boundingRect();
         qreal itemCenterX = (bounds.left() + bounds.right()) / 2.0;
         qreal deltaX = centerX - itemCenterX;
         item->setPos(item->pos().x() + deltaX, item->pos().y());
@@ -2796,15 +2816,13 @@ void MainWindow::alignRight()
     // 计算所有选中项目的最右边界
     qreal rightmost = std::numeric_limits<qreal>::lowest();
     for (QGraphicsItem* item : selectedItems) {
-        QRectF bounds = item->boundingRect();
-        bounds.translate(item->pos());
+        QRectF bounds = item->mapToScene(item->boundingRect()).boundingRect();
         rightmost = qMax(rightmost, bounds.right());
     }
     
     // 将所有项目对齐到最右边界
     for (QGraphicsItem* item : selectedItems) {
-        QRectF bounds = item->boundingRect();
-        bounds.translate(item->pos());
+        QRectF bounds = item->mapToScene(item->boundingRect()).boundingRect();
         qreal deltaX = rightmost - bounds.right();
         item->setPos(item->pos().x() + deltaX, item->pos().y());
     }
@@ -2827,15 +2845,13 @@ void MainWindow::alignTop()
     // 计算所有选中项目的最顶边界
     qreal topmost = std::numeric_limits<qreal>::max();
     for (QGraphicsItem* item : selectedItems) {
-        QRectF bounds = item->boundingRect();
-        bounds.translate(item->pos());
+        QRectF bounds = item->mapToScene(item->boundingRect()).boundingRect();
         topmost = qMin(topmost, bounds.top());
     }
     
     // 将所有项目对齐到最顶边界
     for (QGraphicsItem* item : selectedItems) {
-        QRectF bounds = item->boundingRect();
-        bounds.translate(item->pos());
+        QRectF bounds = item->mapToScene(item->boundingRect()).boundingRect();
         qreal deltaY = topmost - bounds.top();
         item->setPos(item->pos().x(), item->pos().y() + deltaY);
     }
@@ -2859,8 +2875,7 @@ void MainWindow::alignMiddle()
     qreal topmost = std::numeric_limits<qreal>::max();
     qreal bottommost = std::numeric_limits<qreal>::lowest();
     for (QGraphicsItem* item : selectedItems) {
-        QRectF bounds = item->boundingRect();
-        bounds.translate(item->pos());
+        QRectF bounds = item->mapToScene(item->boundingRect()).boundingRect();
         topmost = qMin(topmost, bounds.top());
         bottommost = qMax(bottommost, bounds.bottom());
     }
@@ -2869,8 +2884,7 @@ void MainWindow::alignMiddle()
     
     // 将所有项目垂直居中对齐
     for (QGraphicsItem* item : selectedItems) {
-        QRectF bounds = item->boundingRect();
-        bounds.translate(item->pos());
+        QRectF bounds = item->mapToScene(item->boundingRect()).boundingRect();
         qreal itemCenterY = (bounds.top() + bounds.bottom()) / 2.0;
         qreal deltaY = centerY - itemCenterY;
         item->setPos(item->pos().x(), item->pos().y() + deltaY);
@@ -2894,15 +2908,13 @@ void MainWindow::alignBottom()
     // 计算所有选中项目的最底边界
     qreal bottommost = std::numeric_limits<qreal>::lowest();
     for (QGraphicsItem* item : selectedItems) {
-        QRectF bounds = item->boundingRect();
-        bounds.translate(item->pos());
+        QRectF bounds = item->mapToScene(item->boundingRect()).boundingRect();
         bottommost = qMax(bottommost, bounds.bottom());
     }
     
     // 将所有项目对齐到最底边界
     for (QGraphicsItem* item : selectedItems) {
-        QRectF bounds = item->boundingRect();
-        bounds.translate(item->pos());
+        QRectF bounds = item->mapToScene(item->boundingRect()).boundingRect();
         qreal deltaY = bottommost - bounds.bottom();
         item->setPos(item->pos().x(), item->pos().y() + deltaY);
     }
@@ -2910,6 +2922,297 @@ void MainWindow::alignBottom()
     m_scene->update();
     m_scene->setModified(true);
     m_statusLabel->setText(QString("已底部对齐 %1 个项目").arg(selectedItems.size()));
+}
+
+void MainWindow::sameWidth()
+{
+    if (!m_scene) return;
+    
+    QList<QGraphicsItem*> selectedItems = m_scene->selectedItems();
+    if (selectedItems.size() < 2) {
+        m_statusLabel->setText("需要至少选择2个项目");
+        return;
+    }
+    
+    // 找到第一个选中项目的宽度作为目标宽度
+    QGraphicsItem* firstItem = selectedItems.first();
+    QRectF firstBounds = firstItem->mapToScene(firstItem->boundingRect()).boundingRect();
+    qreal targetWidth = firstBounds.width();
+    
+    // 创建撤销命令
+    class SameWidthCommand : public QUndoCommand
+    {
+    public:
+        SameWidthCommand(DrawingScene *scene, const QList<QGraphicsItem*>& items, qreal width, QUndoCommand *parent = nullptr)
+            : QUndoCommand("同宽", parent), m_scene(scene), m_items(items), m_targetWidth(width)
+        {
+            // 保存原始变换
+            for (QGraphicsItem* item : m_items) {
+                m_originalTransforms.append(item->transform());
+            }
+        }
+        
+        void undo() override {
+            for (int i = 0; i < m_items.size(); ++i) {
+                m_items[i]->setTransform(m_originalTransforms[i]);
+            }
+            m_scene->update();
+            m_scene->setModified(true);
+        }
+        
+        void redo() override {
+            for (QGraphicsItem* item : m_items) {
+                QRectF bounds = item->mapToScene(item->boundingRect()).boundingRect();
+                qreal currentWidth = bounds.width();
+                qreal scaleX = m_targetWidth / currentWidth;
+                
+                // 检查是否是 DrawingShape，使用专门的方法
+                DrawingShape* shape = qgraphicsitem_cast<DrawingShape*>(item);
+                if (shape) {
+                    // 重置变换然后应用新的缩放
+                    shape->setTransform(QTransform());
+                    shape->scaleAroundAnchor(scaleX, 1.0, shape->boundingRect().center());
+                } else {
+                    // 对于其他类型的项目，使用通用方法
+                    QTransform transform;
+                    transform.scale(scaleX, 1.0);
+                    item->setTransform(transform);
+                }
+            }
+            m_scene->update();
+            m_scene->setModified(true);
+        }
+        
+    private:
+        DrawingScene *m_scene;
+        QList<QGraphicsItem*> m_items;
+        qreal m_targetWidth;
+        QVector<QTransform> m_originalTransforms;
+    };
+    
+    // 应用同宽操作
+    for (QGraphicsItem* item : selectedItems) {
+        QRectF bounds = item->mapToScene(item->boundingRect()).boundingRect();
+        qreal currentWidth = bounds.width();
+        qreal scaleX = targetWidth / currentWidth;
+        
+        // 检查是否是 DrawingShape，使用专门的方法
+        DrawingShape* shape = qgraphicsitem_cast<DrawingShape*>(item);
+        if (shape) {
+            // 重置变换然后应用新的缩放
+            shape->setTransform(QTransform());
+            shape->scaleAroundAnchor(scaleX, 1.0, shape->boundingRect().center());
+        } else {
+            // 对于其他类型的项目，使用通用方法
+            QTransform transform;
+            transform.scale(scaleX, 1.0);
+            item->setTransform(transform);
+        }
+    }
+    
+    // 创建并推送撤销命令
+    SameWidthCommand *command = new SameWidthCommand(m_scene, selectedItems, targetWidth);
+    m_scene->undoStack()->push(command);
+    
+    m_scene->update();
+    m_scene->setModified(true);
+    m_statusLabel->setText(QString("已设置 %1 个项目为相同宽度").arg(selectedItems.size()));
+}
+
+void MainWindow::sameHeight()
+{
+    if (!m_scene) return;
+    
+    QList<QGraphicsItem*> selectedItems = m_scene->selectedItems();
+    if (selectedItems.size() < 2) {
+        m_statusLabel->setText("需要至少选择2个项目");
+        return;
+    }
+    
+    // 找到第一个选中项目的高度作为目标高度
+    QGraphicsItem* firstItem = selectedItems.first();
+    QRectF firstBounds = firstItem->mapToScene(firstItem->boundingRect()).boundingRect();
+    qreal targetHeight = firstBounds.height();
+    
+    // 创建撤销命令
+    class SameHeightCommand : public QUndoCommand
+    {
+    public:
+        SameHeightCommand(DrawingScene *scene, const QList<QGraphicsItem*>& items, qreal height, QUndoCommand *parent = nullptr)
+            : QUndoCommand("同高", parent), m_scene(scene), m_items(items), m_targetHeight(height)
+        {
+            // 保存原始变换
+            for (QGraphicsItem* item : m_items) {
+                m_originalTransforms.append(item->transform());
+            }
+        }
+        
+        void undo() override {
+            for (int i = 0; i < m_items.size(); ++i) {
+                m_items[i]->setTransform(m_originalTransforms[i]);
+            }
+            m_scene->update();
+            m_scene->setModified(true);
+        }
+        
+        void redo() override {
+            for (QGraphicsItem* item : m_items) {
+                QRectF bounds = item->mapToScene(item->boundingRect()).boundingRect();
+                qreal currentHeight = bounds.height();
+                qreal scaleY = m_targetHeight / currentHeight;
+                
+                // 检查是否是 DrawingShape，使用专门的方法
+                DrawingShape* shape = qgraphicsitem_cast<DrawingShape*>(item);
+                if (shape) {
+                    // 重置变换然后应用新的缩放
+                    shape->setTransform(QTransform());
+                    shape->scaleAroundAnchor(1.0, scaleY, shape->boundingRect().center());
+                } else {
+                    // 对于其他类型的项目，使用通用方法
+                    QTransform transform;
+                    transform.scale(1.0, scaleY);
+                    item->setTransform(transform);
+                }
+            }
+            m_scene->update();
+            m_scene->setModified(true);
+        }
+        
+    private:
+        DrawingScene *m_scene;
+        QList<QGraphicsItem*> m_items;
+        qreal m_targetHeight;
+        QVector<QTransform> m_originalTransforms;
+    };
+    
+    // 应用同高操作
+    for (QGraphicsItem* item : selectedItems) {
+        QRectF bounds = item->mapToScene(item->boundingRect()).boundingRect();
+        qreal currentHeight = bounds.height();
+        qreal scaleY = targetHeight / currentHeight;
+        
+        // 检查是否是 DrawingShape，使用专门的方法
+        DrawingShape* shape = qgraphicsitem_cast<DrawingShape*>(item);
+        if (shape) {
+            // 重置变换然后应用新的缩放
+            shape->setTransform(QTransform());
+            shape->scaleAroundAnchor(1.0, scaleY, shape->boundingRect().center());
+        } else {
+            // 对于其他类型的项目，使用通用方法
+            QTransform transform;
+            transform.scale(1.0, scaleY);
+            item->setTransform(transform);
+        }
+    }
+    
+    // 创建并推送撤销命令
+    SameHeightCommand *command = new SameHeightCommand(m_scene, selectedItems, targetHeight);
+    m_scene->undoStack()->push(command);
+    
+    m_scene->update();
+    m_scene->setModified(true);
+    m_statusLabel->setText(QString("已设置 %1 个项目为相同高度").arg(selectedItems.size()));
+}
+
+void MainWindow::sameSize()
+{
+    if (!m_scene) return;
+    
+    QList<QGraphicsItem*> selectedItems = m_scene->selectedItems();
+    if (selectedItems.size() < 2) {
+        m_statusLabel->setText("需要至少选择2个项目");
+        return;
+    }
+    
+    // 找到第一个选中项目的尺寸作为目标尺寸
+    QGraphicsItem* firstItem = selectedItems.first();
+    QRectF firstBounds = firstItem->mapToScene(firstItem->boundingRect()).boundingRect();
+    qreal targetWidth = firstBounds.width();
+    qreal targetHeight = firstBounds.height();
+    
+    // 创建撤销命令
+    class SameSizeCommand : public QUndoCommand
+    {
+    public:
+        SameSizeCommand(DrawingScene *scene, const QList<QGraphicsItem*>& items, qreal width, qreal height, QUndoCommand *parent = nullptr)
+            : QUndoCommand("同大小", parent), m_scene(scene), m_items(items), m_targetWidth(width), m_targetHeight(height)
+        {
+            // 保存原始变换
+            for (QGraphicsItem* item : m_items) {
+                m_originalTransforms.append(item->transform());
+            }
+        }
+        
+        void undo() override {
+            for (int i = 0; i < m_items.size(); ++i) {
+                m_items[i]->setTransform(m_originalTransforms[i]);
+            }
+            m_scene->update();
+            m_scene->setModified(true);
+        }
+        
+        void redo() override {
+            for (QGraphicsItem* item : m_items) {
+                QRectF bounds = item->mapToScene(item->boundingRect()).boundingRect();
+                qreal currentWidth = bounds.width();
+                qreal currentHeight = bounds.height();
+                qreal scaleX = m_targetWidth / currentWidth;
+                qreal scaleY = m_targetHeight / currentHeight;
+                
+                // 检查是否是 DrawingShape，使用专门的方法
+                DrawingShape* shape = qgraphicsitem_cast<DrawingShape*>(item);
+                if (shape) {
+                    // 重置变换然后应用新的缩放
+                    shape->setTransform(QTransform());
+                    shape->scaleAroundAnchor(scaleX, scaleY, shape->boundingRect().center());
+                } else {
+                    // 对于其他类型的项目，使用通用方法
+                    QTransform transform;
+                    transform.scale(scaleX, scaleY);
+                    item->setTransform(transform);
+                }
+            }
+            m_scene->update();
+            m_scene->setModified(true);
+        }
+        
+    private:
+        DrawingScene *m_scene;
+        QList<QGraphicsItem*> m_items;
+        qreal m_targetWidth;
+        qreal m_targetHeight;
+        QVector<QTransform> m_originalTransforms;
+    };
+    
+    // 应用同大小操作
+    for (QGraphicsItem* item : selectedItems) {
+        QRectF bounds = item->mapToScene(item->boundingRect()).boundingRect();
+        qreal currentWidth = bounds.width();
+        qreal currentHeight = bounds.height();
+        qreal scaleX = targetWidth / currentWidth;
+        qreal scaleY = targetHeight / currentHeight;
+        
+        // 检查是否是 DrawingShape，使用专门的方法
+        DrawingShape* shape = qgraphicsitem_cast<DrawingShape*>(item);
+        if (shape) {
+            // 重置变换然后应用新的缩放
+            shape->setTransform(QTransform());
+            shape->scaleAroundAnchor(scaleX, scaleY, shape->boundingRect().center());
+        } else {
+            // 对于其他类型的项目，使用通用方法
+            QTransform transform;
+            transform.scale(scaleX, scaleY);
+            item->setTransform(transform);
+        }
+    }
+    
+    // 创建并推送撤销命令
+    SameSizeCommand *command = new SameSizeCommand(m_scene, selectedItems, targetWidth, targetHeight);
+    m_scene->undoStack()->push(command);
+    
+    m_scene->update();
+    m_scene->setModified(true);
+    m_statusLabel->setText(QString("已设置 %1 个项目为相同大小").arg(selectedItems.size()));
 }
 
 // 🌟 参考线创建槽函数

@@ -34,6 +34,7 @@ class ColorPalette;
 class PathEditor;
 class ScrollableToolBar;
 
+
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
@@ -153,6 +154,9 @@ private slots:
     void executePathOperation(const QString &operation);
     void createShapeAtPosition(const QString &shapeType, const QPointF &pos);
     void convertSelectedTextToPath();
+    
+    // 性能面板槽函数
+    void togglePerformancePanel();
 
 protected:
     void mouseMoveEvent(QMouseEvent *event) override;
@@ -228,6 +232,7 @@ private:
     QAction *m_pathIntersectAction;
     QAction *m_pathXorAction;
     QAction *m_pathSimplifyAction;
+    QAction *m_togglePerformancePanelAction;
     QAction *m_pathSmoothAction;
     QAction *m_pathReverseAction;
     QAction *m_generateShapeAction;
@@ -273,6 +278,9 @@ private:
     QLabel *m_statusLabel;
     QLabel *m_zoomLabel;
     QLabel *m_positionLabel;
+    
+    // 性能面板（现在集成在属性面板tab中）
+    QDockWidget *m_performanceDock; // 保留用于菜单兼容性
     QString m_currentFile;
     bool m_isModified;
     

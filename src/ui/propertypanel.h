@@ -2,6 +2,7 @@
 #define PROPERTYPANEL_H
 
 #include <QWidget>
+#include <QGraphicsItem>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -11,6 +12,7 @@
 #include <QComboBox>
 #include <QColorDialog>
 #include <QGroupBox>
+#include <QTimer>
 
 class DrawingScene;
 class DrawingShape;
@@ -46,28 +48,41 @@ private:
     
     DrawingScene *m_scene;
     
-    // Transform group
+    // Transform components
     QGroupBox *m_transformGroup;
+    QGridLayout *m_transformLayout;
+    
+    // Transform controls
     QDoubleSpinBox *m_xSpinBox;
     QDoubleSpinBox *m_ySpinBox;
     QDoubleSpinBox *m_widthSpinBox;
     QDoubleSpinBox *m_heightSpinBox;
     QDoubleSpinBox *m_rotationSpinBox;
     
-    // Appearance group
+    // Appearance controls
     QGroupBox *m_appearanceGroup;
+    QGridLayout *m_appearanceLayout;
     QPushButton *m_fillColorButton;
     QPushButton *m_strokeColorButton;
     QSpinBox *m_strokeWidthSpinBox;
     QComboBox *m_strokeStyleComboBox;
     QDoubleSpinBox *m_opacitySpinBox;
     
+    // Performance monitoring
+    QGroupBox *m_performanceGroup;
+    QLabel *m_fpsLabel;
+    QLabel *m_memoryLabel;
+    QLabel *m_drawCallsLabel;
+    QTimer *m_performanceTimer;
+    
+    // Apply button
     QPushButton *m_applyButton;
     
+    // State tracking
     bool m_updating;
-    double m_lastKnownRotation;  // 用于递归检测和微小变化过滤
-    double m_lastKnownWidth;     // 用于宽度变化检测
-    double m_lastKnownHeight;    // 用于高度变化检测
+    double m_lastKnownRotation;
+    double m_lastKnownWidth;
+    double m_lastKnownHeight;
 };
 
 #endif // PROPERTYPANEL_H

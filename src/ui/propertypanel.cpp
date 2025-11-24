@@ -489,24 +489,25 @@ void PropertyPanel::onRotationChanged()
         if (shape) {
             // 对于DrawingShape，设置绝对角度（不是增量），但保留位移和缩放
             // 使用变换中心（场景原点）而不是图形中心
-            QPointF center = shape->transformOriginPoint();
+            QPointF center = QPointF(0, 0);
+            QPointF scenePos = shape->scenePos();
             // 获取当前变换并提取各分量
             QTransform currentTransform = shape->transform();
             
             // 提取位移分量
             double translateX = currentTransform.dx();
             double translateY = currentTransform.dy();
-            
+            qDebug() << "Current Translation:" << translateX << translateY;
             // 提取缩放分量（使用更准确的方法）
             double scaleX = qSqrt(currentTransform.m11() * currentTransform.m11() + currentTransform.m21() * currentTransform.m21());
             double scaleY = qSqrt(currentTransform.m12() * currentTransform.m12() + currentTransform.m22() * currentTransform.m22());
-            
+            qDebug() << "Current Scale:" << scaleX << scaleY;
             // 创建新的变换：保留缩放和位移，设置绝对角度
             // 使用变换分量系统，链式调用：缩放 → 旋转 → 平移
             QTransform newTransform = 
                 Scale{QPointF(scaleX, scaleY), center} *
-                Rotate{-newAngle, center} *
-                Translate{QPointF(translateX, translateY)};
+                Rotate{-newAngle, center} ;
+                //Translate{QPointF(translateX, translateY)};
             
             // 使用applyTransform而不是setTransform，确保通知机制正常工作
             shape->applyTransform(newTransform, center);

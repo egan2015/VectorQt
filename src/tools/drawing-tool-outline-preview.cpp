@@ -178,6 +178,10 @@ void OutlinePreviewTransformTool::deactivate()
     if (m_scene)
     {
         m_scene->deactivateSelectionTool();
+        disconnect(m_scene, &DrawingScene::selectionChanged, this,
+                   &OutlinePreviewTransformTool::onSelectionChanged);
+        disconnect(m_scene, &DrawingScene::objectStateChanged, this,
+                   &OutlinePreviewTransformTool::onObjectStateChanged);
     }
 
     // 恢复内部选择框

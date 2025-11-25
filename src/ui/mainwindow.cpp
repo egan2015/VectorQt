@@ -57,7 +57,7 @@
 #include "../core/drawing-group.h"
 #include "../tools/tool-state-manager.h"
 #include "../tools/tool-manager.h"
-#include "../core/event-bus.h"
+// #include "../core/event-bus.h"  // 暂时不使用，保留为未来扩展
 #include "../ui/shortcut-manager.h"
 
 MainWindow::MainWindow(QWidget *parent)
@@ -76,15 +76,9 @@ MainWindow::MainWindow(QWidget *parent)
     m_shortcutManager->setToolManager(m_toolManager);
     // 场景将在newFile()后设置
     
-    // 订阅事件总线
-    EventBus& eventBus = EventBus::instance();
-    eventBus.subscribe<ToolSwitchEvent>([this](const ToolSwitchEvent& event) {
-        #ifdef QT_DEBUG
-        qDebug() << "MainWindow: Tool switched from" << static_cast<int>(event.oldType) 
-                 << "to" << static_cast<int>(event.newType) 
-                 << "in" << event.switchTime << "ms";
-        #endif
-    });
+    // Event-Bus暂时不使用，保留为未来扩展
+    // 当前主要使用Qt信号槽进行组件间通信
+    // EventBus使用策略详见：docs/hybrid-communication-strategy.md
     
     createActions();
     setupUI();

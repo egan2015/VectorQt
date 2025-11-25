@@ -50,7 +50,6 @@ set(SOURCES
     src/core/graphics-adapter.h
     src/tools/tool-state-manager.cpp
     src/tools/tool-manager.cpp
-    src/core/event-bus.cpp
     src/ui/shortcut-manager.cpp
     
     # 绘图工具模块
@@ -119,7 +118,6 @@ set(HEADERS
     src/core/graphics-adapter.h
     src/tools/tool-state-manager.h
     src/tools/tool-manager.h
-    src/core/event-bus.h
     src/ui/shortcut-manager.h
     
     # 绘图工具模块

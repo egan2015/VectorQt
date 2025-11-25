@@ -217,32 +217,27 @@ QRectF DrawingShape::boundingRect() const
 
 QPainterPath DrawingShape::shape() const
 {
-    QPainterPath path;
-    // 创建本地边界的路径
-    path.addRect(localBounds());
+    // 使用transformedShape()方法，它已经正确处理了变换和填充规则
+    QPainterPath path = transformedShape();
     
-    QPainterPath transformedPath = m_transform.map(path);
-    
-    // 确保路径有效（处理镜像情况）
-    if (transformedPath.isEmpty()) {
-        // 如果变换后路径为空，返回边界矩形
-        QRectF bounds = boundingRect();
-        QPainterPath fallbackPath;
-        fallbackPath.addRect(bounds);
-        return fallbackPath;
+    // 处理镜像变换的特殊情况
+    // 检查变换矩阵的行列式，如果为负值说明有镜像
+    qreal det = m_transform.determinant();
+    if (det < 0) {
+        // 对于镜像变换，确保路径有正确的填充规则
+        path.setFillRule(Qt::WindingFill);
+        
+        // 额外检查：如果路径仍然有问题，使用边界框作为后备
+        if (path.isEmpty()) {
+            QRectF bounds = boundingRect();
+            QPainterPath fallbackPath;
+            fallbackPath.addRect(bounds);
+            fallbackPath.setFillRule(Qt::WindingFill);
+            return fallbackPath;
+        }
     }
     
-    // 验证路径的边界框是否有效
-    QRectF pathBounds = transformedPath.boundingRect();
-    if (pathBounds.width() < 0 || pathBounds.height() < 0 || pathBounds.isNull()) {
-        // 如果路径边界无效，使用计算出的边界框
-        QRectF bounds = boundingRect();
-        QPainterPath fallbackPath;
-        fallbackPath.addRect(bounds);
-        return fallbackPath;
-    }
-    
-    return transformedPath;
+    return path;
 }
 
 QPainterPath DrawingShape::transformedShape() const
@@ -427,18 +422,29 @@ QRectF DrawingRectangle::localBounds() const
     return m_rect;
 }
 
-// QPainterPath DrawingRectangle::shape() const
-// {
-//     QPainterPath path;
-//     if (m_cornerRadius > 0) {
-//         // 创建圆角矩形路径
-//         path.addRoundedRect(m_rect, m_cornerRadius, m_cornerRadius);
-//     } else {
-//         // 创建普通矩形路径
-//         path.addRect(m_rect);
-//     }
-//     return path;
-// }
+QPainterPath DrawingRectangle::shape() const
+{
+    QPainterPath path;
+    if (m_cornerRadius > 0) {
+        // 创建圆角矩形路径
+        path.addRoundedRect(m_rect, m_cornerRadius, m_cornerRadius);
+    } else {
+        // 创建普通矩形路径
+        path.addRect(m_rect);
+    }
+    
+    // 应用变换
+    path = m_transform.map(path);
+    
+    // 处理镜像变换的特殊情况
+    qreal det = m_transform.determinant();
+    if (det < 0) {
+        // 对于镜像变换，确保使用正确的填充规则
+        path.setFillRule(Qt::WindingFill);
+    }
+    
+    return path;
+}
 
 QPainterPath DrawingRectangle::transformedShape() const
 {
@@ -665,12 +671,23 @@ QRectF DrawingEllipse::localBounds() const
     return m_rect;
 }
 
-// QPainterPath DrawingEllipse::shape() const
-// {
-//     QPainterPath path;
-//     path.addEllipse(m_rect);
-//     return path;
-// }
+QPainterPath DrawingEllipse::shape() const
+{
+    QPainterPath path;
+    path.addEllipse(m_rect);
+    
+    // 应用变换
+    path = m_transform.map(path);
+    
+    // 处理镜像变换的特殊情况
+    qreal det = m_transform.determinant();
+    if (det < 0) {
+        // 对于镜像变换，确保使用正确的填充规则
+        path.setFillRule(Qt::WindingFill);
+    }
+    
+    return path;
+}
 
 QPainterPath DrawingEllipse::transformedShape() const
 {
@@ -1003,6 +1020,13 @@ bool DrawingPath::isPointOnPath(const QPointF& pos, qreal threshold) const
 
 QRectF DrawingPath::localBounds() const
 {
+    // 只返回路径本身的边界框，不包含控制点
+    // 这样可以确保包围框与实际可视范围一致
+    return m_path.boundingRect();
+}
+
+QRectF DrawingPath::localBoundsWithControlPoints() const
+{
     // 获取路径本身的边界框
     QRectF pathBounds = m_path.boundingRect();
     
@@ -1057,13 +1081,29 @@ void DrawingPath::setPath(const QPainterPath &path)
     }
 }
 
-QPainterPath DrawingPath::transformedShape() const
+QPainterPath DrawingPath::shape() const
 {
     // 直接返回路径，应用变换
     QPainterPath path = m_path;
     path = m_transform.map(path);
-    path.setFillRule(Qt::WindingFill);
+    
+    // 处理镜像变换的特殊情况
+    qreal det = m_transform.determinant();
+    if (det < 0) {
+        // 对于镜像变换，确保使用正确的填充规则
+        path.setFillRule(Qt::WindingFill);
+    } else {
+        // 非镜像变换时也使用WindingFill确保一致性
+        path.setFillRule(Qt::WindingFill);
+    }
+    
     return path;
+}
+
+QPainterPath DrawingPath::transformedShape() const
+{
+    // 直接使用shape()方法的结果
+    return shape();
 }
 
 QVector<QPointF> DrawingPath::getNodePoints() const
@@ -1808,51 +1848,48 @@ QRectF DrawingPolyline::localBounds() const
     return QRectF(minX, minY, maxX - minX, maxY - minY);
 }
 
-// QPainterPath DrawingPolyline::shape() const
-// {
-//     QPainterPath path;
-//     if (m_points.size() < 2) {
-//         return path;
-//     }
-    
-//     // 创建一个稍宽的路径用于选择
-//     path.moveTo(m_points.first());
-//     for (int i = 1; i < m_points.size(); ++i) {
-//         path.lineTo(m_points[i]);
-//     }
-    
-//     if (m_closed) {
-//         path.closeSubpath();
-//     }
-    
-//     // 使用笔宽创建描边路径，以便更容易选择
-//     QPainterPathStroker stroker;
-//     stroker.setWidth(qMax(m_lineWidth + 5.0, 8.0)); // 至少8像素宽
-//     return stroker.createStroke(path);
-// }
-
-QPainterPath DrawingPolyline::transformedShape() const
+QPainterPath DrawingPolyline::shape() const
 {
-    // 创建折线路径
     QPainterPath path;
     if (m_points.size() < 2) {
         return path;
     }
     
+    // 创建一个稍宽的路径用于选择
     path.moveTo(m_points.first());
     for (int i = 1; i < m_points.size(); ++i) {
         path.lineTo(m_points[i]);
     }
     
-    // 折线不闭合，除非明确设置了闭合标志
     if (m_closed) {
         path.closeSubpath();
     }
     
+    // 使用笔宽创建描边路径，以便更容易选择
+    QPainterPathStroker stroker;
+    stroker.setWidth(qMax(m_lineWidth + 5.0, 8.0)); // 至少8像素宽
+    path = stroker.createStroke(path);
+    
     // 应用变换
     path = m_transform.map(path);
-    path.setFillRule(Qt::WindingFill);
+    
+    // 处理镜像变换的特殊情况
+    qreal det = m_transform.determinant();
+    if (det < 0) {
+        // 对于镜像变换，确保使用正确的填充规则
+        path.setFillRule(Qt::WindingFill);
+    } else {
+        // 非镜像变换时也使用WindingFill确保一致性
+        path.setFillRule(Qt::WindingFill);
+    }
+    
     return path;
+}
+
+QPainterPath DrawingPolyline::transformedShape() const
+{
+    // 直接使用shape()方法的结果
+    return shape();
 }
 
 void DrawingPolyline::addPoint(const QPointF &point)
@@ -2059,31 +2096,40 @@ QRectF DrawingPolygon::localBounds() const
     return QRectF(minX, minY, maxX - minX, maxY - minY);
 }
 
-// QPainterPath DrawingPolygon::shape() const
-// {
-//     QPainterPath path;
-//     if (m_points.size() < 3) {
-//         return path;
-//     }
+QPainterPath DrawingPolygon::shape() const
+{
+    QPainterPath path;
+    if (m_points.size() < 3) {
+        return path;
+    }
     
-//     // 创建多边形路径
-//     path.moveTo(m_points.first());
-//     for (int i = 1; i < m_points.size(); ++i) {
-//         path.lineTo(m_points[i]);
-//     }
-//     path.closeSubpath(); // 多边形总是闭合的
+    // 创建多边形路径
+    path.moveTo(m_points.first());
+    for (int i = 1; i < m_points.size(); ++i) {
+        path.lineTo(m_points[i]);
+    }
+    path.closeSubpath(); // 多边形总是闭合的
     
-//     return path;
-// }
+    // 应用变换
+    path = m_transform.map(path);
+    
+    // 处理镜像变换的特殊情况
+    qreal det = m_transform.determinant();
+    if (det < 0) {
+        // 对于镜像变换，确保使用正确的填充规则
+        path.setFillRule(Qt::WindingFill);
+    } else {
+        // 非镜像变换时也使用WindingFill确保一致性
+        path.setFillRule(Qt::WindingFill);
+    }
+    
+    return path;
+}
 
 QPainterPath DrawingPolygon::transformedShape() const
 {
-    // 创建多边形路径
-    QPainterPath path = shape();
-    // 应用变换
-    path = m_transform.map(path);
-    path.setFillRule(Qt::WindingFill);
-    return path;
+    // 直接使用shape()方法的结果
+    return shape();
 }
 
 void DrawingPolygon::addPoint(const QPointF &point)

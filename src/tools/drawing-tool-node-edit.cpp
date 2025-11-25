@@ -769,8 +769,8 @@ void DrawingNodeEditTool::updateNodeHandles()
     if (!m_handleManager) return;
     
     if (m_selectedShape) {
-        qDebug() << "updateNodeHandles: shape type:" << m_selectedShape->shapeType() 
-                 << "node count:" << m_selectedShape->getNodePointCount();
+        // qDebug() << "updateNodeHandles: shape type:" << m_selectedShape->shapeType() 
+        //          << "node count:" << m_selectedShape->getNodePointCount();
     }
     
     m_handleManager->updateHandles(m_selectedShape);

@@ -21,10 +21,12 @@ NodeHandleManager::NodeHandleManager(DrawingScene *scene, QObject *parent)
     , m_activeHandle(nullptr)
     , m_handlesVisible(false)
 {
+    qDebug() << "Creating node handles...";
 }
 
 NodeHandleManager::~NodeHandleManager()
 {
+    qDebug() << "Destroying node handles...";
     clearHandles();
 }
 
@@ -34,7 +36,7 @@ void NodeHandleManager::updateHandles(DrawingShape *shape)
         clearHandles();
         return;
     }
-    
+    qDebug() << "Updating node handles for shape:" << shape;
     // 如果图形发生变化，清除旧手柄并重新创建
     if (m_currentShape != shape) {
         clearHandles();
@@ -68,11 +70,28 @@ void NodeHandleManager::updateHandles(DrawingShape *shape)
 
 void NodeHandleManager::clearHandles()
 {
+    static bool inClearHandles = false;
+    if (inClearHandles) {
+        qDebug() << "WARNING: clearHandles() called recursively or concurrently!";
+        return;
+    }
+    
+    // 如果已经没有手柄，直接返回
+    if (m_handleInfos.isEmpty()) {
+        qDebug() << "clearHandles() called but no handles to clear";
+        return;
+    }
+    
+    inClearHandles = true;
+    qDebug() << "Clearing node handles... count:" << m_handleInfos.size();
     // 清除所有手柄
-    for (const NodeHandleInfo &info : m_handleInfos) {
-        if (info.handle && info.handle->scene()) {
-            m_scene->removeItem(info.handle);
+    for (NodeHandleInfo &info : m_handleInfos) {
+        if (info.handle) {
+            if (m_scene && info.handle->scene()) {
+                m_scene->removeItem(info.handle);
+            }
             delete info.handle;
+            info.handle = nullptr;  // 防止重复删除
         }
     }
     
@@ -94,6 +113,9 @@ void NodeHandleManager::clearHandles()
     m_handleInfos.clear();
     m_activeHandle = nullptr;
     m_currentShape = nullptr;
+    
+    qDebug() << "clearHandles() completed";
+    inClearHandles = false;
 }
 
 CustomHandleItem* NodeHandleManager::getHandleAt(const QPointF &scenePos) const

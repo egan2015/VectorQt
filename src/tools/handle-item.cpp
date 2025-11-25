@@ -34,6 +34,16 @@ QColor HandleItemBase::currentColor() const
 }
 
 // CustomHandleItem 实现
+CustomHandleItem::CustomHandleItem()
+    : QGraphicsItem(nullptr)
+    , HandleItemBase(TransformHandle::None, Square)
+    , m_boundingRect(-4.0, -4.0, 8.0, 8.0)  // 使用固定大小，稍后在setSize中更新
+{
+    // 启用半透明效果
+    setFlag(QGraphicsItem::ItemUsesExtendedStyleOption, true);
+    setAcceptHoverEvents(true);
+}
+
 CustomHandleItem::CustomHandleItem(TransformHandle::HandleType type, QGraphicsItem *parent)
     : QGraphicsItem(parent)
     , HandleItemBase(type, Square)
@@ -155,6 +165,26 @@ void CustomHandleItem::hoverLeaveEvent(QGraphicsSceneHoverEvent *event)
 {
     Q_UNUSED(event)
     setState(Normal);
+}
+
+void CustomHandleItem::setHandleType(TransformHandle::HandleType type)
+{
+    m_handleType = type;
+    
+    // 根据手柄类型设置样式
+    switch (type) {
+    case TransformHandle::Center:
+        m_style = Circle;
+        break;
+    case TransformHandle::Rotate:
+        m_style = RotateCircle;
+        break;
+    default:
+        m_style = Square;
+        break;
+    }
+    
+    updateAppearance();
 }
 
 void CustomHandleItem::updateAppearance()

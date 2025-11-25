@@ -123,6 +123,11 @@ bool DrawingToolBrush::mousePressEvent(QMouseEvent *event, const QPointF &sceneP
         
         // 从对象池获取路径对象
         m_currentPath = GlobalObjectPoolManager::instance().getPool<DrawingPath>()->acquire();
+        
+        // 监控ObjectPool性能
+        auto pool = GlobalObjectPoolManager::instance().getPool<DrawingPath>();
+        qDebug() << "ObjectPool[DrawingPath] - Size:" << pool->size() 
+                 << "Hit Rate:" << QString::number(pool->getHitRate() * 100, 'f', 1) + "%";
         QPainterPath path;
         path.moveTo(scenePos);
         m_currentPath->setPath(path);
@@ -239,6 +244,11 @@ bool DrawingToolBrush::mouseReleaseEvent(QMouseEvent *event, const QPointF &scen
                                 
                                 // 命令现在拥有路径对象的责任
                                 m_pathOwnedByCommand = true;
+                                
+                                // 发送清理所有手柄信号，通知所有工具清理手柄
+                                if (m_scene) {
+                                    emit m_scene->allToolsClearHandles();
+                                }
                                 
                                 // 通知图层内容变化
                                 LayerManager *layerManager = LayerManager::instance();

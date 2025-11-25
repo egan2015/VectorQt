@@ -1,7 +1,7 @@
 #pragma once
 
 #include <QQueue>
-#include <QMutex>
+#include <QRecursiveMutex>
 #include <QAtomicInt>
 #include <QDebug>
 #include <QDateTime>
@@ -139,7 +139,7 @@ private:
     }
     
     QQueue<T*> m_pool;
-    QMutex m_mutex;
+    QRecursiveMutex m_mutex;  // 使用递归互斥锁避免死锁
     int m_maxPoolSize;
     QAtomicInt m_currentSize;
     QAtomicInt m_hitCount;
@@ -244,7 +244,7 @@ private:
     ~GlobalObjectPoolManager() = default;
     
     QHash<QString, void*> m_pools;  // 使用void*存储不同类型的池
-    QMutex m_mutex;
+    QRecursiveMutex m_mutex;  // 使用递归互斥锁避免死锁
 };
 
 // 便利宏

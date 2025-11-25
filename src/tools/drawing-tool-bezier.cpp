@@ -98,16 +98,6 @@ bool DrawingBezierTool::mousePressEvent(QMouseEvent *event, const QPointF &scene
         }
         
         return true; // 事件被消费
-    } else if (event->button() == Qt::RightButton && m_isDrawing) {
-        // 右键完成绘制
-        finishDrawing();
-        
-        // 触发场景重绘
-        if (m_scene) {
-            m_scene->update();
-        }
-        
-        return true; // 事件被消费
     }
     
     return ToolBase::mousePressEvent(event, scenePos);
@@ -174,6 +164,23 @@ bool DrawingBezierTool::mouseReleaseEvent(QMouseEvent *event, const QPointF &sce
     return ToolBase::mouseReleaseEvent(event, scenePos);
 }
 
+bool DrawingBezierTool::mouseDoubleClickEvent(QMouseEvent *event, const QPointF &scenePos)
+{
+    if (event->button() == Qt::LeftButton && m_isDrawing) {
+        // 双击完成绘制
+        finishDrawing();
+        
+        // 触发场景重绘
+        if (m_scene) {
+            m_scene->update();
+        }
+        
+        return true; // 事件被消费
+    }
+    
+    return ToolBase::mouseDoubleClickEvent(event, scenePos);
+}
+
 void DrawingBezierTool::activate(DrawingScene *scene, DrawingView *view)
 {
     ToolBase::activate(scene, view);
@@ -233,17 +240,20 @@ void DrawingBezierTool::updatePath()
         m_currentPath->moveTo(m_controlPoints[0]);
     }
     
-    // 根据控制点数量创建贝塞尔曲线
-    for (int i = 1; i < m_controlPoints.size(); i += 3) {
+    // 根据控制点数量智能创建贝塞尔曲线
+    for (int i = 1; i < m_controlPoints.size(); ) {
         if (i + 2 < m_controlPoints.size()) {
-            // 有足够的点创建三次贝塞尔曲线
+            // 有足够的点，创建三次贝塞尔曲线
             m_currentPath->cubicTo(m_controlPoints[i], m_controlPoints[i+1], m_controlPoints[i+2]);
+            i += 3; // 跳过已经处理的两个控制点和终点，移动到下一个起点
         } else if (i + 1 < m_controlPoints.size()) {
-            // 有足够的点创建二次贝塞尔曲线
+            // 有足够的点，创建二次贝塞尔曲线
             m_currentPath->quadTo(m_controlPoints[i], m_controlPoints[i+1]);
-        } else if (i < m_controlPoints.size()) {
+            i += 2; // 跳过已经处理的一个控制点和终点，移动到下一个起点
+        } else {
             // 只有一个点，创建直线
             m_currentPath->lineTo(m_controlPoints[i]);
+            i += 1; // 移动到下一个点
         }
     }
 }
@@ -259,22 +269,25 @@ void DrawingBezierTool::finishDrawing()
                 // 重新构建路径，应用网格对齐到所有控制点
                 alignedPath.moveTo(drawingScene->alignToGrid(m_controlPoints.first()));
                 
-                for (int i = 1; i < m_controlPoints.size(); i += 3) {
+                for (int i = 1; i < m_controlPoints.size(); ) {
                     if (i + 2 < m_controlPoints.size()) {
                         // 有足够的点创建三次贝塞尔曲线
                         QPointF p1 = drawingScene->alignToGrid(m_controlPoints[i]);
                         QPointF p2 = drawingScene->alignToGrid(m_controlPoints[i+1]);
                         QPointF p3 = drawingScene->alignToGrid(m_controlPoints[i+2]);
                         alignedPath.cubicTo(p1, p2, p3);
+                        i += 3; // 跳过已经处理的两个控制点和终点
                     } else if (i + 1 < m_controlPoints.size()) {
                         // 有足够的点创建二次贝塞尔曲线
                         QPointF p1 = drawingScene->alignToGrid(m_controlPoints[i]);
                         QPointF p2 = drawingScene->alignToGrid(m_controlPoints[i+1]);
                         alignedPath.quadTo(p1, p2);
-                    } else if (i < m_controlPoints.size()) {
+                        i += 2; // 跳过已经处理的一个控制点和终点
+                    } else {
                         // 只有一个点，创建直线
                         QPointF p1 = drawingScene->alignToGrid(m_controlPoints[i]);
                         alignedPath.lineTo(p1);
+                        i += 1; // 移动到下一个点
                     }
                 }
             }
@@ -290,8 +303,24 @@ void DrawingBezierTool::finishDrawing()
         m_currentItem->setStrokePen(QPen(Qt::black, 2));
         m_currentItem->setFillBrush(Qt::NoBrush);
         
-        // 保存原始控制点以便后续编辑
-        static_cast<DrawingPath*>(m_currentItem)->setControlPoints(m_controlPoints);
+        // 检查并移除所有重叠的节点
+        QVector<QPointF> cleanedControlPoints = m_controlPoints;
+        const qreal overlapThreshold = 2.0; // 重叠阈值（像素）
+        
+        // 从后向前遍历，移除所有重叠的相邻点
+        for (int i = cleanedControlPoints.size() - 1; i > 0; i--) {
+            QPointF currentPoint = cleanedControlPoints[i];
+            QPointF previousPoint = cleanedControlPoints[i - 1];
+            
+            // 如果两个相邻点距离小于阈值，移除当前点
+            if (QLineF(currentPoint, previousPoint).length() < overlapThreshold) {
+                cleanedControlPoints.removeAt(i);
+                qDebug() << "Removed overlapping point at index" << i << ", remaining points:" << cleanedControlPoints.size();
+            }
+        }
+        
+        // 保存清理后的控制点以便后续编辑
+        static_cast<DrawingPath*>(m_currentItem)->setControlPoints(cleanedControlPoints);
         
         // 将图形添加到撤销栈，AddItemCommand会处理addItem
         if (m_scene) {
@@ -307,6 +336,8 @@ void DrawingBezierTool::finishDrawing()
                 void undo() override {
                     m_scene->removeItem(m_item);
                     m_item->setVisible(false);
+                    // 强制通知所有工具清理手柄（针对撤销删除操作的特殊处理）
+                    emit m_scene->allToolsClearHandles();
                 }
                 
                 void redo() override {

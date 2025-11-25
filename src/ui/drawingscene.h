@@ -46,6 +46,7 @@ public:
         Move,
         Scale,
         Rotate,
+        Skew,
         Generic
     };
     
@@ -208,13 +209,15 @@ signals:
     void sceneModified(bool modified);
     void objectStateChanged(DrawingShape* shape); // 对象状态变化通知
     void selectionChanged(); // 选择变化通知
-    void sceneAboutToBeCleared(); // 场景即将被清理通知
+    void sceneAboutToBeCleared(); // 圳景即将被清理通知
+    void allToolsClearHandles(); // 通知所有工具清理手柄
     void contextMenuRequested(const QPointF &pos); // 右键菜单请求信号
 
 protected:
     void mousePressEvent(QGraphicsSceneMouseEvent *event) override;
     void mouseMoveEvent(QGraphicsSceneMouseEvent *event) override;
     void mouseReleaseEvent(QGraphicsSceneMouseEvent *event) override;
+    void mouseDoubleClickEvent(QGraphicsSceneMouseEvent *event) override;
     void contextMenuEvent(QGraphicsSceneContextMenuEvent *event) override;
     
     void keyPressEvent(QKeyEvent *event) override;

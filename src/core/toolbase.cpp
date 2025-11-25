@@ -118,11 +118,27 @@ void LegacyRectangleTool::deactivate()
             delete m_currentItem;
             m_currentItem = nullptr;  // 重要：立即设置为nullptr
         } else {
-            // 保留图形，设置场景已修改
+            // 图形大小合适，添加到图层
             if (m_scene) {
+                // 先从场景中移除（因为已经添加了）
+                m_scene->removeItem(m_currentItem);
+                
+                // 添加到活动图层
+                LayerManager *layerManager = LayerManager::instance();
+                DrawingLayer *activeLayer = layerManager ? layerManager->activeLayer() : nullptr;
+                
+                if (activeLayer) {
+                    activeLayer->addShape(m_currentItem);
+                    qDebug() << "Added rectangle to active layer on deactivate:" << activeLayer->name();
+                } else {
+                    // 如果没有活动图层，直接添加到场景（向后兼容）
+                    m_scene->addItem(m_currentItem);
+                    qDebug() << "No active layer, added rectangle directly to scene on deactivate";
+                }
+                
                 m_scene->setModified(true);
             }
-            // 不删除，所有权转移给场景
+            // 不删除，所有权转移给场景/图层
             m_currentItem = nullptr;  // 重要：立即设置为nullptr
         }
     }
@@ -177,27 +193,16 @@ bool LegacyRectangleTool::mousePressEvent(QMouseEvent *event, const QPointF &sce
             m_scene->clearSelection();
         }
         
-        // 创建新的DrawingRectangle
+        // 创建新的DrawingRectangle，但先不添加到图层
         m_currentItem = new DrawingRectangle(QRectF(0, 0, 1, 1));
         m_currentItem->setFillBrush(QBrush(Qt::yellow));
         m_currentItem->setStrokePen(QPen(Qt::black, 2));
         m_currentItem->setPos(scenePos);  // 关键：使用setPos设置位置
         
+        // 只添加到场景进行预览，不添加到图层
         if (m_scene) {
-            // 添加到活动图层
-            LayerManager *layerManager = LayerManager::instance();
-            DrawingLayer *activeLayer = layerManager ? layerManager->activeLayer() : nullptr;
-            
-            if (activeLayer) {
-                activeLayer->addShape(m_currentItem);
-                qDebug() << "Added rectangle to active layer:" << activeLayer->name();
-            } else {
-                // 如果没有活动图层，直接添加到场景（向后兼容）
-                m_scene->addItem(m_currentItem);
-                qDebug() << "No active layer, added rectangle directly to scene";
-            }
-            // 暂时不选择，避免触发选择层
-            // m_currentItem->setSelected(true);
+            m_scene->addItem(m_currentItem);
+            qDebug() << "Created rectangle preview, not yet added to layer";
         }
         
         return true;
@@ -259,44 +264,81 @@ bool LegacyRectangleTool::mouseReleaseEvent(QMouseEvent *event, const QPointF &s
                 delete m_currentItem;
                 m_currentItem = nullptr;
             } else {
-                // 保留图形，添加到撤销栈
+                // 图形大小合适，现在才添加到图层
                 if (m_scene) {
+                    // 先从场景中移除（因为已经添加了）
+                    m_scene->removeItem(m_currentItem);
+                    
+                    // 添加到活动图层
+                    LayerManager *layerManager = LayerManager::instance();
+                    DrawingLayer *activeLayer = layerManager ? layerManager->activeLayer() : nullptr;
+                    
+                    if (activeLayer) {
+                        activeLayer->addShape(m_currentItem);
+                        qDebug() << "Added rectangle to active layer:" << activeLayer->name();
+                    } else {
+                        // 如果没有活动图层，直接添加到场景（向后兼容）
+                        m_scene->addItem(m_currentItem);
+                        qDebug() << "No active layer, added rectangle directly to scene";
+                    }
+                    
                     m_scene->setModified(true);
                     
-                    // 创建一个简单的撤销命令，因为项目已经在场景中
+                    // 创建一个简单的撤销命令
                     class SimpleAddCommand : public QUndoCommand
                     {
                     public:
-                        SimpleAddCommand(DrawingScene *scene, QGraphicsItem *item, QUndoCommand *parent = nullptr)
-                            : QUndoCommand("添加矩形", parent), m_scene(scene), m_item(item) {}
+                        SimpleAddCommand(DrawingScene *scene, QGraphicsItem *item, DrawingLayer *layer, QUndoCommand *parent = nullptr)
+                            : QUndoCommand("添加矩形", parent), m_scene(scene), m_item(item), m_layer(layer) {}
                         
                         void undo() override {
-                            if (m_item && m_item->scene() == m_scene) {
-                                m_scene->removeItem(m_item);
+                            if (m_item) {
+                                if (m_layer) {
+                                    m_layer->removeShape(static_cast<DrawingShape*>(m_item));
+                                } else if (m_scene && m_item->scene() == m_scene) {
+                                    m_scene->removeItem(m_item);
+                                }
                                 m_item->setVisible(false);
+                            }
+                            
+                            // 通知图层内容变化
+                            LayerManager *layerManager = LayerManager::instance();
+                            if (layerManager && m_layer) {
+                                emit layerManager->layerContentChanged(m_layer);
                             }
                         }
                         
                         void redo() override {
                             if (m_item) {
-                                // 确保项目在场景中
-                                if (m_item->scene() != m_scene) {
-                                    m_scene->addItem(m_item);
+                                if (m_layer) {
+                                    m_layer->addShape(static_cast<DrawingShape*>(m_item));
+                                } else if (m_scene) {
+                                    // 确保项目在场景中
+                                    if (m_item->scene() != m_scene) {
+                                        m_scene->addItem(m_item);
+                                    }
                                 }
                                 m_item->setVisible(true);
+                            }
+                            
+                            // 通知图层内容变化
+                            LayerManager *layerManager = LayerManager::instance();
+                            if (layerManager && m_layer) {
+                                emit layerManager->layerContentChanged(m_layer);
                             }
                         }
                         
                     private:
                         DrawingScene *m_scene;
                         QGraphicsItem *m_item;
+                        DrawingLayer *m_layer;
                     };
                     
                     // 创建并推送撤销命令
-                    SimpleAddCommand *command = new SimpleAddCommand(m_scene, m_currentItem);
+                    SimpleAddCommand *command = new SimpleAddCommand(m_scene, m_currentItem, activeLayer);
                     m_scene->undoStack()->push(command);
                 }
-                // 重要：将所有权转移给场景，不再由工具管理
+                // 重要：将所有权转移给场景/图层，不再由工具管理
                 m_currentItem = nullptr;
             }
         }
@@ -343,11 +385,27 @@ void LegacyEllipseTool::deactivate()
             delete m_currentItem;
             m_currentItem = nullptr;  // 重要：立即设置为nullptr
         } else {
-            // 保留图形，设置场景已修改
+            // 图形大小合适，添加到图层
             if (m_scene) {
+                // 先从场景中移除（因为已经添加了）
+                m_scene->removeItem(m_currentItem);
+                
+                // 添加到活动图层
+                LayerManager *layerManager = LayerManager::instance();
+                DrawingLayer *activeLayer = layerManager ? layerManager->activeLayer() : nullptr;
+                
+                if (activeLayer) {
+                    activeLayer->addShape(m_currentItem);
+                    qDebug() << "Added ellipse to active layer on deactivate:" << activeLayer->name();
+                } else {
+                    // 如果没有活动图层，直接添加到场景（向后兼容）
+                    m_scene->addItem(m_currentItem);
+                    qDebug() << "No active layer, added ellipse directly to scene on deactivate";
+                }
+                
                 m_scene->setModified(true);
             }
-            // 不删除，所有权转移给场景
+            // 不删除，所有权转移给场景/图层
             m_currentItem = nullptr;  // 重要：立即设置为nullptr
         }
     }
@@ -400,27 +458,16 @@ bool LegacyEllipseTool::mousePressEvent(QMouseEvent *event, const QPointF &scene
             m_scene->clearSelection();
         }
         
-        // 创建新的DrawingEllipse
+        // 创建新的DrawingEllipse，但先不添加到图层
         m_currentItem = new DrawingEllipse(QRectF(0, 0, 1, 1));
         m_currentItem->setFillBrush(QBrush(Qt::cyan));
         m_currentItem->setStrokePen(QPen(Qt::black, 2));
         m_currentItem->setPos(scenePos);  // 关键：使用setPos设置位置
         
+        // 只添加到场景进行预览，不添加到图层
         if (m_scene) {
-            // 添加到活动图层
-            LayerManager *layerManager = LayerManager::instance();
-            DrawingLayer *activeLayer = layerManager ? layerManager->activeLayer() : nullptr;
-            
-            if (activeLayer) {
-                activeLayer->addShape(m_currentItem);
-                qDebug() << "Added ellipse to active layer:" << activeLayer->name();
-            } else {
-                // 如果没有活动图层，直接添加到场景（向后兼容）
-                m_scene->addItem(m_currentItem);
-                qDebug() << "No active layer, added ellipse directly to scene";
-            }
-            // 暂时不选择，避免触发选择层
-            // m_currentItem->setSelected(true);
+            m_scene->addItem(m_currentItem);
+            qDebug() << "Created ellipse preview, not yet added to layer";
         }
         
         return true;
@@ -479,41 +526,78 @@ bool LegacyEllipseTool::mouseReleaseEvent(QMouseEvent *event, const QPointF &sce
                 delete m_currentItem;
                 m_currentItem = nullptr;
             } else {
-                // 添加到撤销栈
+                // 图形大小合适，现在才添加到图层
                 if (m_scene) {
+                    // 先从场景中移除（因为已经添加了）
+                    m_scene->removeItem(m_currentItem);
+                    
+                    // 添加到活动图层
+                    LayerManager *layerManager = LayerManager::instance();
+                    DrawingLayer *activeLayer = layerManager ? layerManager->activeLayer() : nullptr;
+                    
+                    if (activeLayer) {
+                        activeLayer->addShape(m_currentItem);
+                        qDebug() << "Added ellipse to active layer:" << activeLayer->name();
+                    } else {
+                        // 如果没有活动图层，直接添加到场景（向后兼容）
+                        m_scene->addItem(m_currentItem);
+                        qDebug() << "No active layer, added ellipse directly to scene";
+                    }
+                    
                     m_scene->setModified(true);
                     
-                    // 创建一个简单的撤销命令，因为项目已经在场景中
+                    // 创建一个简单的撤销命令
                     class SimpleAddCommand : public QUndoCommand
                     {
                     public:
-                        SimpleAddCommand(DrawingScene *scene, QGraphicsItem *item, QUndoCommand *parent = nullptr)
-                            : QUndoCommand("添加椭圆", parent), m_scene(scene), m_item(item) {}
+                        SimpleAddCommand(DrawingScene *scene, QGraphicsItem *item, DrawingLayer *layer, QUndoCommand *parent = nullptr)
+                            : QUndoCommand("添加椭圆", parent), m_scene(scene), m_item(item), m_layer(layer) {}
                         
                         void undo() override {
-                            if (m_item && m_item->scene() == m_scene) {
-                                m_scene->removeItem(m_item);
+                            if (m_item) {
+                                if (m_layer) {
+                                    m_layer->removeShape(static_cast<DrawingShape*>(m_item));
+                                } else if (m_scene && m_item->scene() == m_scene) {
+                                    m_scene->removeItem(m_item);
+                                }
                                 m_item->setVisible(false);
+                            }
+                            
+                            // 通知图层内容变化
+                            LayerManager *layerManager = LayerManager::instance();
+                            if (layerManager && m_layer) {
+                                emit layerManager->layerContentChanged(m_layer);
                             }
                         }
                         
                         void redo() override {
                             if (m_item) {
-                                // 确保项目在场景中
-                                if (m_item->scene() != m_scene) {
-                                    m_scene->addItem(m_item);
+                                if (m_layer) {
+                                    m_layer->addShape(static_cast<DrawingShape*>(m_item));
+                                } else if (m_scene) {
+                                    // 确保项目在场景中
+                                    if (m_item->scene() != m_scene) {
+                                        m_scene->addItem(m_item);
+                                    }
                                 }
                                 m_item->setVisible(true);
+                            }
+                            
+                            // 通知图层内容变化
+                            LayerManager *layerManager = LayerManager::instance();
+                            if (layerManager && m_layer) {
+                                emit layerManager->layerContentChanged(m_layer);
                             }
                         }
                         
                     private:
                         DrawingScene *m_scene;
                         QGraphicsItem *m_item;
+                        DrawingLayer *m_layer;
                     };
                     
                     // 创建并推送撤销命令
-                    SimpleAddCommand *command = new SimpleAddCommand(m_scene, m_currentItem);
+                    SimpleAddCommand *command = new SimpleAddCommand(m_scene, m_currentItem, activeLayer);
                     m_scene->undoStack()->push(command);
                 }
                 m_currentItem = nullptr;

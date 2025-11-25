@@ -89,7 +89,7 @@ private:
     static DrawingText* parseTextElement(const QDomElement &element);
     
     // 解析组元素（现在支持图层）
-    static int parseGroupElement(DrawingScene *scene, const QDomElement &groupElement, QGraphicsItem *parentItem = nullptr);
+    static DrawingGroup* parseGroupElement(DrawingScene *scene, const QDomElement &groupElement);
     static DrawingLayer* parseLayerElement(const QDomElement &element);
     
     // 解析多线元素
@@ -101,7 +101,7 @@ private:
     
     // 解析变换属性
     static void parseTransformAttribute(DrawingShape *shape, const QString &transformStr);
-    static void parseTransformAttribute(DrawingGroup *group, const QString &transformStr);
+    
     
     // 解析颜色字符串
     static QColor parseColor(const QString &colorStr);

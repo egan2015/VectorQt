@@ -28,6 +28,7 @@ public:
 
     // 事件处理 - 重写基类方法
     bool mousePressEvent(QMouseEvent *event, const QPointF &scenePos) override;
+    bool mouseDoubleClickEvent(QMouseEvent *event, const QPointF &scenePos) override;
     
     // 获取工具光标类型
     CursorManager::CursorType getCursorType() const override { return CursorManager::BezierCursor; }

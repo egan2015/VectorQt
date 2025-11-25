@@ -85,6 +85,9 @@ private:
     void destroyVisualHelpers();
     void updateVisualHelpers(const QPointF &mousePos);
     void updateOutlinePreview();
+    void createShapeOutlines();  // 为每个选中图形创建轮廓预览
+    void destroyShapeOutlines(); // 清理所有图形轮廓预览
+    void updateShapeOutlines();  // 更新所有图形轮廓预览
 
     // 旋转中心设置
     void setRotationCenter(const QPointF &center);
@@ -131,6 +134,7 @@ private:
     CustomHandleItem *m_dragPoint = nullptr;              // 拖动点（绿色十字）
     CustomHandleItem *m_rotationCenter = nullptr;           // 旋转中心（浅蓝色）
     QGraphicsPathItem *m_outlinePreview = nullptr;      // 整体轮廓预览（类似Inkscape）
+    QHash<DrawingShape*, QGraphicsPathItem*> m_shapeOutlines; // 每个图形的独立轮廓预览
     QTimer *m_dashTimer = nullptr;                      // 蚂蚁线动画定时器
 };
 

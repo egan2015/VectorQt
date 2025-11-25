@@ -131,11 +131,33 @@ void OutlinePreviewTransformTool::activate(DrawingScene *scene, DrawingView *vie
         connect(scene, &DrawingScene::objectStateChanged, this,
                 &OutlinePreviewTransformTool::onObjectStateChanged, Qt::UniqueConnection);
 
+        // 填充选中的图形列表
+        m_selectedShapes.clear();
+        m_originalTransforms.clear();
+        QList<QGraphicsItem *> selectedItems = scene->selectedItems();
+        for (QGraphicsItem *item : selectedItems)
+        {
+            DrawingShape *shape = dynamic_cast<DrawingShape *>(item);
+            if (shape && shape->scene())
+            {
+                m_selectedShapes.append(shape);
+                m_originalTransforms[shape] = shape->transform();
+            }
+        }
+
         // 禁用所有选中图形的内部选择框
         disableInternalSelectionIndicators();
 
-        // 初始显示手柄
+        // 初始显示手柄和轮廓
         updateHandlePositions();
+        
+        // 创建轮廓预览（如果还没有创建）
+        if (!m_outlinePreview) {
+            createVisualHelpers();
+        } else {
+            // 如果已存在，更新轮廓
+            updateOutlinePreview();
+        }
     }
 }
 
@@ -424,6 +446,11 @@ void OutlinePreviewTransformTool::grab(TransformHandle::HandleType handleType,
     {
         transformType = DrawingScene::Rotate;
     }
+    else if (m_activeHandle == TransformHandle::SkewXTop || m_activeHandle == TransformHandle::SkewXBottom ||
+             m_activeHandle == TransformHandle::SkewYLeft || m_activeHandle == TransformHandle::SkewYRight)
+    {
+        transformType = DrawingScene::Skew;
+    }
     m_scene->beginTransform(transformType);
 
     // 保存所有选中的图形和它们的初始变换
@@ -578,6 +605,20 @@ void OutlinePreviewTransformTool::transform(const QPointF &mousePos, Qt::Keyboar
             sx = safeDiv(m_scaleAnchor.x() - alignedPos.x(), m_scaleAnchor.x() - m_grabMousePos.x());
             sy = safeDiv(alignedPos.y() - m_scaleAnchor.y(), m_grabMousePos.y() - m_scaleAnchor.y());
             break;
+        case TransformHandle::SkewXTop:
+        case TransformHandle::SkewXBottom:
+            // X轴斜切：基于鼠标在X方向的移动
+            sx = 1.0;
+            sy = 1.0;
+            // 斜切变换将在后面处理
+            break;
+        case TransformHandle::SkewYLeft:
+        case TransformHandle::SkewYRight:
+            // Y轴斜切：基于鼠标在Y方向的移动
+            sx = 1.0;
+            sy = 1.0;
+            // 斜切变换将在后面处理
+            break;
         default:
             return;
         }
@@ -613,6 +654,28 @@ void OutlinePreviewTransformTool::transform(const QPointF &mousePos, Qt::Keyboar
             // 🌟 使用 Rotate 变换分量
             individualTransform = Rotate{rotation, shapeLocalAnchor}.toTransform();
         }
+        else if (m_activeHandle == TransformHandle::SkewXTop || m_activeHandle == TransformHandle::SkewXBottom ||
+                 m_activeHandle == TransformHandle::SkewYLeft || m_activeHandle == TransformHandle::SkewYRight)
+        {
+            // Skew: 使用变换分量系统
+            qreal skewX = 0.0, skewY = 0.0;
+            
+            if (m_activeHandle == TransformHandle::SkewXTop || m_activeHandle == TransformHandle::SkewXBottom) {
+                // X轴斜切：基于鼠标在X方向的移动相对于边界框宽度的比例
+                qreal deltaX = alignedPos.x() - m_grabMousePos.x();
+                skewX = qBound(-2.0, deltaX / m_initialBounds.width(), 2.0); // 限制斜切角度
+            } else {
+                // Y轴斜切：基于鼠标在Y方向的移动相对于边界框高度的比例
+                qreal deltaY = alignedPos.y() - m_grabMousePos.y();
+                skewY = qBound(-2.0, deltaY / m_initialBounds.height(), 2.0); // 限制斜切角度
+            }
+            
+            // 将场景锚点转换为该图形的本地坐标
+            QPointF shapeLocalAnchor = shape->mapFromScene(m_scaleAnchor);
+            
+            // 🌟 使用 Shear 变换分量
+            individualTransform = Shear{QPointF(skewX, skewY), shapeLocalAnchor}.toTransform();
+        }
         else
         {
             // Scale: 使用变换分量系统
@@ -633,17 +696,10 @@ void OutlinePreviewTransformTool::transform(const QPointF &mousePos, Qt::Keyboar
     // 更新视觉辅助元素（使用对齐后的位置）
     updateVisualHelpers(alignedPos);
 
-    // Show scale or rotate hints
+    // Show scale, rotate or skew hints
     if (m_scene)
     {
-        if (m_activeHandle != TransformHandle::Rotate)
-        {
-            // Scale hint
-            DrawingScene::ScaleHintResult scaleHint = m_scene->calculateScaleHint(sx, sy, alignedPos);
-            m_scene->showScaleHint(scaleHint);
-            m_scene->clearRotateHint(); // 清除旋转提示
-        }
-        else
+        if (m_activeHandle == TransformHandle::Rotate)
         {
             // Rotate hint
             QPointF center = m_useCustomRotationCenter ? m_customRotationCenter : m_transformOrigin;
@@ -656,6 +712,35 @@ void OutlinePreviewTransformTool::transform(const QPointF &mousePos, Qt::Keyboar
             DrawingScene::RotateHintResult rotateHint = m_scene->calculateRotateHint(rotation, alignedPos);
             m_scene->showRotateHint(rotateHint);
             m_scene->clearScaleHint(); // 清除缩放提示
+        }
+        else if (m_activeHandle == TransformHandle::SkewXTop || m_activeHandle == TransformHandle::SkewXBottom ||
+                 m_activeHandle == TransformHandle::SkewYLeft || m_activeHandle == TransformHandle::SkewYRight)
+        {
+            // Skew hint - 简单显示斜切角度
+            qreal skewX = 0.0, skewY = 0.0;
+            
+            if (m_activeHandle == TransformHandle::SkewXTop || m_activeHandle == TransformHandle::SkewXBottom) {
+                qreal deltaX = alignedPos.x() - m_grabMousePos.x();
+                skewX = qBound(-2.0, deltaX / m_initialBounds.width(), 2.0);
+            } else {
+                qreal deltaY = alignedPos.y() - m_grabMousePos.y();
+                skewY = qBound(-2.0, deltaY / m_initialBounds.height(), 2.0);
+            }
+            
+            // 清除其他提示，显示斜切信息
+            m_scene->clearScaleHint();
+            m_scene->clearRotateHint();
+            
+            // 可以通过状态消息显示斜切信息
+            QString skewText = QString("斜切: X=%1°, Y=%2°").arg(skewX * 57.3).arg(skewY * 57.3); // 转换为度数
+            emit statusMessageChanged(skewText);
+        }
+        else
+        {
+            // Scale hint
+            DrawingScene::ScaleHintResult scaleHint = m_scene->calculateScaleHint(sx, sy, alignedPos);
+            m_scene->showScaleHint(scaleHint);
+            m_scene->clearRotateHint(); // 清除旋转提示
         }
         m_scene->update();
     }
@@ -854,7 +939,10 @@ void OutlinePreviewTransformTool::onSelectionChanged()
 
     // 延迟更新手柄，确保选择状态完全更新
     QTimer::singleShot(0, this, [this]()
-                       { updateHandlePositions(); });
+                       { 
+                           updateHandlePositions(); 
+                           updateOutlinePreview();
+                       });
 }
 
 void OutlinePreviewTransformTool::onObjectStateChanged(DrawingShape *shape)
@@ -1010,6 +1098,9 @@ void OutlinePreviewTransformTool::destroyVisualHelpers()
         m_outlinePreview = nullptr;
     }
 
+    // 清理所有图形轮廓预览
+    destroyShapeOutlines();
+
     if (m_dashTimer)
     {
         m_dashTimer->stop(); // 只停止定时器，不删除它
@@ -1070,26 +1161,27 @@ void OutlinePreviewTransformTool::updateOutlinePreview()
     QRectF unifiedBounds;
 
     // 如果在变换中，直接使用Group的边界
-    if (m_state == STATE_GRABBED && !m_selectedShapes.isEmpty())
-    {
-        // 计算所有选中图形的统一边界框
-        for (DrawingShape *shape : m_selectedShapes)
-        {
-            if (!shape || !shape->scene())
-                continue; // 跳过无效的图形
-            QRectF shapeBounds = shape->sceneBoundingRect();
+    // if (m_state == STATE_GRABBED && !m_selectedShapes.isEmpty())
+    // {
+    //     // 计算所有选中图形的统一边界框
+    //     for (DrawingShape *shape : m_selectedShapes)
+    //     {
+    //         if (!shape || !shape->scene())
+    //             continue; // 跳过无效的图形
+    //         QRectF shapeBounds = shape->sceneBoundingRect();
 
-            if (unifiedBounds.isEmpty())
-            {
-                unifiedBounds = shapeBounds;
-            }
-            else
-            {
-                unifiedBounds = unifiedBounds.united(shapeBounds);
-            }
-        }
-    }
-    else if (m_scene)
+    //         if (unifiedBounds.isEmpty())
+    //         {
+    //             unifiedBounds = shapeBounds;
+    //         }
+    //         else
+    //         {
+    //             unifiedBounds = unifiedBounds.united(shapeBounds);
+    //         }
+    //     }
+    // }
+    // else 
+    if (m_scene)
     {
         // 否则从场景获取选中的图形
         QList<QGraphicsItem *> items = m_scene->selectedItems();
@@ -1202,4 +1294,71 @@ void OutlinePreviewTransformTool::setMode(HandleMode::Mode mode)
 HandleMode::Mode OutlinePreviewTransformTool::currentMode() const
 {
     return m_currentMode;
+}
+
+void OutlinePreviewTransformTool::createShapeOutlines()
+{
+    // if (!m_scene)
+    //     return;
+
+    // // 清理现有的轮廓
+    // destroyShapeOutlines();
+
+    // // 为每个选中的图形创建轮廓预览
+    // for (DrawingShape *shape : m_selectedShapes)
+    // {
+    //     if (!shape || !shape->scene())
+    //         continue;
+
+    //     // 创建轮廓预览项
+    //     QGraphicsPathItem *outline = new QGraphicsPathItem();
+        
+    //     // 设置轮廓样式 - 与整体轮廓略有区别
+    //     QPen outlinePen(QColor(100, 150, 255, 120), 1.5); // 浅蓝色，半透明
+    //     outlinePen.setCosmetic(true);
+    //     outlinePen.setDashPattern({4, 2}); // 更细的虚线
+    //     outline->setPen(outlinePen);
+    //     outline->setBrush(Qt::NoBrush);
+    //     outline->setZValue(1998); // 在整体轮廓下方
+        
+    //     // 添加到场景
+    //     m_scene->addItem(outline);
+    //     m_shapeOutlines[shape] = outline;
+        
+    //     // 设置初始轮廓
+    //     QPainterPath shapePath = shape->transformedShape();
+    //     outline->setPath(shapePath);
+    // }
+}
+
+void OutlinePreviewTransformTool::destroyShapeOutlines()
+{
+    // 清理所有图形轮廓预览
+    // for (auto it = m_shapeOutlines.begin(); it != m_shapeOutlines.end(); ++it)
+    // {
+    //     QGraphicsPathItem *outline = it.value();
+    //     if (outline && m_scene)
+    //     {
+    //         m_scene->removeItem(outline);
+    //         delete outline;
+    //     }
+    // }
+    // m_shapeOutlines.clear();
+}
+
+void OutlinePreviewTransformTool::updateShapeOutlines()
+{
+    // 更新所有图形轮廓预览
+    // for (auto it = m_shapeOutlines.begin(); it != m_shapeOutlines.end(); ++it)
+    // {
+    //     DrawingShape *shape = it.key();
+    //     QGraphicsPathItem *outline = it.value();
+        
+    //     if (shape && outline && shape->scene())
+    //     {
+    //         // 获取图形的当前变换后的形状
+    //         QPainterPath shapePath = shape->transformedShape();
+    //         outline->setPath(shapePath);
+    //     }
+    // }
 }

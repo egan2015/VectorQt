@@ -115,6 +115,9 @@ private slots:
     void alignTop();
     void alignMiddle();
     void alignBottom();
+    void sameWidth();
+    void sameHeight();
+    void sameSize();
     void distributeHorizontal();
     void distributeVertical();
     void showGridSettings();
@@ -264,6 +267,9 @@ private:
     QAction *m_alignTopAction;
     QAction *m_alignMiddleAction;
     QAction *m_alignBottomAction;
+    QAction *m_sameWidthAction;
+    QAction *m_sameHeightAction;
+    QAction *m_sameSizeAction;
     QAction *m_distributeHorizontalAction;
     QAction *m_distributeVerticalAction;
     QAction *m_aboutAction;

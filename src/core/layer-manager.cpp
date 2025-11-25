@@ -30,6 +30,7 @@ LayerManager::LayerManager(QObject *parent)
     , m_layerPanel(nullptr)
     , m_activeLayer(nullptr)
     , m_layerCounter(1)
+    , m_svgImporting(false)
 {
     // 暂时不做任何初始化
 }
@@ -52,26 +53,32 @@ void LayerManager::setScene(DrawingScene *scene)
     qDebug() << "Current m_scene:" << m_scene << "Current layers count:" << m_layers.count();
     
     if (m_scene == scene) {
-        qDebug() << "Scene is the same, returning";
-        return;
+        qDebug() << "Scene is the same, but checking if need to create default layer";
+        // 即使场景相同，如果图层列表为空且不在SVG导入模式，也要创建默认图层
+        if (m_scene && m_layers.isEmpty() && !m_svgImporting) {
+            qDebug() << "Creating default layer (scene was the same)";
+        } else {
+            qDebug() << "No need to create default layer";
+            return;
+        }
+    } else {
+        m_scene = scene;
     }
     
-    m_scene = scene;
-    
-    // 如果场景已设置，创建默认图层
-    if (m_scene && m_layers.isEmpty()) {
+    // 如果场景已设置且不是在SVG导入期间，创建默认图层
+    if (m_scene && m_layers.isEmpty() && !m_svgImporting) {
         qDebug() << "Creating default layer";
         // 使用标准方法创建默认图层
-        DrawingLayer *layer = new DrawingLayer(tr("背景图层"));
-        connectLayer(layer);
-        m_layers.append(layer);
-        m_activeLayer = layer;
+        DrawingLayer *defaultLayer = new DrawingLayer("背景图层");
+        connectLayer(defaultLayer);
+        m_layers.append(defaultLayer);
+        m_activeLayer = defaultLayer;
         
         // 重要：添加到场景
-        addLayerToScene(layer);
+        addLayerToScene(defaultLayer);
         
         // 设置背景图层的Z值（确保它在最底层）
-        for (DrawingShape *shape : layer->shapes()) {
+        for (DrawingShape *shape : defaultLayer->shapes()) {
             if (shape) {
                 shape->setZValue(-999);  // 背景图层使用很低的Z值
             }
@@ -80,8 +87,8 @@ void LayerManager::setScene(DrawingScene *scene)
         qDebug() << "Default layer created successfully, total layers:" << m_layers.count();
         
         // 发出图层添加信号，通知UI
-        qDebug() << "LayerManager: Emitting layerAdded signal for default layer:" << layer->name();
-        emit layerAdded(layer);
+        qDebug() << "LayerManager: Emitting layerAdded signal for default layer:" << defaultLayer->name();
+        emit layerAdded(defaultLayer);
         
         // 检查是否有LayerPanel已经连接，如果有但可能错过了信号，手动更新
         // 注意：这是一个临时解决方案，更好的架构应该是延迟初始化
@@ -111,40 +118,84 @@ DrawingLayer* LayerManager::createLayer(const QString &name)
     
     QString layerName = name;
     if (layerName.isEmpty()) {
-        layerName = tr("图层 %1").arg(m_layerCounter++);
+        layerName = QString("图层 %1").arg(m_layerCounter++);
     }
     
     qDebug() << "Creating layer with name:" << layerName;
     
-    DrawingLayer *layer = new DrawingLayer(layerName);
-    connectLayer(layer);
+    DrawingLayer *newLayer = new DrawingLayer(layerName);
+    connectLayer(newLayer);
     
     // 添加到列表开头（新图层在最上层）
-    m_layers.insert(0, layer);
+    m_layers.insert(0, newLayer);
     qDebug() << "Layer added to list, total layers:" << m_layers.count();
     
     // 添加到场景
-    addLayerToScene(layer);
+    addLayerToScene(newLayer);
     
-    // 更新所有图层的Z值
+    // 设置为活动图层
+    setActiveLayer(newLayer);
+    
+    emit layerAdded(newLayer);
+    qDebug() << "Layer created successfully:" << newLayer->name();
+    
+    return newLayer;
+}
+
+DrawingLayer* LayerManager::createLayerForSvg(const QString &name)
+{
+    qDebug() << "LayerManager::createLayerForSvg called with name:" << name;
+    
+    DrawingLayer *newLayer = new DrawingLayer(name);
+    connectLayer(newLayer);
+    
+    // 添加到列表末尾（保持SVG中的顺序，先解析的在下层）
+    m_layers.append(newLayer);
+    qDebug() << "SVG Layer added to end of list, total layers:" << m_layers.count();
+    
+    // 添加到场景
+    addLayerToScene(newLayer);
+    
+    // 设置为活动图层（如果是第一个SVG图层）
+    if (m_layers.count() == 1) {
+        setActiveLayer(newLayer);
+    }
+    
+    emit layerAdded(newLayer);
+    qDebug() << "SVG Layer created successfully:" << newLayer->name();
+    
+    return newLayer;
+}
+
+void LayerManager::updateLayerZValues()
+{
+    // 更新所有图层的Z值，SVG中先解析的图层在下层
     for (int i = 0; i < m_layers.count(); ++i) {
         DrawingLayer *currentLayer = m_layers[i];
         for (DrawingShape *shape : currentLayer->shapes()) {
             if (shape) {
-                shape->setZValue(-i);  // 索引0的图层在最上层
+                // SVG图层顺序：索引0是最后解析的（最上层），索引越大越靠下
+                shape->setZValue(m_layers.count() - i - 1);
             }
         }
     }
+}
+
+void LayerManager::clearAllLayers()
+{
+    // 清除所有图层
+    while (!m_layers.isEmpty()) {
+        DrawingLayer *layer = m_layers.takeFirst();
+        disconnectLayer(layer);
+        removeLayerFromScene(layer);
+        delete layer;
+    }
     
-    // 设置为活动图层
-    setActiveLayer(layer);
+    m_activeLayer = nullptr;
+    m_layerCounter = 1;
     
-    // 更新面板
+    // 通知面板更新
     updatePanel();
-    
-    emit layerAdded(layer);
-    qDebug() << "Layer created successfully:" << layer->name();
-    return layer;
 }
 
 bool LayerManager::deleteLayer(DrawingLayer *layer)

@@ -234,13 +234,13 @@ public:
     qreal cornerRadiusRatioX() const { return m_fRatioX; }
     qreal cornerRadiusRatioY() const { return m_fRatioY; }
     
-    // 编辑点相关 - 矩形的2个控制点（圆角和尺寸）
+    // 编辑点相关 - 矩形的3个控制点（2个尺寸控制，1个圆角控制）
     QVector<QPointF> getNodePoints() const override;
     void setNodePoint(int index, const QPointF &pos) override;
     QPointF constrainNodePoint(int index, const QPointF &pos) const override;
     void beginNodeDrag(int index) override;
     void endNodeDrag(int index) override;
-    int getNodePointCount() const override { return 2; }
+    int getNodePointCount() const override { return 3; }
     
     // 🌟 将变换烘焙到矩形的内部几何结构中
     void bakeTransform(const QTransform &transform) override;

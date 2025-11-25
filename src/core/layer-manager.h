@@ -49,6 +49,14 @@ public:
     void setLayerLocked(DrawingLayer *layer, bool locked);
     void setLayerOpacity(DrawingLayer *layer, qreal opacity);
     
+    // SVG导入专用方法
+    DrawingLayer* createLayerForSvg(const QString &name);
+    void updateLayerZValues();
+    void setSvgImporting(bool importing) { m_svgImporting = importing; }
+    
+    // 清除所有图层
+    void clearAllLayers();
+    
     // 图层选择
     void setActiveLayer(DrawingLayer *layer);
     void setActiveLayer(int index);
@@ -94,6 +102,8 @@ private:
     
     DrawingScene *m_scene;
     LayerPanel *m_layerPanel;
+    
+    bool m_svgImporting;  // SVG导入标志
     QList<DrawingLayer*> m_layers;
     DrawingLayer *m_activeLayer;
     int m_layerCounter;  // 用于生成唯一图层名称

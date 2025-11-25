@@ -37,7 +37,9 @@ public:
         if (m_item && m_item->scene() == m_scene) {
             m_scene->removeItem(m_item);
             m_item->setVisible(false);
-            qDebug() << "AddItemCommand::undo - removed item from scene";
+            // 强制通知所有工具清理手柄（针对撤销删除操作的特殊处理）
+            emit m_scene->allToolsClearHandles();
+            qDebug() << "AddItemCommand::undo - removed item from scene and cleared handles";
         } else {
             qDebug() << "AddItemCommand::undo - item not in scene or null";
         }
@@ -133,6 +135,7 @@ public:
         Move,
         Scale,
         Rotate,
+        Skew,
         Generic
     };
     
@@ -164,6 +167,7 @@ public:
             case Move: return "移动";
             case Scale: return "缩放";
             case Rotate: return "旋转";
+            case Skew: return "斜切";
             default: return "变换";
         }
     }
@@ -174,6 +178,7 @@ public:
             case Move: baseText = "移动"; break;
             case Scale: baseText = "缩放"; break;
             case Rotate: baseText = "旋转"; break;
+            case Skew: baseText = "斜切"; break;
             default: baseText = "变换"; break;
         }
         
@@ -634,6 +639,7 @@ void DrawingScene::endTransform()
         case Move: commandType = TransformCommand::Move; break;
         case Scale: commandType = TransformCommand::Scale; break;
         case Rotate: commandType = TransformCommand::Rotate; break;
+        case Skew: commandType = TransformCommand::Skew; break;
         default: commandType = TransformCommand::Generic; break;
     }
     
@@ -672,6 +678,7 @@ void DrawingScene::endTransformWithStates(const QList<TransformState>& newStates
         case Move: commandType = TransformCommand::Move; break;
         case Scale: commandType = TransformCommand::Scale; break;
         case Rotate: commandType = TransformCommand::Rotate; break;
+        case Skew: commandType = TransformCommand::Skew; break;
         default: commandType = TransformCommand::Generic; break;
     }
     
@@ -718,6 +725,12 @@ void DrawingScene::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
     QGraphicsScene::mouseReleaseEvent(event);
 }
 
+void DrawingScene::mouseDoubleClickEvent(QGraphicsSceneMouseEvent *event)
+{
+    // 直接传递给基类处理，让工具系统通过事件传播来处理
+    QGraphicsScene::mouseDoubleClickEvent(event);
+}
+
 void DrawingScene::contextMenuEvent(QGraphicsSceneContextMenuEvent *event)
 {
     // 发出右键菜单请求信号，让MainWindow处理
@@ -751,6 +764,9 @@ void DrawingScene::keyPressEvent(QKeyEvent *event)
                 // 强制触发selectionChanged信号，确保选择工具能清理无效引用
                 emit selectionChanged();
                 setModified(true);
+                
+                // 强制通知所有工具清理手柄（针对删除操作的特殊处理）
+                emit allToolsClearHandles();
                 
                 qDebug() << "Deleted" << deleteCommands.size() << "items from scene";
             }

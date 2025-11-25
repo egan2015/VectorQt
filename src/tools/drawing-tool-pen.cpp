@@ -73,7 +73,13 @@ void DrawingToolPen::activate(DrawingScene *scene, DrawingView *view)
 void DrawingToolPen::deactivate()
 {
     if (m_isDrawing) {
-        finishPath();
+        if (m_mode == FreeDrawMode && m_currentPath) {
+            // 对于自由绘制模式，需要手动完成绘制
+            endFreeDraw();
+        } else {
+            // 对于锚点模式，使用 finishPath
+            finishPath();
+        }
     }
     
     clearCurrentPath();
@@ -322,6 +328,49 @@ void DrawingToolPen::createPathShape()
     // 设置为选中状态，这样用户可以看到选择框
     pathShape->setShowSelectionIndicator(false);
     
+    // 创建撤销命令
+    class PenAddCommand : public QUndoCommand
+    {
+    public:
+        PenAddCommand(DrawingScene *scene, DrawingPath *path, DrawingLayer *layer, QUndoCommand *parent = nullptr)
+            : QUndoCommand("添加钢笔路径", parent), m_scene(scene), m_path(path), m_layer(layer) {}
+        
+        void undo() override {
+            if (m_path && m_layer) {
+                m_layer->removeShape(static_cast<DrawingShape*>(m_path));
+                m_path->setVisible(false);
+                
+                // 通知图层内容变化
+                LayerManager *layerManager = LayerManager::instance();
+                if (layerManager) {
+                    emit layerManager->layerContentChanged(m_layer);
+                }
+            }
+        }
+        
+        void redo() override {
+            if (m_path && m_layer) {
+                m_layer->addShape(static_cast<DrawingShape*>(m_path));
+                m_path->setVisible(true);
+                
+                // 通知图层内容变化
+                LayerManager *layerManager = LayerManager::instance();
+                if (layerManager) {
+                    emit layerManager->layerContentChanged(m_layer);
+                }
+            }
+        }
+        
+    private:
+        DrawingScene *m_scene;
+        DrawingPath *m_path;
+        DrawingLayer *m_layer;
+    };
+    
+    // 创建并推送撤销命令
+    PenAddCommand *command = new PenAddCommand(m_scene, pathShape, activeLayer);
+    m_scene->undoStack()->push(command);
+    
     m_scene->setModified(true);
 }
 
@@ -538,18 +587,9 @@ void DrawingToolPen::beginFreeDraw(const QPointF &scenePos)
     m_currentPath->setStrokePen(pen);
     m_currentPath->setFillBrush(Qt::NoBrush);
     
-    // 添加到活动图层
-    LayerManager *layerManager = LayerManager::instance();
-    DrawingLayer *activeLayer = layerManager ? layerManager->activeLayer() : nullptr;
-    
-    if (activeLayer) {
-        activeLayer->addShape(m_currentPath);
-        qDebug() << "Added currentPath to active layer:" << activeLayer->name();
-    } else {
-        // 如果没有活动图层，直接添加到场景（向后兼容）
-        m_scene->addItem(m_currentPath);
-        qDebug() << "No active layer, added currentPath directly to scene";
-    }
+    // 只添加到场景进行预览，不添加到图层
+    m_scene->addItem(m_currentPath);
+    qDebug() << "Created pen preview, not yet added to layer";
     
     m_currentPath->setVisible(true);
     m_currentPath->setFlag(QGraphicsItem::ItemIsSelectable, true);
@@ -591,14 +631,87 @@ void DrawingToolPen::endFreeDraw()
 {
     if (!m_currentPath) return;
     
-    // 简化处理，直接使用当前路径
     // 设置控制点
     m_currentPath->setControlPoints(m_freeDrawPoints);
+    
+    // 检查路径是否太小，如果是则删除
+    QRectF boundingRect = m_currentPath->boundingRect();
+    if (boundingRect.width() <= 5 && boundingRect.height() <= 5) {
+        // 太小了，删除
+        m_scene->removeItem(m_currentPath);
+        delete m_currentPath;
+        m_currentPath = nullptr;
+        m_freeDrawPoints.clear();
+        m_pressures.clear();
+        m_isDrawing = false;
+        qDebug() << "Pen stroke too small, deleted";
+        return;
+    }
+    
+    // 路径大小合适，现在才添加到图层
+    // 先从场景中移除（因为已经添加了）
+    m_scene->removeItem(m_currentPath);
+    
+    // 添加到活动图层
+    LayerManager *layerManager = LayerManager::instance();
+    DrawingLayer *activeLayer = layerManager ? layerManager->activeLayer() : nullptr;
+    
+    if (activeLayer) {
+        activeLayer->addShape(m_currentPath);
+        qDebug() << "Added pen stroke to active layer:" << activeLayer->name();
+    } else {
+        // 如果没有活动图层，直接添加到场景（向后兼容）
+        m_scene->addItem(m_currentPath);
+        qDebug() << "No active layer, added pen stroke directly to scene";
+    }
     
     // 不自动选中，避免显示选择框
     m_currentPath->setSelected(false);
     m_currentPath->setVisible(true);
     m_currentPath->setFlag(QGraphicsItem::ItemIsSelectable, true);
+    
+    // 创建撤销命令
+    class PenFreeDrawCommand : public QUndoCommand
+    {
+    public:
+        PenFreeDrawCommand(DrawingScene *scene, DrawingPath *path, DrawingLayer *layer, QUndoCommand *parent = nullptr)
+            : QUndoCommand("添加钢笔自由绘制", parent), m_scene(scene), m_path(path), m_layer(layer) {}
+        
+        void undo() override {
+            if (m_path && m_layer) {
+                m_layer->removeShape(static_cast<DrawingShape*>(m_path));
+                m_path->setVisible(false);
+                
+                // 通知图层内容变化
+                LayerManager *layerManager = LayerManager::instance();
+                if (layerManager) {
+                    emit layerManager->layerContentChanged(m_layer);
+                }
+            }
+        }
+        
+        void redo() override {
+            if (m_path && m_layer) {
+                m_layer->addShape(static_cast<DrawingShape*>(m_path));
+                m_path->setVisible(true);
+                
+                // 通知图层内容变化
+                LayerManager *layerManager = LayerManager::instance();
+                if (layerManager) {
+                    emit layerManager->layerContentChanged(m_layer);
+                }
+            }
+        }
+        
+    private:
+        DrawingScene *m_scene;
+        DrawingPath *m_path;
+        DrawingLayer *m_layer;
+    };
+    
+    // 创建并推送撤销命令
+    PenFreeDrawCommand *command = new PenFreeDrawCommand(m_scene, m_currentPath, activeLayer);
+    m_scene->undoStack()->push(command);
     
     // 标记场景已修改
     m_scene->setModified(true);

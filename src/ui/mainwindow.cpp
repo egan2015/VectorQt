@@ -147,19 +147,20 @@ MainWindow::~MainWindow()
     
     // 停用当前工具
     if (m_currentTool) {
-        m_currentTool->deactivate();
+       m_currentTool->deactivate();
         m_currentTool = nullptr;
     }
-    
-    // ToolManager会自动清理所有工具，无需手动删除
-    
-    
-    
+    // 手动清理ToolManager，确保所有工具在scene删除前被清理
+    if (m_toolManager) {
+        delete m_toolManager;
+        m_toolManager = nullptr;
+    }
     // 清理场景
     if (m_scene) {
         delete m_scene;
         m_scene = nullptr;
     }
+    qDebug() << "Scene cleaned up.";
 }
 
 void MainWindow::setupUI()

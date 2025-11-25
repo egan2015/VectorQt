@@ -38,7 +38,13 @@ ToolManager::ToolManager(QObject *parent)
 
 ToolManager::~ToolManager()
 {
-    // 智能指针会自动清理工具
+    // 显式删除所有工具，确保在场景析构前完成
+    qDebug() << "Cleaning up tools...";
+    for (auto it = m_tools.begin(); it != m_tools.end(); ++it) {
+        delete it.value();  // 手动删除工具对象
+    }
+    m_tools.clear();
+    qDebug() << "Tools cleaned up.";
 }
 
 

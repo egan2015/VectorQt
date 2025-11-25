@@ -22,7 +22,7 @@ set(SOURCES
     src/ui/mainwindow.cpp
     src/ui/drawingscene.cpp
     src/ui/drawingview.cpp
-    src/ui/control-frame.cpp
+    
     
     # 核心模块
     src/core/toolbase.cpp
@@ -34,7 +34,7 @@ set(SOURCES
     src/core/drawing-layer.cpp
     src/core/drawing-throttle.cpp
     src/core/brush-engine.cpp
-    src/core/object-pool.cpp
+    
     src/core/smart-render-manager.cpp
     src/core/performance-monitor.cpp
     src/ui/colorpalette.cpp
@@ -47,7 +47,6 @@ set(SOURCES
     src/ui/ruler.cpp
     src/ui/scrollable-toolbar.cpp
     src/core/svghandler.cpp
-    src/core/graphics-adapter.h
     src/tools/tool-state-manager.cpp
     src/tools/tool-manager.cpp
     src/ui/shortcut-manager.cpp
@@ -90,7 +89,7 @@ set(HEADERS
     src/ui/mainwindow.h
     src/ui/drawingscene.h
     src/ui/drawingview.h
-    src/ui/control-frame.h
+    
     
     # 核心模块
     src/core/toolbase.h
@@ -102,7 +101,7 @@ set(HEADERS
     src/core/drawing-layer.h
     src/core/drawing-throttle.h
     src/core/brush-engine.h
-    src/core/object-pool.h
+    
     src/core/smart-render-manager.h
     src/core/performance-monitor.h
     src/ui/colorpalette.h
@@ -115,7 +114,6 @@ set(HEADERS
     src/ui/ruler.h
     src/ui/scrollable-toolbar.h
     src/core/svghandler.h
-    src/core/graphics-adapter.h
     src/tools/tool-state-manager.h
     src/tools/tool-manager.h
     src/ui/shortcut-manager.h

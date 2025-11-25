@@ -244,12 +244,12 @@ void DrawingShape::paint(QPainter *painter, const QStyleOptionGraphicsItem *opti
     // 只有当m_showSelectionIndicator为true且图形被选中时才绘制
     if (isSelected() && m_showSelectionIndicator) {
         // 使用更明显的选择指示器
-        painter->setPen(QPen(Qt::blue, 1, Qt::DashLine));
-        painter->setBrush(Qt::NoBrush);
+        // painter->setPen(QPen(Qt::blue, 1, Qt::DashLine));
+        // painter->setBrush(Qt::NoBrush);
         
-        // 绘制边界框
-        QRectF bounds = boundingRect();
-        painter->drawRect(bounds);
+        // // 绘制边界框
+        // QRectF bounds = boundingRect();
+        // painter->drawRect(bounds);
         
         // // 绘制选择手柄（角落的小方块）
         // qreal handleSize = 4.0;
@@ -2220,6 +2220,49 @@ void DrawingPolygon::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
     }
     
     DrawingShape::mouseReleaseEvent(event);
+}
+
+// 滤镜效果管理实现
+void DrawingShape::setBlurEffect(qreal radius)
+{
+    QGraphicsBlurEffect *blurEffect = new QGraphicsBlurEffect();
+    blurEffect->setBlurRadius(radius);
+    setGraphicsEffect(blurEffect);
+    smartUpdate();
+    notifyObjectStateChanged();
+}
+
+void DrawingShape::setDropShadowEffect(const QColor &color, qreal blurRadius, const QPointF &offset)
+{
+    QGraphicsDropShadowEffect *shadowEffect = new QGraphicsDropShadowEffect();
+    shadowEffect->setColor(color);
+    shadowEffect->setBlurRadius(blurRadius);
+    shadowEffect->setOffset(offset);
+    setGraphicsEffect(shadowEffect);
+    smartUpdate();
+    notifyObjectStateChanged();
+}
+
+void DrawingShape::clearFilter()
+{
+    setGraphicsEffect(nullptr);
+    smartUpdate();
+    notifyObjectStateChanged();
+}
+
+bool DrawingShape::hasFilter() const
+{
+    return graphicsEffect() != nullptr;
+}
+
+QGraphicsBlurEffect* DrawingShape::blurEffect() const
+{
+    return qobject_cast<QGraphicsBlurEffect*>(graphicsEffect());
+}
+
+QGraphicsDropShadowEffect* DrawingShape::dropShadowEffect() const
+{
+    return qobject_cast<QGraphicsDropShadowEffect*>(graphicsEffect());
 }
 
 

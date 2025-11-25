@@ -85,6 +85,7 @@ private:
     void destroyVisualHelpers();
     void updateVisualHelpers(const QPointF &mousePos);
     void updateOutlinePreview();
+    
     void createShapeOutlines();  // 为每个选中图形创建轮廓预览
     void destroyShapeOutlines(); // 清理所有图形轮廓预览
     void updateShapeOutlines();  // 更新所有图形轮廓预览

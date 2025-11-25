@@ -623,13 +623,13 @@ void DrawingNodeEditTool::deactivate()
                 }
             }
 
-            // 取消图形的选中状态
-            shape->setSelected(false);
+            // 保持图形的选中状态，让用户在切换工具后仍然可以操作
+            // shape->setSelected(false); // 移除这行，保持选中状态
 
-            // 恢复选择边框的显示（为下次选择做准备）
+            // 恢复选择边框的显示
             shape->setShowSelectionIndicator(true);
 
-            // 禁用几何变换手柄（因为图形不再被选中）
+            // 禁用几何变换手柄（切换到选择工具后会重新启用）
             shape->setEditHandlesEnabled(false);
         }
     }

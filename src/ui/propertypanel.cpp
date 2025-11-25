@@ -212,6 +212,71 @@ void PropertyPanel::setupUI()
     
     mainLayout->addWidget(m_appearanceGroup);
     
+    // Filter group
+    m_filterGroup = new QGroupBox("滤镜", this);
+    m_filterGroup->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
+    QGridLayout *filterLayout = new QGridLayout(m_filterGroup);
+    filterLayout->setSpacing(4);
+    filterLayout->setContentsMargins(8, 15, 8, 8);
+    
+    filterLayout->addWidget(new QLabel("滤镜类型:"), 0, 0);
+    m_filterTypeComboBox = new QComboBox();
+    m_filterTypeComboBox->addItem("无滤镜", 0);
+    m_filterTypeComboBox->addItem("高斯模糊", 1);
+    m_filterTypeComboBox->addItem("阴影", 2);
+    m_filterTypeComboBox->setMinimumWidth(70);
+    filterLayout->addWidget(m_filterTypeComboBox, 0, 1);
+    
+    // Blur controls
+    filterLayout->addWidget(new QLabel("模糊半径:"), 1, 0);
+    m_blurRadiusSpinBox = new QDoubleSpinBox();
+    m_blurRadiusSpinBox->setRange(0.0, 100.0);
+    m_blurRadiusSpinBox->setDecimals(1);
+    m_blurRadiusSpinBox->setSingleStep(0.5);
+    m_blurRadiusSpinBox->setValue(5.0);
+    m_blurRadiusSpinBox->setMinimumWidth(70);
+    filterLayout->addWidget(m_blurRadiusSpinBox, 1, 1);
+    
+    // Shadow controls
+    filterLayout->addWidget(new QLabel("阴影颜色:"), 2, 0);
+    m_shadowColorButton = new QPushButton("选择颜色");
+    m_shadowColorButton->setMinimumHeight(24);
+    m_shadowColorButton->setMinimumWidth(70);
+    filterLayout->addWidget(m_shadowColorButton, 2, 1);
+    
+    filterLayout->addWidget(new QLabel("阴影模糊:"), 3, 0);
+    m_shadowBlurSpinBox = new QDoubleSpinBox();
+    m_shadowBlurSpinBox->setRange(0.0, 50.0);
+    m_shadowBlurSpinBox->setDecimals(1);
+    m_shadowBlurSpinBox->setSingleStep(0.5);
+    m_shadowBlurSpinBox->setValue(3.0);
+    m_shadowBlurSpinBox->setMinimumWidth(70);
+    filterLayout->addWidget(m_shadowBlurSpinBox, 3, 1);
+    
+    filterLayout->addWidget(new QLabel("水平偏移:"), 4, 0);
+    m_shadowOffsetXSpinBox = new QDoubleSpinBox();
+    m_shadowOffsetXSpinBox->setRange(-50.0, 50.0);
+    m_shadowOffsetXSpinBox->setDecimals(1);
+    m_shadowOffsetXSpinBox->setSingleStep(0.5);
+    m_shadowOffsetXSpinBox->setValue(3.0);
+    m_shadowOffsetXSpinBox->setMinimumWidth(70);
+    filterLayout->addWidget(m_shadowOffsetXSpinBox, 4, 1);
+    
+    filterLayout->addWidget(new QLabel("垂直偏移:"), 5, 0);
+    m_shadowOffsetYSpinBox = new QDoubleSpinBox();
+    m_shadowOffsetYSpinBox->setRange(-50.0, 50.0);
+    m_shadowOffsetYSpinBox->setDecimals(1);
+    m_shadowOffsetYSpinBox->setSingleStep(0.5);
+    m_shadowOffsetYSpinBox->setValue(3.0);
+    m_shadowOffsetYSpinBox->setMinimumWidth(70);
+    filterLayout->addWidget(m_shadowOffsetYSpinBox, 5, 1);
+    
+    m_clearFilterButton = new QPushButton("清除滤镜");
+    m_clearFilterButton->setMinimumHeight(24);
+    filterLayout->addWidget(m_clearFilterButton, 6, 0, 1, 2);
+    
+    mainLayout->addWidget(m_filterGroup);
+    
     // Apply button with modern styling - 更紧凑
     m_applyButton = new QPushButton("应用更改", this);
     m_applyButton->setMinimumHeight(28);
@@ -265,6 +330,22 @@ void PropertyPanel::setupUI()
             this, &PropertyPanel::onOpacityChanged);
     connect(m_applyButton, &QPushButton::clicked,
             this, &PropertyPanel::onApplyClicked);
+    
+    // Filter controls connections
+    connect(m_filterTypeComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &PropertyPanel::onFilterTypeChanged);
+    connect(m_blurRadiusSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+            this, &PropertyPanel::onBlurRadiusChanged);
+    connect(m_shadowColorButton, &QPushButton::clicked,
+            this, &PropertyPanel::onShadowColorClicked);
+    connect(m_shadowBlurSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+            this, &PropertyPanel::onShadowBlurChanged);
+    connect(m_shadowOffsetXSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+            this, &PropertyPanel::onShadowOffsetChanged);
+    connect(m_shadowOffsetYSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+            this, &PropertyPanel::onShadowOffsetChanged);
+    connect(m_clearFilterButton, &QPushButton::clicked,
+            this, &PropertyPanel::onClearFilterClicked);
 }
 
 void PropertyPanel::onSelectionChanged()
@@ -383,6 +464,22 @@ void PropertyPanel::updateValues()
             
             // 设置不透明度
             m_opacitySpinBox->setValue(item->opacity());
+            
+            // 更新滤镜状态
+            if (shape->blurEffect()) {
+                m_filterTypeComboBox->setCurrentIndex(1); // 高斯模糊
+                m_blurRadiusSpinBox->setValue(shape->blurEffect()->blurRadius());
+            } else if (shape->dropShadowEffect()) {
+                m_filterTypeComboBox->setCurrentIndex(2); // 阴影
+                QGraphicsDropShadowEffect *shadow = shape->dropShadowEffect();
+                m_shadowBlurSpinBox->setValue(shadow->blurRadius());
+                m_shadowOffsetXSpinBox->setValue(shadow->offset().x());
+                m_shadowOffsetYSpinBox->setValue(shadow->offset().y());
+                QString colorStyle = QString("background-color: %1").arg(shadow->color().name());
+                m_shadowColorButton->setStyleSheet(colorStyle);
+            } else {
+                m_filterTypeComboBox->setCurrentIndex(0); // 无滤镜
+            }
         }
     }
     
@@ -393,6 +490,7 @@ void PropertyPanel::setEnabled(bool enabled)
 {
     m_transformGroup->setEnabled(enabled);
     m_appearanceGroup->setEnabled(enabled);
+    m_filterGroup->setEnabled(enabled);
     m_applyButton->setEnabled(enabled);
     QWidget::setEnabled(enabled);
 }
@@ -638,4 +736,129 @@ void PropertyPanel::onApplyClicked()
     }
     
     m_scene->setModified(true);
+}
+
+// Filter control methods
+void PropertyPanel::onFilterTypeChanged()
+{
+    if (m_updating || !m_scene) {
+        return;
+    }
+    
+    QList<QGraphicsItem*> selected = m_scene->selectedItems();
+    if (selected.size() == 1) {
+        QGraphicsItem *item = selected.first();
+        DrawingShape *shape = dynamic_cast<DrawingShape*>(item);
+        if (shape) {
+            int filterType = m_filterTypeComboBox->currentData().toInt();
+            switch (filterType) {
+            case 0: // 无滤镜
+                shape->clearFilter();
+                break;
+            case 1: // 高斯模糊
+                shape->setBlurEffect(m_blurRadiusSpinBox->value());
+                break;
+            case 2: // 阴影
+                shape->setDropShadowEffect(m_shadowColorButton->palette().color(QPalette::Button),
+                                         m_shadowBlurSpinBox->value(),
+                                         QPointF(m_shadowOffsetXSpinBox->value(), m_shadowOffsetYSpinBox->value()));
+                break;
+            }
+            m_scene->setModified(true);
+        }
+    }
+}
+
+void PropertyPanel::onBlurRadiusChanged()
+{
+    if (m_updating || !m_scene) {
+        return;
+    }
+    
+    QList<QGraphicsItem*> selected = m_scene->selectedItems();
+    if (selected.size() == 1) {
+        QGraphicsItem *item = selected.first();
+        DrawingShape *shape = dynamic_cast<DrawingShape*>(item);
+        if (shape && shape->blurEffect()) {
+            shape->setBlurEffect(m_blurRadiusSpinBox->value());
+            m_scene->setModified(true);
+        }
+    }
+}
+
+void PropertyPanel::onShadowColorClicked()
+{
+    if (m_updating || !m_scene) {
+        return;
+    }
+    
+    QList<QGraphicsItem*> selected = m_scene->selectedItems();
+    if (selected.size() == 1) {
+        QGraphicsItem *item = selected.first();
+        DrawingShape *shape = dynamic_cast<DrawingShape*>(item);
+        if (shape && shape->dropShadowEffect()) {
+            QColor color = QColorDialog::getColor(shape->dropShadowEffect()->color(), this, "选择阴影颜色");
+            if (color.isValid()) {
+                shape->setDropShadowEffect(color, m_shadowBlurSpinBox->value(),
+                                         QPointF(m_shadowOffsetXSpinBox->value(), m_shadowOffsetYSpinBox->value()));
+                QString colorStyle = QString("background-color: %1").arg(color.name());
+                m_shadowColorButton->setStyleSheet(colorStyle);
+                m_scene->setModified(true);
+            }
+        }
+    }
+}
+
+void PropertyPanel::onShadowBlurChanged()
+{
+    if (m_updating || !m_scene) {
+        return;
+    }
+    
+    QList<QGraphicsItem*> selected = m_scene->selectedItems();
+    if (selected.size() == 1) {
+        QGraphicsItem *item = selected.first();
+        DrawingShape *shape = dynamic_cast<DrawingShape*>(item);
+        if (shape && shape->dropShadowEffect()) {
+            shape->setDropShadowEffect(shape->dropShadowEffect()->color(), m_shadowBlurSpinBox->value(),
+                                     QPointF(m_shadowOffsetXSpinBox->value(), m_shadowOffsetYSpinBox->value()));
+            m_scene->setModified(true);
+        }
+    }
+}
+
+void PropertyPanel::onShadowOffsetChanged()
+{
+    if (m_updating || !m_scene) {
+        return;
+    }
+    
+    QList<QGraphicsItem*> selected = m_scene->selectedItems();
+    if (selected.size() == 1) {
+        QGraphicsItem *item = selected.first();
+        DrawingShape *shape = dynamic_cast<DrawingShape*>(item);
+        if (shape && shape->dropShadowEffect()) {
+            shape->setDropShadowEffect(shape->dropShadowEffect()->color(), m_shadowBlurSpinBox->value(),
+                                     QPointF(m_shadowOffsetXSpinBox->value(), m_shadowOffsetYSpinBox->value()));
+            m_scene->setModified(true);
+        }
+    }
+}
+
+void PropertyPanel::onClearFilterClicked()
+{
+    if (m_updating || !m_scene) {
+        return;
+    }
+    
+    QList<QGraphicsItem*> selected = m_scene->selectedItems();
+    if (selected.size() == 1) {
+        QGraphicsItem *item = selected.first();
+        DrawingShape *shape = dynamic_cast<DrawingShape*>(item);
+        if (shape) {
+            shape->clearFilter();
+            m_filterTypeComboBox->setCurrentIndex(0);
+            m_scene->setModified(true);
+        }
+    }
 }

@@ -3,6 +3,8 @@
 
 #include <QGraphicsItem>
 #include <QTransform>
+#include <QGraphicsBlurEffect>
+#include <QGraphicsDropShadowEffect>
 #include <QPen>
 #include <QBrush>
 #include <QPointF>
@@ -114,6 +116,14 @@ public:
     
     void setStrokePen(const QPen &pen) { m_strokePen = pen; smartUpdate(); notifyObjectStateChanged(); }
     QPen strokePen() const { return m_strokePen; }
+    
+    // 滤镜效果管理
+    void setBlurEffect(qreal radius);
+    void setDropShadowEffect(const QColor &color, qreal blurRadius, const QPointF &offset);
+    void clearFilter();
+    bool hasFilter() const;
+    QGraphicsBlurEffect* blurEffect() const;
+    QGraphicsDropShadowEffect* dropShadowEffect() const;
     
     // 网格对齐支持
     void setGridAlignmentEnabled(bool enabled) { m_gridAlignmentEnabled = enabled; }

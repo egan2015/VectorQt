@@ -40,6 +40,14 @@ private slots:
     void onStrokeStyleChanged();
     void onOpacityChanged();
     void onApplyClicked();
+    
+    // Filter methods
+    void onFilterTypeChanged();
+    void onBlurRadiusChanged();
+    void onShadowColorClicked();
+    void onShadowBlurChanged();
+    void onShadowOffsetChanged();
+    void onClearFilterClicked();
 
 private:
     void setupUI();
@@ -67,6 +75,16 @@ private:
     QSpinBox *m_strokeWidthSpinBox;
     QComboBox *m_strokeStyleComboBox;
     QDoubleSpinBox *m_opacitySpinBox;
+    
+    // Filter controls
+    QGroupBox *m_filterGroup;
+    QComboBox *m_filterTypeComboBox;
+    QDoubleSpinBox *m_blurRadiusSpinBox;
+    QPushButton *m_shadowColorButton;
+    QDoubleSpinBox *m_shadowBlurSpinBox;
+    QDoubleSpinBox *m_shadowOffsetXSpinBox;
+    QDoubleSpinBox *m_shadowOffsetYSpinBox;
+    QPushButton *m_clearFilterButton;
     
     // Performance monitoring
     QGroupBox *m_performanceGroup;

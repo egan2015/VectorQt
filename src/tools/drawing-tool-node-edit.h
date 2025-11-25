@@ -48,6 +48,11 @@ public:
     explicit DrawingNodeEditTool(QObject *parent = nullptr);
     ~DrawingNodeEditTool() override;
 
+    // 工具属性
+    QString toolName() const override { return "节点编辑"; }
+    QString toolDescription() const override { return "编辑图形节点和控制点"; }
+    QString toolCategory() const override { return "编辑"; }
+
     // 事件处理 - 重写基类方法
     bool mousePressEvent(QMouseEvent *event, const QPointF &scenePos) override;
     bool mouseMoveEvent(QMouseEvent *event, const QPointF &scenePos) override;

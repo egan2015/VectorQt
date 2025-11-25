@@ -17,6 +17,7 @@
 #include <QTimer>
 #include <QUndoStack>
 #include <QUndoView>
+#include <QKeyEvent>
 
 class DrawingScene;
 class DrawingShape;
@@ -33,6 +34,9 @@ class Ruler;
 class ColorPalette;
 class PathEditor;
 class ScrollableToolBar;
+class ToolStateManager;
+class ToolManager;
+class ShortcutManager;
 
 
 class MainWindow : public QMainWindow
@@ -49,6 +53,8 @@ public:
 protected:
     void closeEvent(QCloseEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
+    void keyPressEvent(QKeyEvent *event) override;
+    void keyReleaseEvent(QKeyEvent *event) override;
 
 private slots:
     void newFile();
@@ -94,6 +100,9 @@ private slots:
     void copySelected();
     void paste();
     void duplicate();  // Ctrl+D 快速复制粘贴
+    void applyBlurEffect();  // 应用高斯模糊
+    void applyDropShadowEffect();  // 应用阴影效果
+    void clearFilterEffect();  // 清除滤镜效果
     void convertTextToPath();  // 文本转路径
     void selectAll();
     void deselectAll();
@@ -183,23 +192,10 @@ private:
     TabbedPropertyPanel *m_tabbedPropertyPanel;
     QUndoView *m_undoView;
     LayerManager *m_layerManager;
+    
+    // 注意：只有当前工具指针由MainWindow保留，用于快速访问
+    // 所有其他工具都由ToolManager管理，这样更安全
     ToolBase *m_currentTool;
-    ToolBase *m_outlinePreviewTool;      // 选择工具（轮廓预览变换）
-    
-    ToolBase *m_rectangleTool;
-    ToolBase *m_ellipseTool;
-    ToolBase *m_bezierTool;        // 贝塞尔曲线工具
-    
-    ToolBase *m_nodeEditTool;      // 节点编辑工具
-    ToolBase *m_polylineTool;    // 折线工具
-    ToolBase *m_polygonTool;     // 多边形工具
-    ToolBase *m_brushTool;       // 画笔工具
-    ToolBase *m_fillTool;        // 填充工具
-    ToolBase *m_gradientFillTool; // 渐进填充工具
-    ToolBase *m_penTool;         // 钢笔工具
-    ToolBase *m_eraserTool;      // 橡皮擦工具
-    ToolBase *m_lineTool;        // 直线工具
-    ToolBase *m_pathEditTool;    // 路径编辑工具
     
     // Rulers
     Ruler *m_horizontalRuler;
@@ -243,6 +239,9 @@ private:
     QAction *m_copyAction;
     QAction *m_pasteAction;
     QAction *m_duplicateAction;
+    QAction *m_blurEffectAction;
+    QAction *m_dropShadowEffectAction;
+    QAction *m_clearFilterAction;
     QAction *m_convertTextToPathAction;
     QAction *m_selectAllAction;
     QAction *m_deselectAllAction;
@@ -280,6 +279,11 @@ private:
     
     // Scrollable toolbar
     ScrollableToolBar *m_scrollableToolBar;
+    
+    // Tool management system
+    ToolStateManager *m_toolStateManager;
+    ToolManager *m_toolManager;
+    ShortcutManager *m_shortcutManager;
     
     QLabel *m_statusLabel;
     QLabel *m_zoomLabel;

@@ -89,6 +89,16 @@ bool DrawingToolLine::mouseReleaseEvent(QMouseEvent *event, const QPointF &scene
                     void redo() override {
                         if (m_scene && m_item) {
                             m_scene->addItem(m_item);
+                            
+                            // 自动选中新创建的图形
+                            m_item->setSelected(true);
+                            
+                            // 清除其他选中项
+                            for (QGraphicsItem *item : m_scene->selectedItems()) {
+                                if (item != m_item) {
+                                    item->setSelected(false);
+                                }
+                            }
                         }
                     }
                     

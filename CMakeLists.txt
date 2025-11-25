@@ -48,6 +48,10 @@ set(SOURCES
     src/ui/scrollable-toolbar.cpp
     src/core/svghandler.cpp
     src/core/graphics-adapter.h
+    src/tools/tool-state-manager.cpp
+    src/tools/tool-manager.cpp
+    src/core/event-bus.cpp
+    src/ui/shortcut-manager.cpp
     
     # 绘图工具模块
     src/tools/drawing-tool.cpp
@@ -113,6 +117,10 @@ set(HEADERS
     src/ui/scrollable-toolbar.h
     src/core/svghandler.h
     src/core/graphics-adapter.h
+    src/tools/tool-state-manager.h
+    src/tools/tool-manager.h
+    src/core/event-bus.h
+    src/ui/shortcut-manager.h
     
     # 绘图工具模块
     src/tools/drawing-tool.h

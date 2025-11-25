@@ -17,6 +17,8 @@
 #include <QColorDialog>
 #include <QScrollBar>
 #include <QIcon>
+#include <QElapsedTimer>
+#include <QDateTime>
 #include <algorithm>
 #include "../ui/mainwindow.h"
 #include "../ui/drawingscene.h"
@@ -53,13 +55,37 @@
 #include "../core/drawing-shape.h"
 #include "../ui/colorpalette.h"
 #include "../core/drawing-group.h"
+#include "../tools/tool-state-manager.h"
+#include "../tools/tool-manager.h"
+#include "../core/event-bus.h"
+#include "../ui/shortcut-manager.h"
 
 MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent), m_scene(nullptr), m_canvas(nullptr), m_propertyPanel(nullptr), m_tabbedPropertyPanel(nullptr), m_undoView(nullptr), m_layerManager(nullptr), m_currentTool(nullptr), m_outlinePreviewTool(nullptr), m_rectangleTool(nullptr), m_ellipseTool(nullptr), m_bezierTool(nullptr),
+    : QMainWindow(parent), m_scene(nullptr), m_canvas(nullptr), m_propertyPanel(nullptr), m_tabbedPropertyPanel(nullptr), m_undoView(nullptr), m_layerManager(nullptr), m_currentTool(nullptr),
       m_colorPalette(nullptr), m_scrollableToolBar(nullptr),
       m_horizontalRuler(nullptr), m_verticalRuler(nullptr), m_cornerWidget(nullptr), m_isModified(false), m_lastOpenDir(QDir::homePath()), m_lastSaveDir(QDir::homePath()),
-      m_uiUpdateTimer(nullptr), m_lastSelectedCount(0)
+      m_uiUpdateTimer(nullptr), m_lastSelectedCount(0), m_toolStateManager(nullptr), m_toolManager(nullptr), m_shortcutManager(nullptr)
 {
+    // 初始化工具管理系统
+    m_toolStateManager = new ToolStateManager(this);
+    m_toolManager = new ToolManager(this);
+    m_toolManager->setToolStateManager(m_toolStateManager);
+    
+    // 初始化快捷键管理器
+    m_shortcutManager = new ShortcutManager(this);
+    m_shortcutManager->setToolManager(m_toolManager);
+    // 场景将在newFile()后设置
+    
+    // 订阅事件总线
+    EventBus& eventBus = EventBus::instance();
+    eventBus.subscribe<ToolSwitchEvent>([this](const ToolSwitchEvent& event) {
+        #ifdef QT_DEBUG
+        qDebug() << "MainWindow: Tool switched from" << static_cast<int>(event.oldType) 
+                 << "to" << static_cast<int>(event.newType) 
+                 << "in" << event.switchTime << "ms";
+        #endif
+    });
+    
     createActions();
     setupUI();
     connectActions();
@@ -131,35 +157,7 @@ MainWindow::~MainWindow()
         m_currentTool = nullptr;
     }
     
-    // 显式删除所有工具对象，确保它们在场景销毁之前被清理
-    if (m_nodeEditTool) {
-        delete m_nodeEditTool;
-        m_nodeEditTool = nullptr;
-    }
-    
-    
-    
-    if (m_bezierTool) {
-        delete m_bezierTool;
-        m_bezierTool = nullptr;
-    }
-    
-    if (m_ellipseTool) {
-        delete m_ellipseTool;
-        m_ellipseTool = nullptr;
-    }
-    
-    if (m_rectangleTool) {
-        delete m_rectangleTool;
-        m_rectangleTool = nullptr;
-    }
-    
-    
-    
-    if (m_outlinePreviewTool) {
-        delete m_outlinePreviewTool;
-        m_outlinePreviewTool = nullptr;
-    }
+    // ToolManager会自动清理所有工具，无需手动删除
     
     
     
@@ -189,6 +187,12 @@ void MainWindow::setupUI()
     // Create drawing canvas with grid functionality
     m_canvas = new DrawingCanvas(this);
     m_canvas->setScene(m_scene);
+
+    // 设置工具管理器的场景和视图
+    if (m_toolManager && m_canvas->view()) {
+        m_toolManager->setScene(m_scene);
+        m_toolManager->setView(qobject_cast<DrawingView*>(m_canvas->view()));
+    }
 
     // 确保视图正确初始化并显示网格
     if (m_canvas->view())
@@ -281,25 +285,30 @@ void MainWindow::setupUI()
     setupMenus();
     setupStatusBar();
 
-    // Create tools
-    m_outlinePreviewTool = new OutlinePreviewTransformTool(this);
-    // 连接状态栏更新信号
-    connect(m_outlinePreviewTool, SIGNAL(statusMessageChanged(const QString&)),
-            this, SLOT(updateStatusBar(const QString&)));
-    m_rectangleTool = new LegacyRectangleTool(this);
-    m_ellipseTool = new LegacyEllipseTool(this);
-    m_bezierTool = new DrawingBezierTool(this);
-    m_nodeEditTool = new DrawingNodeEditTool(this);
-    m_polylineTool = new DrawingToolPolyline(this);
-    m_polygonTool = new DrawingToolPolygon(this);
-    m_brushTool = new DrawingToolBrush(this);
-    m_fillTool = new DrawingToolFill(this);
-    m_gradientFillTool = new DrawingToolGradientFill(this);
-    m_penTool = new DrawingToolPen(this);
-    m_eraserTool = new DrawingToolEraser(this);
-    m_lineTool = new DrawingToolLine(this);
-    m_pathEditTool = new DrawingToolPathEdit(this);
-    // m_textTool = new TextTool(this);  // Not implemented yet
+    // 使用工具管理器创建和管理所有工具
+    if (m_toolManager) {
+        m_toolManager->createAndRegisterTool<OutlinePreviewTransformTool>(ToolType::Select, this);
+        m_toolManager->createAndRegisterTool<LegacyRectangleTool>(ToolType::Rectangle, this);
+        m_toolManager->createAndRegisterTool<LegacyEllipseTool>(ToolType::Ellipse, this);
+        m_toolManager->createAndRegisterTool<DrawingBezierTool>(ToolType::Bezier, this);
+        m_toolManager->createAndRegisterTool<DrawingNodeEditTool>(ToolType::NodeEdit, this);
+        m_toolManager->createAndRegisterTool<DrawingToolPolyline>(ToolType::Polyline, this);
+        m_toolManager->createAndRegisterTool<DrawingToolPolygon>(ToolType::Polygon, this);
+        m_toolManager->createAndRegisterTool<DrawingToolBrush>(ToolType::Brush, this);
+        m_toolManager->createAndRegisterTool<DrawingToolFill>(ToolType::Fill, this);
+        m_toolManager->createAndRegisterTool<DrawingToolGradientFill>(ToolType::GradientFill, this);
+        m_toolManager->createAndRegisterTool<DrawingToolPen>(ToolType::Pen, this);
+        m_toolManager->createAndRegisterTool<DrawingToolEraser>(ToolType::Eraser, this);
+        m_toolManager->createAndRegisterTool<DrawingToolLine>(ToolType::Line, this);
+        m_toolManager->createAndRegisterTool<DrawingToolPathEdit>(ToolType::PathEdit, this);
+        
+        // 连接状态栏更新信号（针对选择工具）
+        auto selectTool = m_toolManager->getToolAs<OutlinePreviewTransformTool>(ToolType::Select);
+        if (selectTool) {
+            connect(selectTool, SIGNAL(statusMessageChanged(const QString&)),
+                    this, SLOT(updateStatusBar(const QString&)));
+        }
+    }
     
     // 性能监控现在集成在属性面板的tab页中，不需要单独的浮动窗口
     
@@ -335,24 +344,27 @@ void MainWindow::setupUI()
     connect(m_canvas, &DrawingCanvas::zoomChanged,
             this, &MainWindow::updateZoomLabel);
             
-    // Connect color palette signals to fill tool (after all objects are created)
-    if (m_colorPalette && m_fillTool) {
-        connect(m_colorPalette, SIGNAL(fillColorChanged(QColor)), 
-                m_fillTool, SLOT(onFillColorChanged(QColor)));
-    }
-    
-    // Connect color palette signals to gradient fill tool (after all objects are created)
-    if (m_colorPalette && m_gradientFillTool) {
-        connect(m_colorPalette, SIGNAL(fillColorChanged(QColor)), 
-                m_gradientFillTool, SLOT(onFillColorChanged(QColor)));
-    }
-    
-    // Connect color palette signals to pen tool (after all objects are created)
-    if (m_colorPalette && m_penTool) {
-        connect(m_colorPalette, SIGNAL(strokeColorChanged(QColor)), 
-                m_penTool, SLOT(onStrokeColorChanged(QColor)));
-        connect(m_colorPalette, SIGNAL(fillColorChanged(QColor)), 
-                m_penTool, SLOT(onFillColorChanged(QColor)));
+    // Connect color palette signals to tools (通过ToolManager获取工具)
+    if (m_colorPalette && m_toolManager) {
+        auto fillTool = m_toolManager->getToolAs<DrawingToolFill>(ToolType::Fill);
+        if (fillTool) {
+            connect(m_colorPalette, &ColorPalette::fillColorChanged,
+                    fillTool, &DrawingToolFill::onFillColorChanged);
+        }
+        
+        auto gradientFillTool = m_toolManager->getToolAs<DrawingToolGradientFill>(ToolType::GradientFill);
+        if (gradientFillTool) {
+            connect(m_colorPalette, &ColorPalette::fillColorChanged,
+                    gradientFillTool, &DrawingToolGradientFill::onFillColorChanged);
+        }
+        
+        auto penTool = m_toolManager->getToolAs<DrawingToolPen>(ToolType::Pen);
+        if (penTool) {
+            connect(m_colorPalette, &ColorPalette::strokeColorChanged,
+                    penTool, &DrawingToolPen::onStrokeColorChanged);
+            connect(m_colorPalette, &ColorPalette::fillColorChanged,
+                    penTool, &DrawingToolPen::onFillColorChanged);
+        }
     }
     
     // Connect undo stack signals to update menu states
@@ -423,9 +435,56 @@ void MainWindow::setupUI()
             m_verticalRuler->update();
         }
     }
-
-    // 设置默认工具为选择工具
-    setCurrentTool(m_outlinePreviewTool);
+    
+    // 注册工具快捷键到快捷键管理器
+    if (m_shortcutManager) {
+        // 注册永久快捷键
+        m_shortcutManager->registerShortcut(ToolType::Select, QKeySequence("V"), m_outlinePreviewToolAction);
+        m_shortcutManager->registerShortcut(ToolType::Rectangle, QKeySequence("R"), m_rectangleToolAction);
+        m_shortcutManager->registerShortcut(ToolType::Ellipse, QKeySequence("E"), m_ellipseToolAction);
+        m_shortcutManager->registerShortcut(ToolType::Bezier, QKeySequence("B"), m_bezierToolAction);
+        m_shortcutManager->registerShortcut(ToolType::Polyline, QKeySequence("Y"), m_polylineToolAction);
+        m_shortcutManager->registerShortcut(ToolType::Polygon, QKeySequence("Shift+P"), m_polygonToolAction);
+        m_shortcutManager->registerShortcut(ToolType::Brush, QKeySequence("Shift+B"), m_brushToolAction);
+        m_shortcutManager->registerShortcut(ToolType::Fill, QKeySequence("F"), m_fillToolAction);
+        m_shortcutManager->registerShortcut(ToolType::GradientFill, QKeySequence("Shift+G"), m_gradientFillToolAction);
+        m_shortcutManager->registerShortcut(ToolType::Pen, QKeySequence("P"), m_penToolAction);
+        m_shortcutManager->registerShortcut(ToolType::Eraser, QKeySequence("Shift+E"), m_eraserToolAction);
+        m_shortcutManager->registerShortcut(ToolType::Line, QKeySequence("L"), m_lineToolAction);
+        m_shortcutManager->registerShortcut(ToolType::PathEdit, QKeySequence("Ctrl+Shift+P"), m_pathEditToolAction);
+        
+        // 注册临时快捷键（按住临时切换，松开恢复）
+        // 使用不和永久快捷键冲突的按键
+        m_shortcutManager->registerTemporaryShortcut(ToolType::Brush, QKeySequence("X"));
+        m_shortcutManager->registerTemporaryShortcut(ToolType::Eraser, QKeySequence("C"));
+        m_shortcutManager->registerTemporaryShortcut(ToolType::Fill, QKeySequence("D"));
+        m_shortcutManager->registerTemporaryShortcut(ToolType::Select, QKeySequence("Space"));
+        m_shortcutManager->registerTemporaryShortcut(ToolType::Pen, QKeySequence("Q"));
+        m_shortcutManager->registerTemporaryShortcut(ToolType::Rectangle, QKeySequence("W"));
+        m_shortcutManager->registerTemporaryShortcut(ToolType::Ellipse, QKeySequence("A"));
+        m_shortcutManager->registerTemporaryShortcut(ToolType::Line, QKeySequence("S"));
+        
+        // 注册上下文相关的快捷键
+        // 节点编辑工具的快捷键只在有选中对象时有效
+        m_shortcutManager->registerShortcut(ToolType::NodeEdit, QKeySequence("N"), m_nodeEditToolAction, 
+                                          ShortcutContext::HasSelection);
+    }
+    
+    // 设置默认工具为选择工具（在所有工具创建完成后）
+    if (m_toolManager) {
+        // 先设置当前工具指针
+        m_currentTool = m_toolManager->getTool(ToolType::Select);
+        // 然后切换到选择工具
+        if (m_currentTool) {
+            m_toolManager->switchTool(ToolType::Select);
+            // 确保选择工具的动作被选中
+            if (m_outlinePreviewToolAction) {
+                m_outlinePreviewToolAction->setChecked(true);
+            }
+        }
+    }
+    
+    // 初始化UI更新定时器
 }
 
 void MainWindow::setupMenus()
@@ -477,6 +536,13 @@ void MainWindow::setupMenus()
     editMenu->addSeparator();
     editMenu->addAction(m_distributeHorizontalAction);
     editMenu->addAction(m_distributeVerticalAction);
+
+    // Filter menu
+    QMenu *filterMenu = menuBar()->addMenu("滤镜(&T)");
+    filterMenu->addAction(m_blurEffectAction);
+    filterMenu->addAction(m_dropShadowEffectAction);
+    filterMenu->addSeparator();
+    filterMenu->addAction(m_clearFilterAction);
 
     // View menu
     QMenu *viewMenu = menuBar()->addMenu("&View");
@@ -820,6 +886,16 @@ void MainWindow::createActions()
     m_duplicateAction->setShortcut(QKeySequence("Ctrl+D"));
     m_duplicateAction->setStatusTip("快速复制并粘贴选中项目");
 
+    // 滤镜Actions
+    m_blurEffectAction = new QAction("高斯模糊(&B)", this);
+    m_blurEffectAction->setStatusTip("为选中对象添加高斯模糊效果");
+
+    m_dropShadowEffectAction = new QAction("阴影(&S)", this);
+    m_dropShadowEffectAction->setStatusTip("为选中对象添加阴影效果");
+
+    m_clearFilterAction = new QAction("清除滤镜(&C)", this);
+    m_clearFilterAction->setStatusTip("清除选中对象的所有滤镜效果");
+
     m_convertTextToPathAction = new QAction("文本转路径(&T)", this);
     m_convertTextToPathAction->setShortcut(QKeySequence("Ctrl+Shift+T"));
     m_convertTextToPathAction->setStatusTip("将选中的文本转换为可编辑的路径");
@@ -982,14 +1058,14 @@ void MainWindow::createActions()
 
     m_polygonToolAction = new QAction("&多边形工具", this);
     m_polygonToolAction->setCheckable(true);
-    m_polygonToolAction->setShortcut(QKeySequence("P"));
+    m_polygonToolAction->setShortcut(QKeySequence("Shift+P"));
     m_polygonToolAction->setStatusTip("绘制多边形");
     m_polygonToolAction->setIcon(QIcon(":/icons/icons/draw-polygon.svg"));
     m_toolGroup->addAction(m_polygonToolAction);
 
     m_brushToolAction = new QAction("&画笔工具", this);
     m_brushToolAction->setCheckable(true);
-    m_brushToolAction->setShortcut(QKeySequence("B"));
+    m_brushToolAction->setShortcut(QKeySequence("Shift+B"));
     m_brushToolAction->setStatusTip("自由绘制");
     m_brushToolAction->setIcon(QIcon(":/icons/icons/draw-freehand.svg"));
     m_toolGroup->addAction(m_brushToolAction);
@@ -1003,7 +1079,7 @@ void MainWindow::createActions()
 
     m_gradientFillToolAction = new QAction("&渐进填充工具", this);
     m_gradientFillToolAction->setCheckable(true);
-    m_gradientFillToolAction->setShortcut(QKeySequence("G"));
+    m_gradientFillToolAction->setShortcut(QKeySequence("Shift+G"));
     m_gradientFillToolAction->setStatusTip("渐进填充区域");
     m_gradientFillToolAction->setIcon(QIcon(":/icons/icons/color-gradient.svg"));
     m_toolGroup->addAction(m_gradientFillToolAction);
@@ -1017,7 +1093,7 @@ void MainWindow::createActions()
 
     m_eraserToolAction = new QAction("&橡皮擦工具", this);
     m_eraserToolAction->setCheckable(true);
-    m_eraserToolAction->setShortcut(QKeySequence("E"));
+    m_eraserToolAction->setShortcut(QKeySequence("Shift+E"));
     m_eraserToolAction->setStatusTip("擦除图形或图形的部分区域");
     m_eraserToolAction->setIcon(QIcon(":/icons/icons/draw-eraser.svg"));
     m_toolGroup->addAction(m_eraserToolAction);
@@ -1090,6 +1166,9 @@ void MainWindow::connectActions()
     connect(m_copyAction, &QAction::triggered, this, &MainWindow::copySelected);
     connect(m_pasteAction, &QAction::triggered, this, &MainWindow::paste);
     connect(m_duplicateAction, &QAction::triggered, this, &MainWindow::duplicate);
+    connect(m_blurEffectAction, &QAction::triggered, this, &MainWindow::applyBlurEffect);
+    connect(m_dropShadowEffectAction, &QAction::triggered, this, &MainWindow::applyDropShadowEffect);
+    connect(m_clearFilterAction, &QAction::triggered, this, &MainWindow::clearFilterEffect);
     connect(m_convertTextToPathAction, &QAction::triggered, this, &MainWindow::convertTextToPath);
     connect(m_selectAllAction, &QAction::triggered, this, &MainWindow::selectAll);
     connect(m_deselectAllAction, &QAction::triggered, this, &MainWindow::deselectAll);
@@ -1168,138 +1247,94 @@ void MainWindow::connectActions()
 
 void MainWindow::setCurrentTool(ToolBase *tool)
 {
-    qDebug() << "setCurrentTool called with tool:" << tool;
-
-    if (m_currentTool)
-    {
-        qDebug() << "Deactivating current tool:" << m_currentTool;
-        m_currentTool->deactivate();
-    }
-
-    // 如果有正在进行的变换操作，先结束它
-    if (m_scene) {
-        qDebug() << "Calling endTransform() before tool switch";
-        m_scene->endTransform();
-    }
-
-        m_currentTool = tool;
-
-    if (m_currentTool)
-    {
-        qDebug() << "Activating new tool:" << m_currentTool;
-        DrawingView *drawingView = qobject_cast<DrawingView *>(m_canvas->view());
-        m_currentTool->activate(m_scene, drawingView);
-        if (drawingView)
-        {
-            drawingView->setCurrentTool(m_currentTool);
-        }
-        
-        // 更新工具面板显示当前工具设置
-        if (m_tabbedPropertyPanel && m_tabbedPropertyPanel->getToolsPanel()) {
-            m_tabbedPropertyPanel->getToolsPanel()->setCurrentTool(m_currentTool);
-        }
+    if (!m_toolManager) {
+        qWarning() << "MainWindow: Tool manager not initialized";
+        return;
     }
     
-    // 如果切换到非选择工具且不是节点编辑工具或轮廓预览工具，在工具激活后清除场景中的选择
-    if (m_scene && tool != m_nodeEditTool && tool != m_outlinePreviewTool) {
-        qDebug() << "Clearing selection after switching to non-select tool";
-        qDebug() << "Selected items count before clearing:" << m_scene->selectedItems().count();
-        
-        // 在工具激活后清除场景中的选择
-        if (m_scene) {
-            qDebug() << "Clearing selection after switching to non-select tool";
-            qDebug() << "Selected items count before clearing:" << m_scene->selectedItems().count();
-            
-            // 检查并取消鼠标抓取
-            if (m_scene->mouseGrabberItem()) {
-                qDebug() << "Found mouse grabber item, ungrabbing";
-                m_scene->mouseGrabberItem()->ungrabMouse();
-            }
+    // 使用工具管理器进行切换
+    if (!m_toolManager->switchTool(tool)) {
+        qWarning() << "MainWindow: Failed to switch tool";
+        return;
+    }
+    
+    // 更新当前工具引用
+    m_currentTool = m_toolManager->currentTool();
+    
+    // 更新工具面板显示当前工具设置
+    if (m_tabbedPropertyPanel && m_tabbedPropertyPanel->getToolsPanel()) {
+        m_tabbedPropertyPanel->getToolsPanel()->setCurrentTool(m_currentTool);
+    }
+    
+    // 优化选择清除逻辑：只在切换到非选择类工具时清除选择
+    if (m_scene && tool && m_toolManager) {
+        auto nodeEditTool = m_toolManager->getTool(ToolType::NodeEdit);
+        auto selectTool = m_toolManager->getTool(ToolType::Select);
+        if (tool != nodeEditTool && tool != selectTool) {
+        // 检查并取消鼠标抓取
+        if (m_scene->mouseGrabberItem()) {
+            m_scene->mouseGrabberItem()->ungrabMouse();
+        }
             
             m_scene->clearSelection();
-            
-            // 强制清除所有项目的选中状态
-            QList<QGraphicsItem*> allItems = m_scene->items(Qt::AscendingOrder);
-            for (QGraphicsItem *item : allItems) {
-                if (item && item->isSelected()) {
-                    item->setSelected(false);
-                }
+        
+        // 优化：只遍历一次项目列表，同时处理选中状态和控制点
+        const QList<QGraphicsItem*> allItems = m_scene->items(Qt::AscendingOrder);
+        for (QGraphicsItem *item : allItems) {
+            if (!item || item->scene() != m_scene) {
+                continue;
             }
             
-            // 隐藏所有路径的控制点连线
-            QList<QGraphicsItem*> items = m_scene->items(Qt::AscendingOrder);
-            for (QGraphicsItem *item : items) {
-                // 检查item是否仍然有效且在场景中
-                if (!item || item->scene() != m_scene) {
-                    continue;
-                }
-                
-                // 首先验证类型
-                if (item->type() != DrawingShape::Path) {
-                    continue;
-                }
-                
-                // 使用更安全的类型转换，并验证对象状态
-                DrawingPath *path = nullptr;
-                try {
-                    path = qgraphicsitem_cast<DrawingPath*>(item);
-                    // 额外验证：检查对象是否已被删除或无效
-                    if (path && path->type() == DrawingShape::Path) {
-                        path->setShowControlPolygon(false);
-                    }
-                } catch (...) {
-                    // 忽略异常，继续处理其他项目
-                    continue;
-                }
+            // 清除选中状态
+            if (item->isSelected()) {
+                item->setSelected(false);
             }
             
-            qDebug() << "Selected items count after clearing:" << m_scene->selectedItems().count();
+            // 隐藏路径控制点（优化：只处理路径类型）
+            if (item->type() == DrawingShape::Path) {
+                DrawingPath *path = qgraphicsitem_cast<DrawingPath*>(item);
+                if (path) {
+                    path->setShowControlPolygon(false);
+                }
+            }
         }
     }
 
-
-    // Update tool actions
-    if (tool == m_outlinePreviewTool)
-    {
-        m_outlinePreviewToolAction->setChecked(true);
-    }
-    else if (tool == m_rectangleTool)
-    {
-        m_rectangleToolAction->setChecked(true);
-    }
-    else if (tool == m_ellipseTool)
-    {
-        m_ellipseToolAction->setChecked(true);
-    }
-    else if (tool == m_bezierTool)
-    {
-        m_bezierToolAction->setChecked(true);
-    }
-    
-    else if (tool == m_nodeEditTool)
-    {
-        m_nodeEditToolAction->setChecked(true);
+    // Update tool actions - 通过ToolManager比较工具类型
+    if (tool && m_toolManager) {
+        if (tool == m_toolManager->getTool(ToolType::Select)) {
+            m_outlinePreviewToolAction->setChecked(true);
+        }
+        else if (tool == m_toolManager->getTool(ToolType::Rectangle)) {
+            m_rectangleToolAction->setChecked(true);
+        }
+        else if (tool == m_toolManager->getTool(ToolType::Ellipse)) {
+            m_ellipseToolAction->setChecked(true);
+        }
+        else if (tool == m_toolManager->getTool(ToolType::Bezier)) {
+            m_bezierToolAction->setChecked(true);
+        }
+        else if (tool == m_toolManager->getTool(ToolType::NodeEdit)) {
+            m_nodeEditToolAction->setChecked(true);
+        }
     }
 
-    m_statusLabel->setText(QString("工具已更改: %1")
-    .arg(tool == m_outlinePreviewTool ? "选择" : tool == m_rectangleTool ? "矩形"
-                                    : tool == m_ellipseTool     ? "椭圆"
-                                    : tool == m_bezierTool      ? "贝塞尔"
-                                    
-                                    : tool == m_nodeEditTool    ? "节点编辑"
-                                                                :
-                                                            // tool == m_lineTool ? "线条" :       // Not implemented yet
-                                        // tool == m_polygonTool ? "多边形" : // Not implemented yet
-                                        tool ? "未知"
-                                            : "未知")); // Simplified since TextTool is not implemented
-
-    qDebug() << "Tool switch completed";
+    // 更新状态栏（如果存在）
+    if (m_statusLabel && m_toolManager) {
+        QString toolName = "未知";
+        if (tool == m_toolManager->getTool(ToolType::Select)) toolName = "选择";
+        else if (tool == m_toolManager->getTool(ToolType::Rectangle)) toolName = "矩形";
+        else if (tool == m_toolManager->getTool(ToolType::Ellipse)) toolName = "椭圆";
+        else if (tool == m_toolManager->getTool(ToolType::Bezier)) toolName = "贝塞尔";
+        else if (tool == m_toolManager->getTool(ToolType::NodeEdit)) toolName = "节点编辑";
+        
+        m_statusLabel->setText(QString("工具已更改: %1").arg(toolName));
+    }
     
     // 初始化UI状态
     updateUI();
 }
-
-
+}
 
 void MainWindow::newFile()
 {
@@ -1322,6 +1357,11 @@ void MainWindow::newFile()
     m_scene->clearScene();
     m_currentFile.clear();
     m_isModified = false;
+    
+    // 设置快捷键管理器的场景引用
+    if (m_shortcutManager) {
+        m_shortcutManager->setScene(m_scene);
+    }
     
     // 清除所有图层
     if (m_layerManager) {
@@ -1364,8 +1404,8 @@ void MainWindow::openFile()
         }
         
         // 重置当前工具
-        if (m_outlinePreviewTool) {
-            setCurrentTool(m_outlinePreviewTool);
+        if (m_toolManager) {
+            m_toolManager->switchTool(ToolType::Select);
         }
         
         if (fileInfo.suffix().toLower() == "svg")
@@ -1468,79 +1508,72 @@ void MainWindow::redo()
 
 void MainWindow::selectTool()
 {
-    setCurrentTool(m_outlinePreviewTool);
+    if (m_toolManager) m_toolManager->switchTool(ToolType::Select);
 }
-
-
 
 void MainWindow::rectangleTool()
 {
-    setCurrentTool(m_rectangleTool);
+    if (m_toolManager) m_toolManager->switchTool(ToolType::Rectangle);
 }
 
 void MainWindow::ellipseTool()
 {
-    setCurrentTool(m_ellipseTool);
+    if (m_toolManager) m_toolManager->switchTool(ToolType::Ellipse);
 }
 
 void MainWindow::bezierTool()
 {
-    setCurrentTool(m_bezierTool);
+    if (m_toolManager) m_toolManager->switchTool(ToolType::Bezier);
 }
-
-
 
 void MainWindow::nodeEditTool()
 {
-    setCurrentTool(m_nodeEditTool);
+    if (m_toolManager) m_toolManager->switchTool(ToolType::NodeEdit);
 }
-
-
 
 void MainWindow::polylineTool()
 {
-    setCurrentTool(m_polylineTool);
+    if (m_toolManager) m_toolManager->switchTool(ToolType::Polyline);
 }
 
 void MainWindow::polygonTool()
 {
-    setCurrentTool(m_polygonTool);
+    if (m_toolManager) m_toolManager->switchTool(ToolType::Polygon);
 }
 
 void MainWindow::brushTool()
 {
-    setCurrentTool(m_brushTool);
+    if (m_toolManager) m_toolManager->switchTool(ToolType::Brush);
 }
 
 void MainWindow::fillTool()
 {
-    setCurrentTool(m_fillTool);
+    if (m_toolManager) m_toolManager->switchTool(ToolType::Fill);
 }
 
 void MainWindow::gradientFillTool()
 {
-    setCurrentTool(m_gradientFillTool);
+    if (m_toolManager) m_toolManager->switchTool(ToolType::GradientFill);
 }
 
 void MainWindow::penTool()
 {
-    setCurrentTool(m_penTool);
+    if (m_toolManager) m_toolManager->switchTool(ToolType::Pen);
 }
 
 void MainWindow::eraserTool()
 {
-    setCurrentTool(m_eraserTool);
+    if (m_toolManager) m_toolManager->switchTool(ToolType::Eraser);
 }
 
 void MainWindow::lineTool()
 {
-    setCurrentTool(m_lineTool);
+    if (m_toolManager) m_toolManager->switchTool(ToolType::Line);
 }
 
 void MainWindow::pathEditTool()
 {
-    // 直接切换到路径编辑工具，让它处理所有逻辑
-    setCurrentTool(m_pathEditTool);
+    if (m_toolManager) m_toolManager->switchTool(ToolType::PathEdit);
 }
 
 void MainWindow::textTool()
@@ -1555,8 +1588,8 @@ void MainWindow::textTool()
 // 工具面板槽函数实现
 void MainWindow::onBrushSizeChanged(int size)
 {
-    if (m_brushTool) {
-        DrawingToolBrush *brushTool = qobject_cast<DrawingToolBrush*>(m_brushTool);
+    if (m_toolManager) {
+        auto brushTool = m_toolManager->getToolAs<DrawingToolBrush>(ToolType::Brush);
         if (brushTool) {
             brushTool->setBrushWidth(size);
         }
@@ -1571,8 +1604,8 @@ void MainWindow::onBrushOpacityChanged(int opacity)
 
 void MainWindow::onBrushSmoothingChanged(int smoothing)
 {
-    if (m_brushTool) {
-        DrawingToolBrush *brushTool = qobject_cast<DrawingToolBrush*>(m_brushTool);
+    if (m_toolManager) {
+        auto brushTool = m_toolManager->getToolAs<DrawingToolBrush>(ToolType::Brush);
         if (brushTool) {
             brushTool->setSmoothness(smoothing / 100.0); // 转换为0-1范围
         }
@@ -1581,8 +1614,8 @@ void MainWindow::onBrushSmoothingChanged(int smoothing)
 
 void MainWindow::onEraserSizeChanged(int size)
 {
-    if (m_eraserTool) {
-        DrawingToolEraser *eraserTool = qobject_cast<DrawingToolEraser*>(m_eraserTool);
+    if (m_toolManager) {
+        auto eraserTool = m_toolManager->getToolAs<DrawingToolEraser>(ToolType::Eraser);
         if (eraserTool) {
             eraserTool->setEraserSize(size);
         }
@@ -1591,8 +1624,8 @@ void MainWindow::onEraserSizeChanged(int size)
 
 void MainWindow::onFillToleranceChanged(int tolerance)
 {
-    if (m_fillTool) {
-        DrawingToolFill *fillTool = qobject_cast<DrawingToolFill*>(m_fillTool);
+    if (m_toolManager) {
+        auto fillTool = m_toolManager->getToolAs<DrawingToolFill>(ToolType::Fill);
         if (fillTool) {
             fillTool->setTolerance(tolerance);
         }
@@ -1602,8 +1635,8 @@ void MainWindow::onFillToleranceChanged(int tolerance)
 void MainWindow::onStrokeWidthChanged(double width)
 {
     // 应用到钢笔工具
-    if (m_penTool) {
-        DrawingToolPen *penTool = qobject_cast<DrawingToolPen*>(m_penTool);
+    if (m_toolManager) {
+        auto penTool = m_toolManager->getToolAs<DrawingToolPen>(ToolType::Pen);
         if (penTool) {
             penTool->setBrushWidth(width);
         }
@@ -1627,8 +1660,8 @@ void MainWindow::onSnapToGridChanged(bool enabled)
 
 void MainWindow::onPenPressureSupportChanged(bool enabled)
 {
-    if (m_penTool) {
-        DrawingToolPen *penTool = qobject_cast<DrawingToolPen*>(m_penTool);
+    if (m_toolManager) {
+        auto penTool = m_toolManager->getToolAs<DrawingToolPen>(ToolType::Pen);
         if (penTool) {
             penTool->togglePressureSupport(enabled);
         }
@@ -1780,6 +1813,51 @@ void MainWindow::copySelected()
     m_statusLabel->setText(QString("已复制 %1 个项目").arg(selected.size()));
 }
 
+// 粘贴撤销命令类
+class PasteCommand : public QUndoCommand
+{
+public:
+    PasteCommand(DrawingScene *scene, const QList<QGraphicsItem*>& items, QUndoCommand *parent = nullptr)
+        : QUndoCommand("粘贴", parent), m_scene(scene), m_items(items)
+    {
+    }
+    
+    ~PasteCommand() override
+    {
+        // 析构时删除所有对象，防止内存泄漏
+        for (QGraphicsItem *item : m_items) {
+            if (item) {
+                delete item;
+            }
+        }
+    }
+
+    void undo() override
+    {
+        for (QGraphicsItem *item : m_items) {
+            if (item && item->scene()) {
+                m_scene->removeItem(item);
+                // 不要删除对象，只是从场景中移除
+            }
+        }
+        m_scene->setModified(true);
+    }
+
+    void redo() override
+    {
+        for (QGraphicsItem *item : m_items) {
+            if (item && !item->scene()) {
+                m_scene->addItem(item);
+            }
+        }
+        m_scene->setModified(true);
+    }
+
+private:
+    DrawingScene *m_scene;
+    QList<QGraphicsItem*> m_items;
+};
+
 void MainWindow::paste()
 {
     if (!m_scene)
@@ -1836,6 +1914,9 @@ void MainWindow::paste()
     
     // 偏移量，避免完全重叠
     QPointF offset(20, 20);
+    
+    // 存储创建的项目用于撤销命令
+    QList<QGraphicsItem*> pastedItems;
     
     // 解析并创建图形
     for (const QString &objStr : objectStrings) {
@@ -2009,13 +2090,18 @@ void MainWindow::paste()
                 }
             }
             
-            m_scene->addItem(shape);
+            // 添加到粘贴项目列表，而不是直接添加到场景
+            pastedItems.append(shape);
             shape->setSelected(true);
         }
     }
     
-    m_scene->setModified(true);
-    m_statusLabel->setText(QString("已粘贴 %1 个项目").arg(objectStrings.size()));
+    // 创建撤销命令并执行
+    if (!pastedItems.isEmpty()) {
+        PasteCommand *command = new PasteCommand(m_scene, pastedItems);
+        m_scene->undoStack()->push(command);
+        m_statusLabel->setText(QString("已粘贴 %1 个项目").arg(pastedItems.size()));
+    }
 }
 
 void MainWindow::duplicate()
@@ -2023,6 +2109,227 @@ void MainWindow::duplicate()
     // 快速复制粘贴：先复制，然后立即粘贴
     copySelected();
     paste();
+}
+
+void MainWindow::applyBlurEffect()
+{
+    if (!m_scene)
+        return;
+
+    QList<QGraphicsItem *> selected = m_scene->selectedItems();
+    if (selected.isEmpty())
+        return;
+
+    // 使用默认模糊半径
+    qreal radius = 5.0;
+
+    // 创建撤销命令
+    class FilterChangeCommand : public QUndoCommand {
+    public:
+        FilterChangeCommand(DrawingScene *scene, const QList<QGraphicsItem*>& items, 
+                          qreal radius, QUndoCommand *parent = nullptr)
+            : QUndoCommand("应用高斯模糊", parent), m_scene(scene), m_items(items), m_radius(radius)
+        {
+            // 保存原始状态
+            for (QGraphicsItem *item : items) {
+                DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(item);
+                if (shape) {
+                    QGraphicsEffect *effect = shape->graphicsEffect();
+                    if (QGraphicsBlurEffect *blur = qobject_cast<QGraphicsBlurEffect*>(effect)) {
+                        QGraphicsBlurEffect *newBlur = new QGraphicsBlurEffect();
+                        newBlur->setBlurRadius(blur->blurRadius());
+                        m_originalEffects[item] = newBlur;
+                    } else if (QGraphicsDropShadowEffect *shadow = qobject_cast<QGraphicsDropShadowEffect*>(effect)) {
+                        QGraphicsDropShadowEffect *newShadow = new QGraphicsDropShadowEffect();
+                        newShadow->setColor(shadow->color());
+                        newShadow->setBlurRadius(shadow->blurRadius());
+                        newShadow->setOffset(shadow->offset());
+                        m_originalEffects[item] = newShadow;
+                    } else {
+                        m_originalEffects[item] = nullptr;
+                    }
+                }
+            }
+        }
+
+        void undo() override {
+            for (QGraphicsItem *item : m_items) {
+                DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(item);
+                if (shape && m_originalEffects.contains(item)) {
+                    shape->setGraphicsEffect(m_originalEffects[item]);
+                }
+            }
+            if (m_scene) m_scene->setModified(true);
+        }
+
+        void redo() override {
+            for (QGraphicsItem *item : m_items) {
+                DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(item);
+                if (shape) {
+                    shape->setBlurEffect(m_radius);
+                }
+            }
+            if (m_scene) m_scene->setModified(true);
+        }
+
+    private:
+        DrawingScene *m_scene;
+        QList<QGraphicsItem*> m_items;
+        qreal m_radius;
+        QHash<QGraphicsItem*, QGraphicsEffect*> m_originalEffects;
+    };
+
+    FilterChangeCommand *command = new FilterChangeCommand(m_scene, selected, radius);
+    m_scene->undoStack()->push(command);
+    m_statusLabel->setText(QString("已应用高斯模糊到 %1 个对象").arg(selected.size()));
+}
+
+void MainWindow::applyDropShadowEffect()
+{
+    if (!m_scene)
+        return;
+
+    QList<QGraphicsItem *> selected = m_scene->selectedItems();
+    if (selected.isEmpty())
+        return;
+
+    // 使用默认阴影参数
+    QColor color = Qt::black;
+    qreal blurRadius = 3.0;
+    qreal offsetX = 3.0;
+    qreal offsetY = 3.0;
+
+    // 创建撤销命令
+    class ShadowFilterCommand : public QUndoCommand {
+    public:
+        ShadowFilterCommand(DrawingScene *scene, const QList<QGraphicsItem*>& items, 
+                           const QColor &color, qreal blurRadius, const QPointF &offset,
+                           QUndoCommand *parent = nullptr)
+            : QUndoCommand("应用阴影效果", parent), m_scene(scene), m_items(items), 
+              m_color(color), m_blurRadius(blurRadius), m_offset(offset)
+        {
+            // 保存原始状态
+            for (QGraphicsItem *item : items) {
+                DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(item);
+                if (shape) {
+                    QGraphicsEffect *effect = shape->graphicsEffect();
+                    if (QGraphicsBlurEffect *blur = qobject_cast<QGraphicsBlurEffect*>(effect)) {
+                        QGraphicsBlurEffect *newBlur = new QGraphicsBlurEffect();
+                        newBlur->setBlurRadius(blur->blurRadius());
+                        m_originalEffects[item] = newBlur;
+                    } else if (QGraphicsDropShadowEffect *shadow = qobject_cast<QGraphicsDropShadowEffect*>(effect)) {
+                        QGraphicsDropShadowEffect *newShadow = new QGraphicsDropShadowEffect();
+                        newShadow->setColor(shadow->color());
+                        newShadow->setBlurRadius(shadow->blurRadius());
+                        newShadow->setOffset(shadow->offset());
+                        m_originalEffects[item] = newShadow;
+                    } else {
+                        m_originalEffects[item] = nullptr;
+                    }
+                }
+            }
+        }
+
+        void undo() override {
+            for (QGraphicsItem *item : m_items) {
+                DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(item);
+                if (shape && m_originalEffects.contains(item)) {
+                    shape->setGraphicsEffect(m_originalEffects[item]);
+                }
+            }
+            if (m_scene) m_scene->setModified(true);
+        }
+
+        void redo() override {
+            for (QGraphicsItem *item : m_items) {
+                DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(item);
+                if (shape) {
+                    shape->setDropShadowEffect(m_color, m_blurRadius, m_offset);
+                }
+            }
+            if (m_scene) m_scene->setModified(true);
+        }
+
+    private:
+        DrawingScene *m_scene;
+        QList<QGraphicsItem*> m_items;
+        QColor m_color;
+        qreal m_blurRadius;
+        QPointF m_offset;
+        QHash<QGraphicsItem*, QGraphicsEffect*> m_originalEffects;
+    };
+
+    ShadowFilterCommand *command = new ShadowFilterCommand(m_scene, selected, color, blurRadius, QPointF(offsetX, offsetY));
+    m_scene->undoStack()->push(command);
+    m_statusLabel->setText(QString("已应用阴影效果到 %1 个对象").arg(selected.size()));
+}
+
+void MainWindow::clearFilterEffect()
+{
+    if (!m_scene)
+        return;
+
+    QList<QGraphicsItem *> selected = m_scene->selectedItems();
+    if (selected.isEmpty())
+        return;
+
+    // 创建撤销命令
+    class ClearFilterCommand : public QUndoCommand {
+    public:
+        ClearFilterCommand(DrawingScene *scene, const QList<QGraphicsItem*>& items, QUndoCommand *parent = nullptr)
+            : QUndoCommand("清除滤镜", parent), m_scene(scene), m_items(items)
+        {
+            // 保存原始状态
+            for (QGraphicsItem *item : items) {
+                DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(item);
+                if (shape) {
+                    QGraphicsEffect *effect = shape->graphicsEffect();
+                    if (QGraphicsBlurEffect *blur = qobject_cast<QGraphicsBlurEffect*>(effect)) {
+                        QGraphicsBlurEffect *newBlur = new QGraphicsBlurEffect();
+                        newBlur->setBlurRadius(blur->blurRadius());
+                        m_originalEffects[item] = newBlur;
+                    } else if (QGraphicsDropShadowEffect *shadow = qobject_cast<QGraphicsDropShadowEffect*>(effect)) {
+                        QGraphicsDropShadowEffect *newShadow = new QGraphicsDropShadowEffect();
+                        newShadow->setColor(shadow->color());
+                        newShadow->setBlurRadius(shadow->blurRadius());
+                        newShadow->setOffset(shadow->offset());
+                        m_originalEffects[item] = newShadow;
+                    } else {
+                        m_originalEffects[item] = nullptr;
+                    }
+                }
+            }
+        }
+
+        void undo() override {
+            for (QGraphicsItem *item : m_items) {
+                DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(item);
+                if (shape && m_originalEffects.contains(item)) {
+                    shape->setGraphicsEffect(m_originalEffects[item]);
+                }
+            }
+            if (m_scene) m_scene->setModified(true);
+        }
+
+        void redo() override {
+            for (QGraphicsItem *item : m_items) {
+                DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(item);
+                if (shape) {
+                    shape->clearFilter();
+                }
+            }
+            if (m_scene) m_scene->setModified(true);
+        }
+
+    private:
+        DrawingScene *m_scene;
+        QList<QGraphicsItem*> m_items;
+        QHash<QGraphicsItem*, QGraphicsEffect*> m_originalEffects;
+    };
+
+    ClearFilterCommand *command = new ClearFilterCommand(m_scene, selected);
+    m_scene->undoStack()->push(command);
+    m_statusLabel->setText(QString("已清除 %1 个对象的滤镜效果").arg(selected.size()));
 }
 
 void MainWindow::convertTextToPath()
@@ -2438,19 +2745,35 @@ void MainWindow::onSceneChanged()
 
 void MainWindow::mouseMoveEvent(QMouseEvent *event)
 {
-    // 更新标尺显示鼠标位置
-    if (m_canvas && m_canvas->view() && m_horizontalRuler && m_verticalRuler)
-    {
-        // 获取鼠标在视图中的位置
-        QPoint viewPos = event->pos();
-        m_horizontalRuler->setMousePos(QPointF(viewPos.x(), viewPos.y()));
-        m_verticalRuler->setMousePos(QPointF(viewPos.x(), viewPos.y()));
-        
-        // 触发重绘
-        m_horizontalRuler->update();
-        m_verticalRuler->update();
-    }
+    // 可以在这里处理鼠标移动事件
     QMainWindow::mouseMoveEvent(event);
+}
+
+void MainWindow::keyPressEvent(QKeyEvent *event)
+{
+    // 让快捷键管理器处理所有快捷键
+    if (m_shortcutManager) {
+        QKeySequence key(event->key() | (event->modifiers() & Qt::KeyboardModifierMask));
+        if (m_shortcutManager->handleKeyPress(key)) {
+            return; // 快捷键管理器已处理
+        }
+    }
+    
+    // 如果快捷键管理器没有处理，传递给基类
+    QMainWindow::keyPressEvent(event);
+}
+
+void MainWindow::keyReleaseEvent(QKeyEvent *event)
+{
+    // 让快捷键管理器处理按键释放
+    if (m_shortcutManager) {
+        QKeySequence key(event->key() | (event->modifiers() & Qt::KeyboardModifierMask));
+        if (m_shortcutManager->handleKeyRelease(key)) {
+            return; // 快捷键管理器已处理
+        }
+    }
+    
+    QMainWindow::keyReleaseEvent(event);
 }
 
 void MainWindow::updateUI()
@@ -2615,6 +2938,15 @@ void MainWindow::showContextMenu(const QPointF &pos)
     contextMenu.addAction(m_pasteAction);
     contextMenu.addAction(m_duplicateAction);
     contextMenu.addSeparator();
+    
+    // 添加滤镜子菜单
+    QMenu *filterContextMenu = contextMenu.addMenu("滤镜");
+    filterContextMenu->addAction(m_blurEffectAction);
+    filterContextMenu->addAction(m_dropShadowEffectAction);
+    filterContextMenu->addSeparator();
+    filterContextMenu->addAction(m_clearFilterAction);
+    contextMenu.addSeparator();
+    
     contextMenu.addAction(m_deleteAction);
     contextMenu.addSeparator();
     

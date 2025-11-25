@@ -21,6 +21,11 @@ class DrawingToolBrush : public ToolBase
 public:
     explicit DrawingToolBrush(QObject *parent = nullptr);
     
+    // 工具属性
+    QString toolName() const override { return "画笔"; }
+    QString toolDescription() const override { return "自由绘制工具"; }
+    QString toolCategory() const override { return "绘制"; }
+    
     // 获取工具光标类型
     CursorManager::CursorType getCursorType() const override { return CursorManager::BrushCursor; }
     

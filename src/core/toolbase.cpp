@@ -14,25 +14,67 @@ ToolBase::ToolBase(QObject *parent)
     : QObject(parent)
     , m_scene(nullptr)
     , m_view(nullptr)
+    , m_state(ToolState::Inactive)
 {
 }
 
 void ToolBase::activate(DrawingScene *scene, DrawingView *view)
 {
+    if (m_state == ToolState::Active) {
+        return; // 已经激活
+    }
+    
+    setState(ToolState::Activating);
+    
     m_scene = scene;
     m_view = view;
     
     // 设置工具光标
     setToolCursor();
+    
+    setState(ToolState::Active);
+    onActivated();
+    emit activated();
 }
 
 void ToolBase::deactivate()
 {
+    if (m_state == ToolState::Inactive || m_state == ToolState::Deactivating) {
+        return; // 已经未激活或正在停用
+    }
+    
+    if (!canDeactivate()) {
+        return; // 不允许停用
+    }
+    
+    setState(ToolState::Deactivating);
+    
     // 恢复默认光标
     restoreDefaultCursor();
     
+    onDeactivated();
+    setState(ToolState::Inactive);
+    emit deactivated();
+    
     m_scene = nullptr;
     m_view = nullptr;
+}
+
+void ToolBase::cleanup()
+{
+    if (m_state != ToolState::Inactive) {
+        deactivate();
+    }
+}
+
+void ToolBase::setState(ToolState newState)
+{
+    if (m_state != newState) {
+        ToolState oldState = m_state;
+        m_state = newState;
+        onStateChanged(oldState, newState);
+        emit stateChanged(oldState, newState);
+    }
 }
 
 void ToolBase::setToolCursor()
@@ -319,6 +361,18 @@ bool LegacyRectangleTool::mouseReleaseEvent(QMouseEvent *event, const QPointF &s
                                     }
                                 }
                                 m_item->setVisible(true);
+                                
+                                // 自动选中新创建的图形
+                                m_item->setSelected(true);
+                                
+                                // 清除其他选中项
+                                if (m_scene) {
+                                    for (QGraphicsItem *item : m_scene->selectedItems()) {
+                                        if (item != m_item) {
+                                            item->setSelected(false);
+                                        }
+                                    }
+                                }
                             }
                             
                             // 通知图层内容变化
@@ -581,6 +635,18 @@ bool LegacyEllipseTool::mouseReleaseEvent(QMouseEvent *event, const QPointF &sce
                                     }
                                 }
                                 m_item->setVisible(true);
+                                
+                                // 自动选中新创建的图形
+                                m_item->setSelected(true);
+                                
+                                // 清除其他选中项
+                                if (m_scene) {
+                                    for (QGraphicsItem *item : m_scene->selectedItems()) {
+                                        if (item != m_item) {
+                                            item->setSelected(false);
+                                        }
+                                    }
+                                }
                             }
                             
                             // 通知图层内容变化

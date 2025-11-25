@@ -224,6 +224,18 @@ bool DrawingToolBrush::mouseReleaseEvent(QMouseEvent *event, const QPointF &scen
                                 m_layer->addShape(static_cast<DrawingShape*>(m_path));
                                 m_path->setVisible(true);
                                 
+                                // 自动选中新创建的图形
+                                m_path->setSelected(true);
+                                
+                                // 清除其他选中项
+                                if (m_scene) {
+                                    for (QGraphicsItem *item : m_scene->selectedItems()) {
+                                        if (item != m_path) {
+                                            item->setSelected(false);
+                                        }
+                                    }
+                                }
+                                
                                 // 通知图层内容变化
                                 LayerManager *layerManager = LayerManager::instance();
                                 if (layerManager) {

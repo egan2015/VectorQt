@@ -150,14 +150,7 @@ void OutlinePreviewTransformTool::activate(DrawingScene *scene, DrawingView *vie
 
         // 初始显示手柄和轮廓
         updateHandlePositions();
-
-        // 创建轮廓预览（如果还没有创建）
-        if (!m_outlinePreview) {
-            createVisualHelpers();
-        } else {
-            // 如果已存在，更新轮廓
-            updateOutlinePreview();
-        }
+     
     }
 }
 

@@ -11,7 +11,16 @@ DrawingView::DrawingView(QGraphicsScene *scene, QWidget *parent)
     , m_zoomLevel(1.0)
     , m_currentTool(nullptr)
 {
+    // Qt原生渲染优化
     setRenderHint(QPainter::Antialiasing);
+    setRenderHint(QPainter::SmoothPixmapTransform);
+    setRenderHint(QPainter::TextAntialiasing);
+    
+    // 视图优化标志
+    setOptimizationFlag(QGraphicsView::DontSavePainterState, true);
+    setOptimizationFlag(QGraphicsView::DontAdjustForAntialiasing, true);
+    setViewportUpdateMode(QGraphicsView::MinimalViewportUpdate);
+    
     setDragMode(RubberBandDrag);
     setMouseTracking(true);
     

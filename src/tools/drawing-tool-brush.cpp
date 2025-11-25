@@ -28,6 +28,24 @@ DrawingToolBrush::DrawingToolBrush(QObject *parent)
     m_throttle->setThrottleInterval(16);  // 60fps
     m_throttle->setDistanceThreshold(1.5);  // 1.5像素阈值
     m_throttle->setMaxPendingEvents(8);     // 最多缓存8个事件
+    
+    // 设置DrawingPath对象池的重置函数
+    auto pathPool = GlobalObjectPoolManager::instance().getPool<DrawingPath>();
+    pathPool->setResetFunction([](DrawingPath* path) {
+        if (path) {
+            // 重置路径状态
+            path->setPath(QPainterPath());
+            path->setControlPoints(QVector<QPointF>());
+            path->setControlPointTypes(QVector<QPainterPath::ElementType>());
+            path->setShowControlPolygon(false);
+            path->clearHighlights();
+            path->setSelected(false);
+            path->setVisible(true);
+            path->setPos(0, 0);
+            path->setTransform(QTransform());
+            path->setZValue(0);
+        }
+    });
 }
 
 void DrawingToolBrush::activate(DrawingScene *scene, DrawingView *view)
@@ -204,12 +222,23 @@ bool DrawingToolBrush::mouseReleaseEvent(QMouseEvent *event, const QPointF &scen
                     {
                     public:
                         BrushAddCommand(DrawingScene *scene, DrawingPath *path, DrawingLayer *layer, QUndoCommand *parent = nullptr)
-                            : QUndoCommand("添加画笔", parent), m_scene(scene), m_path(path), m_layer(layer) {}
+                            : QUndoCommand("添加画笔", parent), m_scene(scene), m_path(path), m_layer(layer), m_pathOwnedByCommand(false) {}
+                        
+                        ~BrushAddCommand() {
+                            // 如果命令拥有路径对象且路径不在场景中，则归还到对象池
+                            if (m_pathOwnedByCommand && m_path && !m_path->scene()) {
+                                GlobalObjectPoolManager::instance().getPool<DrawingPath>()->release(m_path);
+                            }
+                        }
                         
                         void undo() override {
                             if (m_path && m_layer) {
                                 m_layer->removeShape(static_cast<DrawingShape*>(m_path));
                                 m_path->setVisible(false);
+                                m_path->setSelected(false); // 取消选中状态
+                                
+                                // 命令现在拥有路径对象的责任
+                                m_pathOwnedByCommand = true;
                                 
                                 // 通知图层内容变化
                                 LayerManager *layerManager = LayerManager::instance();
@@ -236,6 +265,9 @@ bool DrawingToolBrush::mouseReleaseEvent(QMouseEvent *event, const QPointF &scen
                                     }
                                 }
                                 
+                                // 路径现在由图层管理，命令不再拥有
+                                m_pathOwnedByCommand = false;
+                                
                                 // 通知图层内容变化
                                 LayerManager *layerManager = LayerManager::instance();
                                 if (layerManager) {
@@ -248,6 +280,7 @@ bool DrawingToolBrush::mouseReleaseEvent(QMouseEvent *event, const QPointF &scen
                         DrawingScene *m_scene;
                         DrawingPath *m_path;
                         DrawingLayer *m_layer;
+                        bool m_pathOwnedByCommand; // 标记命令是否拥有路径对象
                     };
                     
                     // 创建并推送撤销命令

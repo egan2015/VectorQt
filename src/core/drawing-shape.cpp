@@ -67,6 +67,12 @@ DrawingShape::DrawingShape(ShapeType type, QGraphicsItem *parent)
     setFlags(QGraphicsItem::ItemIsSelectable | 
              QGraphicsItem::ItemIsMovable | 
              QGraphicsItem::ItemSendsGeometryChanges);
+    
+    // Qt原生渲染优化 - 启用设备缓存
+    setCacheMode(QGraphicsItem::DeviceCoordinateCache);
+    
+    // 根据图形复杂度设置不同的缓存策略
+    setupCacheMode();
 }
 
 DrawingShape::~DrawingShape()
@@ -120,13 +126,49 @@ void DrawingShape::bakeTransform(const QTransform &transform)
 
 void DrawingShape::notifyObjectStateChanged()
 {
-    // 通知场景对象状态已变化
-    if (scene()) {
-        DrawingScene *drawingScene = qobject_cast<DrawingScene*>(scene());
-        if (drawingScene) {
-            emit drawingScene->objectStateChanged(this);
-        }
+    DrawingScene* drawingScene = qobject_cast<DrawingScene*>(scene());
+    if (drawingScene) {
+        emit drawingScene->objectStateChanged(this);
     }
+}
+
+void DrawingShape::setupCacheMode()
+{
+    // 根据图形类型和复杂度设置缓存策略
+    switch (shapeType()) {
+        case DrawingShape::Rectangle:
+        case DrawingShape::Ellipse:
+            // 简单图形使用设备缓存
+            setCacheMode(QGraphicsItem::DeviceCoordinateCache);
+            break;
+            
+        case DrawingShape::Path:
+            // 复杂路径使用项缓存
+            setCacheMode(QGraphicsItem::ItemCoordinateCache);
+            break;
+            
+        case DrawingShape::Group:
+            // 组合图形不使用缓存，因为子项会自己管理
+            setCacheMode(QGraphicsItem::NoCache);
+            break;
+            
+        default:
+            // 默认使用设备缓存
+            setCacheMode(QGraphicsItem::DeviceCoordinateCache);
+            break;
+    }
+}
+
+void DrawingShape::updateCacheMode()
+{
+    // 清除当前缓存
+    if (cacheMode() != QGraphicsItem::NoCache) {
+        setCacheMode(QGraphicsItem::NoCache);
+        update();
+    }
+    
+    // 重新设置缓存模式
+    setupCacheMode();
 }
 
 void DrawingShape::rotateAroundAnchor(double angle, const QPointF &center)

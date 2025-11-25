@@ -171,6 +171,10 @@ public:
 // 渲染
     void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget) override;
     
+    // 缓存优化
+    void setupCacheMode();
+    void updateCacheMode();
+    
 protected:
     QVariant itemChange(GraphicsItemChange change, const QVariant &value) override;
     

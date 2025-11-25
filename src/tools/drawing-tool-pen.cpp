@@ -16,6 +16,7 @@
 #include "../core/drawing-shape.h"
 #include "../core/drawing-layer.h"
 #include "../core/layer-manager.h"
+#include "../core/object-pool.h"
 #include "../ui/mainwindow.h"
 #include "../ui/colorpalette.h"
 

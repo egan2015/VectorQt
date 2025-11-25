@@ -105,6 +105,10 @@ public:
             if (m_item->scene() == m_scene) {
                 m_scene->removeItem(m_item);
                 m_item->setVisible(false);
+                
+                // 发送清理所有手柄信号，通知所有工具清理手柄
+                emit m_scene->allToolsClearHandles();
+                
                 qDebug() << "RemoveItemCommand::redo - removed item from scene";
             }
         }

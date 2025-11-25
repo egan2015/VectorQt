@@ -5,6 +5,7 @@
 #include "../tools/drawing-tool-bezier.h"
 #include "../ui/drawingscene.h"
 #include "../core/drawing-shape.h"
+#include "../core/object-pool.h"
 
 DrawingBezierTool::DrawingBezierTool(QObject *parent)
     : ToolBase(parent)
@@ -13,20 +14,38 @@ DrawingBezierTool::DrawingBezierTool(QObject *parent)
     , m_currentItem(nullptr)
     , m_previewItem(nullptr)
 {
+    // 设置DrawingPath对象池的重置函数
+    auto pathPool = GlobalObjectPoolManager::instance().getPool<DrawingPath>();
+    pathPool->setResetFunction([](DrawingPath* path) {
+        if (path) {
+            // 重置路径状态
+            path->setPath(QPainterPath());
+            path->setControlPoints(QVector<QPointF>());
+            path->setControlPointTypes(QVector<QPainterPath::ElementType>());
+            path->setShowControlPolygon(false);
+            path->clearHighlights();
+            path->setSelected(false);
+            path->setVisible(true);
+            path->setPos(0, 0);
+            path->setTransform(QTransform());
+            path->setZValue(0);
+        }
+    });
 }
 
 DrawingBezierTool::~DrawingBezierTool()
 {
     // 确保清理所有资源
     if (m_currentPath) {
+        // m_currentPath是QPainterPath，不需要归还到对象池
         delete m_currentPath;
         m_currentPath = nullptr;
     }
     
     // 清理预览项（如果存在）
     if (m_previewItem) {
-        // 注意：在析构时，场景可能已经被销毁，所以我们只删除对象而不从场景中移除
-        delete m_previewItem;
+        // 注意：在析构时，场景可能已经被销毁，只归还到对象池
+        GlobalObjectPoolManager::instance().getPool<DrawingPath>()->release(m_previewItem);
         m_previewItem = nullptr;
     }
     
@@ -67,7 +86,7 @@ bool DrawingBezierTool::mousePressEvent(QMouseEvent *event, const QPointF &scene
             
             // 创建预览项
             if (!m_previewItem) {
-                m_previewItem = new DrawingPath();
+                m_previewItem = GlobalObjectPoolManager::instance().getPool<DrawingPath>()->acquire();
                 m_previewItem->setStrokePen(QPen(Qt::blue, 2, Qt::DashLine));
                 m_previewItem->setFillBrush(Qt::NoBrush);
                 if (m_scene) {
@@ -211,7 +230,8 @@ void DrawingBezierTool::deactivate()
             if (m_scene) {
                 m_scene->removeItem(m_previewItem);
             }
-            delete m_previewItem;
+            // 归还到对象池
+            GlobalObjectPoolManager::instance().getPool<DrawingPath>()->release(m_previewItem);
             m_previewItem = nullptr;
         }
     }
@@ -294,7 +314,7 @@ void DrawingBezierTool::finishDrawing()
         }
         
         // 创建最终的路径图形
-        m_currentItem = new DrawingPath();
+        m_currentItem = GlobalObjectPoolManager::instance().getPool<DrawingPath>()->acquire();
         if (qobject_cast<DrawingScene*>(m_scene) && qobject_cast<DrawingScene*>(m_scene)->isGridAlignmentEnabled()) {
             m_currentItem->setPath(alignedPath);
         } else {
@@ -343,6 +363,16 @@ void DrawingBezierTool::finishDrawing()
                 void redo() override {
                     m_scene->addItem(m_item);
                     m_item->setVisible(true);
+                    
+                    // 自动选中新创建的图形
+                    m_item->setSelected(true);
+                    
+                    // 清除其他选中项
+                    for (QGraphicsItem *item : m_scene->selectedItems()) {
+                        if (item != m_item) {
+                            item->setSelected(false);
+                        }
+                    }
                 }
                 
             private:
@@ -363,7 +393,8 @@ void DrawingBezierTool::finishDrawing()
         if (m_scene) {
             m_scene->removeItem(m_previewItem);
         }
-        delete m_previewItem;
+        // 归还到对象池
+        GlobalObjectPoolManager::instance().getPool<DrawingPath>()->release(m_previewItem);
         m_previewItem = nullptr;
     }
     

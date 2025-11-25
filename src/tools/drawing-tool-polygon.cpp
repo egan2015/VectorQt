@@ -109,6 +109,16 @@ bool DrawingToolPolygon::mouseDoubleClickEvent(QMouseEvent *event, const QPointF
                 void redo() override {
                     m_scene->addItem(m_item);
                     m_item->setVisible(true);
+                    
+                    // 自动选中新创建的图形
+                    m_item->setSelected(true);
+                    
+                    // 清除其他选中项
+                    for (QGraphicsItem *item : m_scene->selectedItems()) {
+                        if (item != m_item) {
+                            item->setSelected(false);
+                        }
+                    }
                 }
                 
             private:

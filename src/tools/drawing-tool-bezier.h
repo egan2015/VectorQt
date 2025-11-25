@@ -26,6 +26,11 @@ public:
     explicit DrawingBezierTool(QObject *parent = nullptr);
     ~DrawingBezierTool() override;
 
+    // 工具属性
+    QString toolName() const override { return "贝塞尔"; }
+    QString toolDescription() const override { return "绘制贝塞尔曲线"; }
+    QString toolCategory() const override { return "绘制"; }
+
     // 事件处理 - 重写基类方法
     bool mousePressEvent(QMouseEvent *event, const QPointF &scenePos) override;
     bool mouseDoubleClickEvent(QMouseEvent *event, const QPointF &scenePos) override;

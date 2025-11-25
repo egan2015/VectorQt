@@ -1,10 +1,12 @@
 #pragma once
 
 #include <QQueue>
-#include <QMutex>
+#include <QRecursiveMutex>
 #include <QAtomicInt>
 #include <QDebug>
+#include <QDateTime>
 #include <memory>
+#include <functional>
 
 /**
  * 简化的高性能对象池模板
@@ -16,10 +18,15 @@ public:
     ObjectPool(int maxPoolSize = 50, int initialSize = 10) 
         : m_maxPoolSize(maxPoolSize)
         , m_currentSize(0)
+        , m_hitCount(0)
+        , m_missCount(0)
+        , m_lastAdjustTime(QDateTime::currentMSecsSinceEpoch())
     {
         // 预分配初始对象
         for (int i = 0; i < initialSize && i < maxPoolSize; ++i) {
-            m_pool.enqueue(new T());
+            T* obj = new T();
+            resetObject(obj); // 重置对象状态
+            m_pool.enqueue(obj);
             m_currentSize.ref();
         }
     }
@@ -35,10 +42,17 @@ public:
         if (!m_pool.isEmpty()) {
             T* obj = m_pool.dequeue();
             m_currentSize.deref();
+            m_hitCount.ref();
+            
+            // 定期调整池大小
+            adjustPoolSize();
+            
             return obj;
         }
         
         // 池为空时创建新对象
+        m_missCount.ref();
+        adjustPoolSize();
         return new T();
     }
     
@@ -49,6 +63,7 @@ public:
         QMutexLocker locker(&m_mutex);
         
         if (m_currentSize.loadRelaxed() < m_maxPoolSize) {
+            resetObject(obj); // 重置对象状态
             m_pool.enqueue(obj);
             m_currentSize.ref();
         } else {
@@ -78,16 +93,59 @@ public:
         int toCreate = qMin(count, m_maxPoolSize - m_currentSize.loadRelaxed());
         
         for (int i = 0; i < toCreate; ++i) {
-            m_pool.enqueue(new T());
+            T* obj = new T();
+            resetObject(obj);
+            m_pool.enqueue(obj);
             m_currentSize.ref();
         }
     }
+    
+    // 获取池命中率
+    double getHitRate() const {
+        qint64 total = m_hitCount.loadRelaxed() + m_missCount.loadRelaxed();
+        return total > 0 ? static_cast<double>(m_hitCount.loadRelaxed()) / total : 0.0;
+    }
+    
+    // 设置对象重置函数
+    void setResetFunction(std::function<void(T*)> resetFunc) {
+        m_resetFunction = resetFunc;
+    }
 
 private:
+    // 重置对象状态
+    void resetObject(T* obj) {
+        if (m_resetFunction) {
+            m_resetFunction(obj);
+        }
+    }
+    
+    // 动态调整池大小
+    void adjustPoolSize() {
+        qint64 currentTime = QDateTime::currentMSecsSinceEpoch();
+        if (currentTime - m_lastAdjustTime < 5000) return; // 5秒才调整一次
+        
+        m_lastAdjustTime = currentTime;
+        double hitRate = getHitRate();
+        
+        // 如果命中率低于70%，增加池大小
+        if (hitRate < 0.7 && m_maxPoolSize < 200) {
+            m_maxPoolSize = qMin(200, static_cast<int>(m_maxPoolSize * 1.5));
+            warmUp(5); // 预热5个对象
+        }
+        // 如果命中率高于95%且池很大，可以适当减小
+        else if (hitRate > 0.95 && m_maxPoolSize > 20) {
+            m_maxPoolSize = qMax(20, static_cast<int>(m_maxPoolSize * 0.8));
+        }
+    }
+    
     QQueue<T*> m_pool;
-    QMutex m_mutex;
+    QRecursiveMutex m_mutex;  // 使用递归互斥锁避免死锁
     int m_maxPoolSize;
     QAtomicInt m_currentSize;
+    QAtomicInt m_hitCount;
+    QAtomicInt m_missCount;
+    qint64 m_lastAdjustTime;
+    std::function<void(T*)> m_resetFunction;
 };
 
 /**
@@ -186,7 +244,7 @@ private:
     ~GlobalObjectPoolManager() = default;
     
     QHash<QString, void*> m_pools;  // 使用void*存储不同类型的池
-    QMutex m_mutex;
+    QRecursiveMutex m_mutex;  // 使用递归互斥锁避免死锁
 };
 
 // 便利宏

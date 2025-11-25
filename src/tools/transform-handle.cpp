@@ -60,6 +60,7 @@ void HandleManager::createHandles()
         
         CustomHandleItem *handle = new CustomHandleItem(type);
         handle->setSize(getHandleSize());
+        handle->setSpecificColor(QColor(173, 216, 230, 160)); //浅蓝色
         handle->setZValue(2000);
         handle->setVisible(false);
         handle->setOpacity(0.9);
@@ -98,6 +99,7 @@ void HandleManager::createHandles()
         CustomHandleItem *handle = new CustomHandleItem(type);
         handle->setSize(getHandleSize() * 1.2);
         handle->setStyle(HandleItemBase::RotateCircle); // 旋转手柄用带箭头的空心圆
+        handle->setSpecificColor(QColor(173, 216, 230, 160));
         handle->setZValue(2000);
         handle->setVisible(false);
         handle->setOpacity(0.9);
@@ -119,7 +121,7 @@ void HandleManager::createHandles()
         CustomHandleItem *handle = new CustomHandleItem(type);
         handle->setSize(getHandleSize() * 1.1);
         handle->setStyle(HandleItemBase::Diamond); // 斜切手柄用菱形
-        handle->setSpecificColor(QColor(255, 140, 0, 200)); // 橙色
+        handle->setSpecificColor(QColor(173, 216, 230, 160)); //浅蓝色
         handle->setZValue(2000);
         handle->setVisible(false);
         handle->setOpacity(0.9);

@@ -83,6 +83,7 @@ class CustomHandleItem : public QGraphicsItem, public HandleItemBase
 {
 public:
     explicit CustomHandleItem(TransformHandle::HandleType type, QGraphicsItem *parent = nullptr);
+    CustomHandleItem(); // 默认构造函数，用于ObjectPool
     
     // QGraphicsItem接口
     QRectF boundingRect() const override;
@@ -91,6 +92,9 @@ public:
     // 重写基类方法
     void setState(HandleState state) override;
     void setSize(qreal size) override;
+    
+    // 设置手柄类型（用于ObjectPool）
+    void setHandleType(TransformHandle::HandleType type);
     
     // 鼠标事件处理
     void hoverEnterEvent(QGraphicsSceneHoverEvent *event) override;

@@ -4,6 +4,11 @@
 #include <QGraphicsView>
 
 class ToolBase;
+class ToolManager;
+class ToolSwitchStateMachine;
+
+// 前向声明
+enum class ToolType : int;
 
 class DrawingView : public QGraphicsView
 {
@@ -16,6 +21,10 @@ public:
     void setZoomLevel(double zoom);
     void setCurrentTool(ToolBase *tool);
     ToolBase* currentTool() const { return m_currentTool; }
+    
+    // 设置工具管理器和状态机
+    void setToolManager(ToolManager* toolManager);
+    void setToolSwitchStateMachine(ToolSwitchStateMachine* stateMachine);
     
     void zoomIn();
     void zoomOut();
@@ -39,11 +48,16 @@ protected:
     void keyPressEvent(QKeyEvent *event) override;
     void scrollContentsBy(int dx, int dy) override;
 
+private slots:
+    void onToolSwitchRequested(ToolType newTool);
+    
 private:
     void updateZoomLabel();
     
     double m_zoomLevel;
     ToolBase *m_currentTool;
+    ToolManager* m_toolManager;
+    ToolSwitchStateMachine* m_stateMachine;
 };
 
 #endif // DRAWINGVIEW_H

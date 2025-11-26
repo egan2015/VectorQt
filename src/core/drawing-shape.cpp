@@ -849,16 +849,27 @@ QPointF DrawingEllipse::constrainNodePoint(int index, const QPointF &pos) const
     
     switch (index) {
         case 0: {
-            // 水平半径控制：限制在旋转后的水平轴上
+            // 水平半径控制：限制在椭圆上边的右半部分
             // 将点转换到旋转前的坐标系
             QPointF rotatedPos = localPos - center;
             QPointF unrotatedPos;
             unrotatedPos.setX(rotatedPos.x() * qCos(-rotationRad) - rotatedPos.y() * qSin(-rotationRad));
             unrotatedPos.setY(rotatedPos.x() * qSin(-rotationRad) + rotatedPos.y() * qCos(-rotationRad));
             
-            // 在未旋转坐标系中限制在水平轴上
-            qreal x = qMax(10.0, unrotatedPos.x()); // 最小半径10
-            unrotatedPos.setY(0);
+            // 将点约束到椭圆上边的右半部分（从顶部中点到右边中点）
+            // 计算角度：顶部是-90度，右边是0度，所以范围是-90到0度
+            qreal angle = qAtan2(unrotatedPos.y(), unrotatedPos.x());
+            angle = qDegreesToRadians(qBound(-90.0, qRadiansToDegrees(angle), 0.0));
+            
+            // 计算椭圆边界上的点
+            qreal a = m_rect.width() / 2.0; // 水平半轴
+            qreal b = m_rect.height() / 2.0; // 垂直半轴
+            qreal cosAngle = qCos(angle);
+            qreal sinAngle = qSin(angle);
+            
+            // 椭圆参数方程，但限制在上边右半部分
+            unrotatedPos.setX(a * cosAngle);
+            unrotatedPos.setY(b * sinAngle);
             
             // 转换回旋转后的坐标系
             QPointF finalPos;
@@ -877,7 +888,11 @@ QPointF DrawingEllipse::constrainNodePoint(int index, const QPointF &pos) const
             unrotatedPos.setY(rotatedPos.x() * qSin(-rotationRad) + rotatedPos.y() * qCos(-rotationRad));
             
             // 在未旋转坐标系中限制在垂直轴上
-            qreal y = qMax(10.0, unrotatedPos.y()); // 最小半径10
+            // 允许向两个方向移动，只限制最小半径
+            qreal y = unrotatedPos.y();
+            if (qAbs(y) < 10.0) {
+                y = y >= 0 ? 10.0 : -10.0; // 保持方向，只限制最小半径
+            }
             unrotatedPos.setX(0);
             
             // 转换回旋转后的坐标系

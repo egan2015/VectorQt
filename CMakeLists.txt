@@ -34,11 +34,13 @@ set(SOURCES
     src/core/drawing-layer.cpp
     src/core/drawing-throttle.cpp
     src/core/brush-engine.cpp
+    src/core/memory-manager.cpp
     
     src/core/smart-render-manager.cpp
     src/core/performance-monitor.cpp
     src/ui/colorpalette.cpp
     src/ui/cursor-manager.cpp
+    src/ui/tool-switch-state-machine.cpp
     src/core/layer-manager.cpp
     src/core/patheditor.cpp
     src/core/object-tree-item.cpp
@@ -101,11 +103,13 @@ set(HEADERS
     src/core/drawing-layer.h
     src/core/drawing-throttle.h
     src/core/brush-engine.h
+    src/core/memory-manager.h
     
     src/core/smart-render-manager.h
     src/core/performance-monitor.h
     src/ui/colorpalette.h
     src/ui/cursor-manager.h
+    src/ui/tool-switch-state-machine.h
     src/core/layer-manager.h
     src/core/patheditor.h
     src/core/object-tree-item.h
@@ -179,6 +183,8 @@ endif()
 # 调试信息
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     target_compile_definitions(VectorQt PRIVATE DEBUG)
+    # 禁用内存管理器以避免死锁
+    # target_compile_definitions(VectorQt PRIVATE DEBUG_MEMORY)
 endif()
 
 # 国际化支持

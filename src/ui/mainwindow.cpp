@@ -9,6 +9,7 @@
 #include <QLabel>
 #include <QDockWidget>
 #include <QUndoView>
+#include <QUndoCommand>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFileDialog>
@@ -3709,56 +3710,12 @@ void MainWindow::pathXor()
 // 路径编辑槽函数
 void MainWindow::pathSimplify()
 {
-    if (!m_scene) return;
-    
-    QList<QGraphicsItem*> selectedItems = m_scene->selectedItems();
-    if (selectedItems.isEmpty()) {
-        m_statusLabel->setText("请先选择要简化的路径");
-        return;
-    }
-    
-    for (QGraphicsItem *item : selectedItems) {
-        DrawingShape *shape = dynamic_cast<DrawingShape*>(item);
-        if (shape && shape->shapeType() == DrawingShape::Path) {
-            DrawingPath *drawingPath = dynamic_cast<DrawingPath*>(shape);
-            if (drawingPath) {
-                QPainterPath originalPath = drawingPath->path();
-                QPainterPath simplifiedPath = PathEditor::simplifyPath(originalPath, 0.5);
-                drawingPath->setPath(simplifiedPath);
-                m_statusLabel->setText("路径已简化");
-            }
-        }
-    }
-    
-    m_scene->update();
-    m_scene->setModified(true);
+    executePathOperation("simplify");
 }
 
 void MainWindow::pathSmooth()
 {
-    if (!m_scene) return;
-    
-    QList<QGraphicsItem*> selectedItems = m_scene->selectedItems();
-    if (selectedItems.isEmpty()) {
-        m_statusLabel->setText("请先选择要平滑的路径");
-        return;
-    }
-    
-    for (QGraphicsItem *item : selectedItems) {
-        DrawingShape *shape = dynamic_cast<DrawingShape*>(item);
-        if (shape && shape->shapeType() == DrawingShape::Path) {
-            DrawingPath *drawingPath = dynamic_cast<DrawingPath*>(shape);
-            if (drawingPath) {
-                QPainterPath originalPath = drawingPath->path();
-                QPainterPath smoothedPath = PathEditor::smoothPath(originalPath, 0.5);
-                drawingPath->setPath(smoothedPath);
-                m_statusLabel->setText("路径已平滑");
-            }
-        }
-    }
-    
-    m_scene->update();
-    m_scene->setModified(true);
+    executePathOperation("smooth");
 }
 
 void MainWindow::pathReverse()
@@ -4074,6 +4031,126 @@ void MainWindow::executeBooleanOperation(int op)
     m_statusLabel->setText(QString("%1操作完成").arg(opName));
 }
 
+// 路径操作撤销命令
+class PathOperationCommand : public QUndoCommand
+{
+public:
+    PathOperationCommand(DrawingScene *scene, DrawingShape *originalShape, DrawingPath *newPath, const QString &operationText, QUndoCommand *parent = nullptr)
+        : QUndoCommand(operationText, parent)
+        , m_scene(scene)
+        , m_originalShape(originalShape)
+        , m_newPath(newPath)
+        , m_originalShapeInScene(false)
+        , m_newPathInScene(false)
+        , m_originalLayer(nullptr)
+        , m_targetLayer(nullptr)
+    {
+        // 记录对象初始状态
+        if (m_originalShape) {
+            m_originalShapeInScene = (m_originalShape->scene() != nullptr);
+        }
+        if (m_newPath) {
+            m_newPathInScene = (m_newPath->scene() != nullptr);
+        }
+        
+        // 记录图形所属的图层
+        LayerManager *layerManager = LayerManager::instance();
+        if (layerManager) {
+            m_originalLayer = layerManager->findLayerForShape(m_originalShape);
+            // 新路径应该添加到活动图层
+            m_targetLayer = layerManager->activeLayer();
+        }
+    }
+    
+    ~PathOperationCommand()
+    {
+        // 安全删除对象，只在确定不需要时删除
+        if (m_newPath && !m_newPath->scene()) {
+            delete m_newPath;
+        }
+        // 注意：不在这里删除原始形状，因为它们可能被其他命令引用
+    }
+    
+    void undo() override
+    {
+        if (!m_scene) return;
+        
+        LayerManager *layerManager = LayerManager::instance();
+        
+        // 移除新创建的路径
+        if (m_newPath && m_newPath->scene()) {
+            m_scene->removeItem(m_newPath);
+            m_newPath->setSelected(false);
+            // 从图层中移除
+            if (layerManager && m_targetLayer) {
+                m_targetLayer->removeShape(m_newPath);
+            }
+        }
+        
+        // 恢复原始形状，只有在它们不在场景中时才添加
+        if (m_originalShape && !m_originalShape->scene()) {
+            m_scene->addItem(m_originalShape);
+            m_originalShape->setSelected(true);
+            // 添加到原始图层
+            if (layerManager && m_originalLayer) {
+                m_originalLayer->addShape(m_originalShape);
+            }
+        }
+        
+        m_scene->update();
+        
+        // 刷新对象树模型
+        if (layerManager) {
+            if (m_originalLayer) emit layerManager->layerContentChanged(m_originalLayer);
+            if (m_targetLayer) emit layerManager->layerContentChanged(m_targetLayer);
+        }
+    }
+    
+    void redo() override
+    {
+        if (!m_scene) return;
+        
+        LayerManager *layerManager = LayerManager::instance();
+        
+        // 移除原始形状，只有在它们在场景中时才移除
+        if (m_originalShape && m_originalShape->scene()) {
+            m_scene->removeItem(m_originalShape);
+            m_originalShape->setSelected(false);
+            // 从图层中移除
+            if (layerManager && m_originalLayer) {
+                m_originalLayer->removeShape(m_originalShape);
+            }
+        }
+        
+        // 添加新路径，只有在它不在场景中时才添加
+        if (m_newPath && !m_newPath->scene()) {
+            m_scene->addItem(m_newPath);
+            m_newPath->setSelected(true);
+            // 添加到目标图层
+            if (layerManager && m_targetLayer) {
+                m_targetLayer->addShape(m_newPath);
+            }
+        }
+        
+        m_scene->update();
+        m_scene->setModified(true);
+        
+        // 刷新对象树模型
+        if (layerManager) {
+            emit layerManager->layerContentChanged(m_targetLayer);
+        }
+    }
+    
+private:
+    DrawingScene *m_scene;
+    DrawingShape *m_originalShape;
+    DrawingPath *m_newPath;
+    bool m_originalShapeInScene;
+    bool m_newPathInScene;
+    DrawingLayer *m_originalLayer;
+    DrawingLayer *m_targetLayer;
+};
+
 // 执行路径操作
 void MainWindow::executePathOperation(const QString &operation)
 {
@@ -4128,42 +4205,19 @@ void MainWindow::executePathOperation(const QString &operation)
     newPath->setStrokePen(shape->strokePen());
     newPath->setFillBrush(shape->fillBrush());
     
-    // 获取形状所属的图层
-    DrawingLayer *layer = nullptr;
-    LayerManager *layerManager = LayerManager::instance();
-    for (int i = 0; i < layerManager->layerCount(); ++i) {
-        DrawingLayer *checkLayer = layerManager->layer(i);
-        if (checkLayer->shapes().contains(shape)) {
-            layer = checkLayer;
-            break;
-        }
-    }
+    // 创建撤销命令 - 在修改场景之前创建
+    QString operationText;
+    if (operation == "simplify") operationText = "简化路径";
+    else if (operation == "smooth") operationText = "平滑路径";
+    else if (operation == "curve") operationText = "转换为曲线";
+    else if (operation == "offset") operationText = "偏移路径";
+    else if (operation == "clip") operationText = "裁剪路径";
+    else operationText = "路径操作";
     
-    // 从场景中移除原始形状
-    m_scene->removeItem(shape);
+    PathOperationCommand *command = new PathOperationCommand(m_scene, shape, newPath, operationText);
     
-    // 从图层中移除原始形状
-    if (layer) {
-        layer->removeShape(shape);
-    }
-    
-    // 添加新路径到场景
-    m_scene->addItem(newPath);
-    newPath->setSelected(true);
-    
-    // 将新路径添加到原形状的图层中
-    if (layer) {
-        layer->addShape(newPath);
-    }
-    
-    // 更新图层面板显示
-    LayerManager::instance()->updateLayerPanel();
-    
-    // 删除原始形状
-    delete shape;
-    
-    // 标记场景已修改
-    m_scene->setModified(true);
+    // 推送撤销命令，让命令处理场景和图层的同步
+    m_scene->undoStack()->push(command);
     
     QString opName;
     if (operation == "simplify") opName = "简化";

@@ -605,9 +605,9 @@ void DrawingToolPathEdit::showContextMenu(const QPointF &scenePos)
             }
         }
     } else if (selectedAction == offsetAction) {
-        if (!m_selectedPaths.isEmpty()) {
+        if (!m_selectedPaths.isEmpty() && m_scene) {
             DrawingShape *shape = m_selectedPaths.first();
-            if (shape) {
+            if (shape && shape->scene()) {
                 // 使用变换后的路径
                 QPainterPath transformedPath = shape->transformedShape();
                 QPainterPath offset = PathEditor::offsetPath(transformedPath, 5);
@@ -622,22 +622,22 @@ void DrawingToolPathEdit::showContextMenu(const QPointF &scenePos)
                 newPath->setStrokePen(shape->strokePen());
                 newPath->setFillBrush(shape->fillBrush());
                 
-                // 添加到场景和活动图层
-                m_scene->addItem(newPath);
-                LayerManager *layerManager = LayerManager::instance();
-                if (layerManager) {
-                    DrawingLayer *activeLayer = layerManager->activeLayer();
-                    if (activeLayer) {
-                        activeLayer->addShape(newPath);
-                    }
-                }
-                m_scene->setModified(true);
+                // 创建撤销命令 - 在修改场景之前创建
+                PathOperationCommand *command = new PathOperationCommand(m_scene, shape, nullptr, newPath, "偏移路径");
+                
+                // 推送撤销命令，让命令处理场景和图层的同步
+                m_scene->undoStack()->push(command);
+                
+                // 更新选择列表
+                m_selectedPaths.clear();
+                m_selectedPaths.append(newPath);
+                newPath->setSelected(true);
             }
         }
     } else if (selectedAction == clipAction) {
-        if (!m_selectedPaths.isEmpty()) {
+        if (!m_selectedPaths.isEmpty() && m_scene) {
             DrawingShape *shape = m_selectedPaths.first();
-            if (shape) {
+            if (shape && shape->scene()) {
                 // 使用变换后的路径
                 QPainterPath transformedPath = shape->transformedShape();
                 // 使用图形的边界框作为裁剪区域
@@ -656,16 +656,16 @@ void DrawingToolPathEdit::showContextMenu(const QPointF &scenePos)
                 newPath->setStrokePen(shape->strokePen());
                 newPath->setFillBrush(shape->fillBrush());
                 
-                // 添加到场景和活动图层
-                m_scene->addItem(newPath);
-                LayerManager *layerManager = LayerManager::instance();
-                if (layerManager) {
-                    DrawingLayer *activeLayer = layerManager->activeLayer();
-                    if (activeLayer) {
-                        activeLayer->addShape(newPath);
-                    }
-                }
-                m_scene->setModified(true);
+                // 创建撤销命令 - 在修改场景之前创建
+                PathOperationCommand *command = new PathOperationCommand(m_scene, shape, nullptr, newPath, "裁剪路径");
+                
+                // 推送撤销命令，让命令处理场景和图层的同步
+                m_scene->undoStack()->push(command);
+                
+                // 更新选择列表
+                m_selectedPaths.clear();
+                m_selectedPaths.append(newPath);
+                newPath->setSelected(true);
             }
         }
     } else if (selectedAction == arrowAction) {

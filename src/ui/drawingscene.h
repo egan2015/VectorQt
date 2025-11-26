@@ -2,13 +2,13 @@
 #define DRAWINGSCENE_H
 
 #include <QGraphicsScene>
-#include <QUndoStack>
 #include "../core/drawing-group.h"
 #include "../tools/tool-manager.h"
 
 class DrawingShape;
 class DrawingGroup;
 class QGraphicsSceneMouseEvent;
+class CommandManager;
 // class SelectionLayer; // 已移除 - 老的选择层系统
 class TransformCommand;
 class GroupCommand;
@@ -28,12 +28,16 @@ public:
     
     explicit DrawingScene(QObject *parent = nullptr);
     
-    QUndoStack* undoStack() { return &m_undoStack; }
+    QUndoStack* undoStack();
     
     bool isModified() const { return m_isModified; }
     void setModified(bool modified);
     
     void clearScene();
+    
+    // CommandManager 访问
+    void setCommandManager(CommandManager *commandManager);
+    CommandManager* commandManager() const { return m_commandManager; }
     
     // 选择层管理
     // SelectionLayer* selectionLayer() const { return m_selectionLayer; } // 已移除 - 老的选择层系统
@@ -238,7 +242,7 @@ public:
 private:
     void drawGrid(QPainter *painter, const QRectF &rect);
     
-    QUndoStack m_undoStack;
+    
     bool m_isModified;
     // SelectionLayer *m_selectionLayer; // 已移除 - 老的选择层系统
     
@@ -273,8 +277,15 @@ private:
     QList<DrawingShape*> m_transformShapes;  // 保存变换时的图形引用
     TransformType m_currentTransformType;
     
+    // CommandManager 引用
+    CommandManager *m_commandManager;
+    
     // 当前工具类型
     int m_currentTool;
+    
+private:
+    // 辅助方法：推送命令到撤销栈
+    void pushCommand(QUndoCommand *command);
     
     
 };

@@ -28,6 +28,12 @@
 #include "../core/toolbase.h"
 #include "../ui/propertypanel.h"
 #include "../ui/tabbed-property-panel.h"
+#include "../ui/file-manager.h"
+#include "../ui/effect-manager.h"
+#include "../ui/grid-manager.h"
+#include "../ui/path-operations-manager.h"
+#include "../ui/selection-manager.h"
+#include "../ui/command-manager.h"
 #include "../ui/tools-panel.h"
 #include "../tools/drawing-tool-brush.h"
 #include "../tools/drawing-tool-pen.h"
@@ -64,8 +70,8 @@
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent), m_scene(nullptr), m_canvas(nullptr), m_propertyPanel(nullptr), m_tabbedPropertyPanel(nullptr), m_undoView(nullptr), m_layerManager(nullptr), m_currentTool(nullptr),
       m_colorPalette(nullptr), m_scrollableToolBar(nullptr),
-      m_horizontalRuler(nullptr), m_verticalRuler(nullptr), m_cornerWidget(nullptr), m_isModified(false), m_lastOpenDir(QDir::homePath()), m_lastSaveDir(QDir::homePath()),
-      m_uiUpdateTimer(nullptr), m_lastSelectedCount(0), m_toolStateManager(nullptr), m_toolManager(nullptr), m_shortcutManager(nullptr)
+      m_horizontalRuler(nullptr), m_verticalRuler(nullptr), m_cornerWidget(nullptr),
+      m_uiUpdateTimer(nullptr), m_lastSelectedCount(0), m_toolStateManager(nullptr), m_toolManager(nullptr), m_shortcutManager(nullptr), m_fileManager(nullptr), m_effectManager(nullptr)
 {
     // 初始化工具管理系统
     m_toolStateManager = new ToolStateManager(this);
@@ -76,6 +82,78 @@ MainWindow::MainWindow(QWidget *parent)
     m_shortcutManager = new ShortcutManager(this);
     m_shortcutManager->setToolManager(m_toolManager);
     // 场景将在newFile()后设置
+    
+    // 初始化文件管理器
+    m_fileManager = new FileManager(this);
+    
+    // 连接FileManager信号
+    connect(m_fileManager, &FileManager::fileOpened, this, &MainWindow::onFileOpened);
+    connect(m_fileManager, &FileManager::fileSaved, this, &MainWindow::onFileSaved);
+    connect(m_fileManager, &FileManager::fileExported, this, &MainWindow::onFileExported);
+    connect(m_fileManager, &FileManager::statusMessageChanged, this, &MainWindow::onStatusMessageChanged);
+    connect(m_fileManager, &FileManager::windowTitleChanged, this, &MainWindow::onWindowTitleChanged);
+    
+    // 初始化效果管理器
+    m_effectManager = new EffectManager(this);
+    
+    // 连接EffectManager信号
+    connect(m_effectManager, &EffectManager::effectApplied, this, &MainWindow::onEffectApplied);
+    connect(m_effectManager, &EffectManager::effectCleared, this, &MainWindow::onEffectCleared);
+    connect(m_effectManager, &EffectManager::statusMessageChanged, this, &MainWindow::onStatusMessageChanged);
+    
+    // 初始化网格管理器
+    m_gridManager = new GridManager(m_scene, this);
+    
+    // 连接GridManager信号
+    connect(m_gridManager, &GridManager::statusMessageChanged, this, &MainWindow::onStatusMessageChanged);
+    connect(m_gridManager, &GridManager::gridVisibilityChanged, this, [this](bool visible) {
+        if (m_toggleGridAction) {
+            m_toggleGridAction->setChecked(visible);
+        }
+    });
+    connect(m_gridManager, &GridManager::gridAlignmentChanged, this, [this](bool enabled) {
+        if (m_toggleGridAlignmentAction) {
+            m_toggleGridAlignmentAction->setChecked(enabled);
+        }
+    });
+    
+    // 初始化路径操作管理器
+    m_pathOperationsManager = new PathOperationsManager(this);
+    
+    // 连接PathOperationsManager信号
+    connect(m_pathOperationsManager, &PathOperationsManager::statusMessageChanged, this, &MainWindow::onStatusMessageChanged);
+    
+    // 初始化选择管理器
+    m_selectionManager = new SelectionManager(this);
+    
+    // 连接SelectionManager信号
+    connect(m_selectionManager, &SelectionManager::statusMessageChanged, this, &MainWindow::onStatusMessageChanged);
+    connect(m_selectionManager, &SelectionManager::selectionChanged, this, [this](int count) {
+        m_lastSelectedCount = count;
+        updateUI();
+    });
+    
+    // 初始化命令管理器
+    m_commandManager = new CommandManager(this);
+    
+    // 设置命令管理器到选择管理器
+    m_selectionManager->setCommandManager(m_commandManager);
+    
+    // 设置EffectManager的CommandManager
+    if (m_effectManager) {
+        m_effectManager->setCommandManager(m_commandManager);
+    }
+    
+    // 连接CommandManager的撤销栈信号到UI
+    if (m_commandManager) {
+        connect(m_commandManager, &CommandManager::canUndoChanged,
+                this, [this](bool canUndo) { m_undoAction->setEnabled(canUndo); });
+        connect(m_commandManager, &CommandManager::canRedoChanged,
+                this, [this](bool canRedo) { m_redoAction->setEnabled(canRedo); });
+    }
+    
+    // 调试输出：确认命令管理器初始化
+    qDebug() << "CommandManager initialized and set to SelectionManager";
     
     // Event-Bus暂时不使用，保留为未来扩展
     // 当前主要使用Qt信号槽进行组件间通信
@@ -188,6 +266,38 @@ void MainWindow::setupUI()
     // Create drawing canvas with grid functionality
     m_canvas = new DrawingCanvas(this);
     m_canvas->setScene(m_scene);
+
+    // 设置文件管理器的canvas
+    if (m_fileManager) {
+        m_fileManager->setCanvas(m_canvas);
+    }
+    
+    // 设置效果管理器的scene
+    if (m_effectManager) {
+        m_effectManager->setScene(m_scene);
+    }
+    
+    // 设置网格管理器的scene（场景创建后需要重新设置）
+    if (m_gridManager) {
+        m_gridManager->setScene(m_scene);
+    }
+    
+    // 设置路径操作管理器的scene
+    if (m_pathOperationsManager) {
+        m_pathOperationsManager->setScene(m_scene);
+    }
+    
+    // 设置选择管理器的scene
+    if (m_selectionManager) {
+        m_selectionManager->setScene(m_scene);
+    }
+    
+    // 设置命令管理器的scene
+    if (m_commandManager) {
+        m_commandManager->setScene(m_scene);
+        // 同时设置场景的CommandManager引用，供工具使用
+        m_scene->setCommandManager(m_commandManager);
+    }
 
     // 设置工具管理器的场景和视图
     if (m_toolManager && m_canvas->view()) {
@@ -370,12 +480,9 @@ void MainWindow::setupUI()
         }
     }
     
-    // Connect undo stack signals to update menu states
-    if (m_scene && m_scene->undoStack()) {
-        connect(m_scene->undoStack(), &QUndoStack::canUndoChanged,
-                this, [this](bool canUndo) { m_undoAction->setEnabled(canUndo); });
-        connect(m_scene->undoStack(), &QUndoStack::canRedoChanged,
-                this, [this](bool canRedo) { m_redoAction->setEnabled(canRedo); });
+    // Connect undo stack signals to update menu states - 使用CommandManager
+    if (m_commandManager) {
+        // CommandManager的信号已在构造函数中连接
     }
 
     DrawingView *drawingView = qobject_cast<DrawingView *>(m_canvas->view());
@@ -821,9 +928,14 @@ void MainWindow::setupDocks()
 
     // Undo history dock - now integrated into TabBar panel
     QDockWidget *historyDock = new QDockWidget(tr("历史记录"), this);
-    m_undoView = new QUndoView(m_scene->undoStack(), historyDock);
+    m_undoView = new QUndoView(historyDock);
     historyDock->setWidget(m_undoView);
     addDockWidget(Qt::RightDockWidgetArea, historyDock);
+    
+    // 设置撤销视图（如果CommandManager已初始化）
+    if (m_commandManager) {
+        setupUndoView();
+    }
 }
 
 void MainWindow::setupStatusBar()
@@ -879,14 +991,17 @@ void MainWindow::createActions()
 
     m_copyAction = new QAction("&复制", this);
     m_copyAction->setShortcut(QKeySequence::Copy);
+    m_copyAction->setShortcutContext(Qt::ApplicationShortcut);
     m_copyAction->setStatusTip("复制选中项目");
 
     m_pasteAction = new QAction("&粘贴", this);
     m_pasteAction->setShortcut(QKeySequence::Paste);
+    m_pasteAction->setShortcutContext(Qt::ApplicationShortcut);
     m_pasteAction->setStatusTip("粘贴项目");
 
     m_duplicateAction = new QAction("&快速复制", this);
     m_duplicateAction->setShortcut(QKeySequence("Ctrl+D"));
+    m_duplicateAction->setShortcutContext(Qt::ApplicationShortcut);
     m_duplicateAction->setStatusTip("快速复制并粘贴选中项目");
 
     // 滤镜Actions
@@ -933,7 +1048,7 @@ void MainWindow::createActions()
     m_toggleGridAction->setCheckable(true);
     m_toggleGridAction->setShortcut(QKeySequence("G"));
     m_toggleGridAction->setStatusTip("显示或隐藏网格");
-    m_toggleGridAction->setChecked(true); // 默认显示网格
+    // 初始状态将在GridManager初始化后设置
 
     m_gridSizeAction = new QAction("网格大小...", this);
     m_gridSizeAction->setStatusTip("设置网格大小");
@@ -945,7 +1060,7 @@ void MainWindow::createActions()
     m_toggleGridAlignmentAction->setCheckable(true);
     m_toggleGridAlignmentAction->setShortcut(QKeySequence("Shift+G"));
     m_toggleGridAlignmentAction->setStatusTip("启用或禁用网格对齐");
-    m_toggleGridAlignmentAction->setChecked(true); // 默认启用网格对齐
+    // 初始状态将在GridManager初始化后设置
     
     // 清除所有参考线
     m_clearAllGuidesAction = new QAction("清除所有参考线(&G)", this);
@@ -1150,6 +1265,16 @@ void MainWindow::createActions()
     // Help actions
     m_aboutAction = new QAction("&关于", this);
     m_aboutAction->setStatusTip("显示应用程序的关于对话框");
+    
+    // 设置GridManager相关动作的初始状态（在所有动作创建后）
+    if (m_gridManager) {
+        if (m_toggleGridAction) {
+            m_toggleGridAction->setChecked(m_gridManager->isGridVisible());
+        }
+        if (m_toggleGridAlignmentAction) {
+            m_toggleGridAlignmentAction->setChecked(m_gridManager->isGridAlignmentEnabled());
+        }
+    }
 }
 
 void MainWindow::connectActions()
@@ -1165,16 +1290,47 @@ void MainWindow::connectActions()
     // Edit connections
     connect(m_undoAction, &QAction::triggered, this, &MainWindow::undo);
     connect(m_redoAction, &QAction::triggered, this, &MainWindow::redo);
-    connect(m_deleteAction, &QAction::triggered, this, &MainWindow::deleteSelected);
-    connect(m_copyAction, &QAction::triggered, this, &MainWindow::copySelected);
-    connect(m_pasteAction, &QAction::triggered, this, &MainWindow::paste);
-    connect(m_duplicateAction, &QAction::triggered, this, &MainWindow::duplicate);
+    connect(m_deleteAction, &QAction::triggered, this, [this]() {
+        if (m_selectionManager) {
+            m_selectionManager->deleteSelected();
+        }
+    });
+    connect(m_copyAction, &QAction::triggered, this, [this]() {
+        if (m_selectionManager) {
+            m_selectionManager->copySelected();
+        }
+    });
+    connect(m_pasteAction, &QAction::triggered, this, [this]() {
+        qDebug() << "Paste action triggered";
+        if (m_selectionManager) {
+            m_selectionManager->paste();
+        } else {
+            qDebug() << "SelectionManager is null, cannot paste";
+        }
+    });
+    connect(m_duplicateAction, &QAction::triggered, this, [this]() {
+        if (m_selectionManager) {
+            m_selectionManager->duplicate();
+        }
+    });
     connect(m_blurEffectAction, &QAction::triggered, this, &MainWindow::applyBlurEffect);
     connect(m_dropShadowEffectAction, &QAction::triggered, this, &MainWindow::applyDropShadowEffect);
     connect(m_clearFilterAction, &QAction::triggered, this, &MainWindow::clearFilterEffect);
-    connect(m_convertTextToPathAction, &QAction::triggered, this, &MainWindow::convertTextToPath);
-    connect(m_selectAllAction, &QAction::triggered, this, &MainWindow::selectAll);
-    connect(m_deselectAllAction, &QAction::triggered, this, &MainWindow::deselectAll);
+    connect(m_convertTextToPathAction, &QAction::triggered, this, [this]() {
+        if (m_pathOperationsManager) {
+            m_pathOperationsManager->convertSelectedTextToPath();
+        }
+    });
+    connect(m_selectAllAction, &QAction::triggered, this, [this]() {
+        if (m_selectionManager) {
+            m_selectionManager->selectAll();
+        }
+    });
+    connect(m_deselectAllAction, &QAction::triggered, this, [this]() {
+        if (m_selectionManager) {
+            m_selectionManager->deselectAll();
+        }
+    });
 
     // View connections
     connect(m_zoomInAction, &QAction::triggered, this, &MainWindow::zoomIn);
@@ -1183,35 +1339,124 @@ void MainWindow::connectActions()
     connect(m_fitToWindowAction, &QAction::triggered, this, &MainWindow::fitToWindow);
 
     // Grid connections
-    connect(m_toggleGridAction, &QAction::triggered, this, &MainWindow::toggleGrid);
-    connect(m_gridSizeAction, &QAction::triggered, this, &MainWindow::showGridSettings);
-    connect(m_gridColorAction, &QAction::triggered, this, &MainWindow::showGridSettings);
-    connect(m_toggleGridAlignmentAction, &QAction::triggered, this, &MainWindow::toggleGridAlignment);
+    connect(m_toggleGridAction, &QAction::triggered, this, [this]() {
+        if (m_gridManager) {
+            m_gridManager->toggleGrid();
+        }
+    });
+    connect(m_gridSizeAction, &QAction::triggered, this, [this]() {
+        if (m_gridManager) {
+            m_gridManager->showGridSettings();
+        }
+    });
+    connect(m_gridColorAction, &QAction::triggered, this, [this]() {
+        if (m_gridManager) {
+            m_gridManager->showGridSettings();
+        }
+    });
+    connect(m_toggleGridAlignmentAction, &QAction::triggered, this, [this]() {
+        if (m_gridManager) {
+            m_gridManager->toggleGridAlignment();
+        }
+    });
     connect(m_clearAllGuidesAction, &QAction::triggered, this, &MainWindow::clearAllGuides);
     connect(m_togglePerformancePanelAction, &QAction::triggered, this, &MainWindow::togglePerformancePanel);
     
     // Group connections
-    connect(m_groupAction, &QAction::triggered, this, &MainWindow::groupSelected);
-    connect(m_ungroupAction, &QAction::triggered, this, &MainWindow::ungroupSelected);
+    connect(m_groupAction, &QAction::triggered, this, [this]() {
+        if (m_selectionManager) {
+            m_selectionManager->groupSelected();
+        }
+    });
+    connect(m_ungroupAction, &QAction::triggered, this, [this]() {
+        if (m_selectionManager) {
+            m_selectionManager->ungroupSelected();
+        }
+    });
     
     // Z-order connections
-    connect(m_bringToFrontAction, &QAction::triggered, this, &MainWindow::bringToFront);
-    connect(m_sendToBackAction, &QAction::triggered, this, &MainWindow::sendToBack);
-    connect(m_bringForwardAction, &QAction::triggered, this, &MainWindow::bringForward);
-    connect(m_sendBackwardAction, &QAction::triggered, this, &MainWindow::sendBackward);
+    connect(m_bringToFrontAction, &QAction::triggered, this, [this]() {
+        if (m_selectionManager) {
+            m_selectionManager->bringToFront();
+        }
+    });
+    connect(m_sendToBackAction, &QAction::triggered, this, [this]() {
+        if (m_selectionManager) {
+            m_selectionManager->sendToBack();
+        }
+    });
+    connect(m_bringForwardAction, &QAction::triggered, this, [this]() {
+        if (m_selectionManager) {
+            m_selectionManager->bringForward();
+        }
+    });
+    connect(m_sendBackwardAction, &QAction::triggered, this, [this]() {
+        if (m_selectionManager) {
+            m_selectionManager->sendBackward();
+        }
+    });
     
     // Align connections
-    connect(m_alignLeftAction, &QAction::triggered, this, &MainWindow::alignLeft);
-    connect(m_alignCenterAction, &QAction::triggered, this, &MainWindow::alignCenter);
-    connect(m_alignRightAction, &QAction::triggered, this, &MainWindow::alignRight);
-    connect(m_alignTopAction, &QAction::triggered, this, &MainWindow::alignTop);
-    connect(m_alignMiddleAction, &QAction::triggered, this, &MainWindow::alignMiddle);
-    connect(m_alignBottomAction, &QAction::triggered, this, &MainWindow::alignBottom);
-    connect(m_sameWidthAction, &QAction::triggered, this, &MainWindow::sameWidth);
-    connect(m_sameHeightAction, &QAction::triggered, this, &MainWindow::sameHeight);
-    connect(m_sameSizeAction, &QAction::triggered, this, &MainWindow::sameSize);
-    connect(m_distributeHorizontalAction, &QAction::triggered, this, &MainWindow::distributeHorizontal);
-    connect(m_distributeVerticalAction, &QAction::triggered, this, &MainWindow::distributeVertical);
+    connect(m_alignLeftAction, &QAction::triggered, this, [this]() {
+        if (m_selectionManager) {
+            m_selectionManager->alignLeft();
+        }
+    });
+    connect(m_alignCenterAction, &QAction::triggered, this, [this]() {
+        if (m_selectionManager) {
+            m_selectionManager->alignCenter();
+        }
+    });
+    connect(m_alignRightAction, &QAction::triggered, this, [this]() {
+        if (m_selectionManager) {
+            m_selectionManager->alignRight();
+        }
+    });
+    connect(m_alignTopAction, &QAction::triggered, this, [this]() {
+        if (m_selectionManager) {
+            m_selectionManager->alignTop();
+        }
+    });
+    connect(m_alignMiddleAction, &QAction::triggered, this, [this]() {
+        if (m_selectionManager) {
+            m_selectionManager->alignMiddle();
+        }
+    });
+    connect(m_alignBottomAction, &QAction::triggered, this, [this]() {
+        if (m_selectionManager) {
+            m_selectionManager->alignBottom();
+        }
+    });
+    connect(m_sameWidthAction, &QAction::triggered, this, [this]() {
+        if (m_selectionManager) {
+            m_selectionManager->sameWidth();
+        }
+    });
+    connect(m_sameHeightAction, &QAction::triggered, this, [this]() {
+        if (m_selectionManager) {
+            m_selectionManager->sameHeight();
+        }
+    });
+    connect(m_sameSizeAction, &QAction::triggered, this, [this]() {
+        if (m_selectionManager) {
+            m_selectionManager->sameSize();
+        }
+    });
+    connect(m_distributeHorizontalAction, &QAction::triggered, this, [this]() {
+        if (m_selectionManager) {
+            m_selectionManager->distributeHorizontal();
+        }
+    });
+    connect(m_distributeVerticalAction, &QAction::triggered, this, [this]() {
+        if (m_selectionManager) {
+            m_selectionManager->distributeVertical();
+        }
+    });
+
+    // 添加复制粘贴动作到窗口以确保快捷键生效
+    addAction(m_copyAction);
+    addAction(m_pasteAction);
+    addAction(m_duplicateAction);
 
     // Tool connections
     
@@ -1233,16 +1478,49 @@ void MainWindow::connectActions()
     connect(m_textToolAction, &QAction::triggered, this, &MainWindow::textTool);
     
     // Path boolean operation connections
-    connect(m_pathUnionAction, &QAction::triggered, this, &MainWindow::pathUnion);
-    connect(m_pathSubtractAction, &QAction::triggered, this, &MainWindow::pathSubtract);
-    connect(m_pathIntersectAction, &QAction::triggered, this, &MainWindow::pathIntersect);
-    connect(m_pathXorAction, &QAction::triggered, this, &MainWindow::pathXor);
+    // 路径布尔运算连接
+    connect(m_pathUnionAction, &QAction::triggered, this, [this]() {
+        if (m_pathOperationsManager) {
+            m_pathOperationsManager->pathUnion();
+        }
+    });
+    connect(m_pathSubtractAction, &QAction::triggered, this, [this]() {
+        if (m_pathOperationsManager) {
+            m_pathOperationsManager->pathSubtract();
+        }
+    });
+    connect(m_pathIntersectAction, &QAction::triggered, this, [this]() {
+        if (m_pathOperationsManager) {
+            m_pathOperationsManager->pathIntersect();
+        }
+    });
+    connect(m_pathXorAction, &QAction::triggered, this, [this]() {
+        if (m_pathOperationsManager) {
+            m_pathOperationsManager->pathXor();
+        }
+    });
     
     // 路径编辑连接
-    connect(m_pathSimplifyAction, &QAction::triggered, this, &MainWindow::pathSimplify);
-    connect(m_pathSmoothAction, &QAction::triggered, this, &MainWindow::pathSmooth);
-    connect(m_pathReverseAction, &QAction::triggered, this, &MainWindow::pathReverse);
-    connect(m_generateShapeAction, &QAction::triggered, this, &MainWindow::generateShape);
+    connect(m_pathSimplifyAction, &QAction::triggered, this, [this]() {
+        if (m_pathOperationsManager) {
+            m_pathOperationsManager->pathSimplify();
+        }
+    });
+    connect(m_pathSmoothAction, &QAction::triggered, this, [this]() {
+        if (m_pathOperationsManager) {
+            m_pathOperationsManager->pathSmooth();
+        }
+    });
+    connect(m_pathReverseAction, &QAction::triggered, this, [this]() {
+        if (m_pathOperationsManager) {
+            m_pathOperationsManager->pathReverse();
+        }
+    });
+    connect(m_generateShapeAction, &QAction::triggered, this, [this]() {
+        if (m_pathOperationsManager) {
+            m_pathOperationsManager->generateShape();
+        }
+    });
 
     // Help connections
     connect(m_aboutAction, &QAction::triggered, this, &MainWindow::about);
@@ -1341,172 +1619,94 @@ void MainWindow::setCurrentTool(ToolBase *tool)
 
 void MainWindow::newFile()
 {
-    if (m_isModified)
-    {
-        QMessageBox::StandardButton reply = QMessageBox::question(this, "VectorQt",
-                                                                  "文档已修改，是否保存？",
-                                                                  QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
-
-        if (reply == QMessageBox::Save)
-        {
-            saveFile();
-        }
-        else if (reply == QMessageBox::Cancel)
-        {
-            return;
-        }
+    if (m_fileManager) {
+        m_fileManager->newFile();
     }
-
-    m_scene->clearScene();
-    m_currentFile.clear();
-    m_isModified = false;
-    
-    // 设置快捷键管理器的场景引用
-    if (m_shortcutManager) {
-        m_shortcutManager->setScene(m_scene);
-    }
-    
-    // 清除所有图层
-    if (m_layerManager) {
-        
-        m_layerManager->clearAllLayers();
-        // 确保SVG导入标志被重置
-        m_layerManager->setSvgImporting(false);
-        
-        // 重新设置场景以创建默认背景图层
-        
-        m_layerManager->setScene(m_scene);
-        
-    }
-    updateUI();
-    m_statusLabel->setText("新文档已创建");
 }
 
 void MainWindow::openFile()
 {
-    QString fileName = QFileDialog::getOpenFileName(this,
-                                                    "打开文档", m_lastOpenDir, "SVG Files (*.svg);;VectorQt Files (*.vfp)");
-
-    if (!fileName.isEmpty())
-    {
-        QFileInfo fileInfo(fileName);
-        m_lastOpenDir = fileInfo.absolutePath(); // 更新记住的目录
-        
-        // 清除现有内容
-        m_scene->clearScene();
-        if (m_layerManager) {
-            m_layerManager->clearAllLayers();
-            m_layerManager->setScene(m_scene);
-        }
-        m_currentFile.clear();
-        m_isModified = false;
-        
-        // 重置选择状态
-        if (m_scene) {
-            m_scene->clearSelection();
-        }
-        
-        // 重置当前工具
-        if (m_toolManager) {
-            m_toolManager->switchTool(ToolType::Select);
-        }
-        
-        if (fileInfo.suffix().toLower() == "svg")
-        {
-            // SVG导入
-            if (SvgHandler::importFromSvg(m_scene, fileName)) {
-                m_currentFile = fileName;
-                m_isModified = false;
-                updateUI(); // 更新窗口标题
-                m_statusLabel->setText(QString("SVG文件已导入: %1").arg(fileInfo.fileName()));
-                
-                // 加载完成后重置视图到100%而不是自动适应
-                if (m_canvas) {
-                    m_canvas->resetZoom();
-                    // 可选：将视图居中到内容
-                    m_canvas->centerOnContent();
-                }
-            } else {
-                QMessageBox::warning(this, "导入错误", "无法导入SVG文件");
-            }
-        }
-        else
-        {
-            // QDP文件加载
-            m_statusLabel->setText("QDP文件加载功能尚未实现");
-        }
+    if (m_fileManager) {
+        m_fileManager->openFile();
     }
 }
 
 void MainWindow::saveFile()
 {
-    if (m_currentFile.isEmpty())
-    {
-        saveFileAs();
-    }
-    else
-    {
-        // 保存为 SVG 文件
-        if (SvgHandler::exportToSvg(m_scene, m_currentFile)) {
-            m_isModified = false;
-            m_statusLabel->setText(QString("文档已保存: %1").arg(QFileInfo(m_currentFile).fileName()));
-        } else {
-            QMessageBox::warning(this, "保存错误", "无法保存SVG文件");
-        }
+    if (m_fileManager) {
+        m_fileManager->saveFile();
     }
 }
 
 void MainWindow::saveFileAs()
 {
-    QString fileName = QFileDialog::getSaveFileName(this,
-                                                    "保存文档", m_lastSaveDir, "SVG Files (*.svg)");
-
-    if (!fileName.isEmpty())
-    {
-        QFileInfo fileInfo(fileName);
-        m_lastSaveDir = fileInfo.absolutePath(); // 更新记住的保存目录
-        
-        // 确保文件有 .svg 扩展名
-        if (!fileName.endsWith(".svg", Qt::CaseInsensitive)) {
-            fileName += ".svg";
-        }
-        
-        m_currentFile = fileName;
-        
-        // 保存为 SVG 文件
-        if (SvgHandler::exportToSvg(m_scene, m_currentFile)) {
-            m_isModified = false;
-            m_statusLabel->setText(QString("文档已保存: %1").arg(QFileInfo(m_currentFile).fileName()));
-        } else {
-            QMessageBox::warning(this, "保存错误", "无法保存SVG文件");
-        }
+    if (m_fileManager) {
+        m_fileManager->saveFileAs();
     }
 }
 
 void MainWindow::exportFile()
 {
-    QString fileName = QFileDialog::getSaveFileName(this, tr("导出文档"), m_lastSaveDir, "SVG Files (*.svg)");
-
-    if (!fileName.isEmpty())
-    {
-        QFileInfo fileInfo(fileName);
-        m_lastSaveDir = fileInfo.absolutePath(); // 更新记住的保存目录
-        if (SvgHandler::exportToSvg(m_scene, fileName)) {
-            statusBar()->showMessage(tr("文档已导出"), 2000);
-        } else {
-            QMessageBox::warning(this, tr("导出失败"), tr("无法导出文档"));
-        }
+    if (m_fileManager) {
+        m_fileManager->exportFile();
     }
 }
 
 void MainWindow::undo()
 {
-    m_scene->undoStack()->undo();
+    if (m_commandManager) {
+        m_commandManager->undo();
+    }
+}
+
+// FileManager信号处理函数
+void MainWindow::onFileOpened(const QString &filePath)
+{
+    Q_UNUSED(filePath)
+    updateUI();
+}
+
+void MainWindow::onFileSaved(const QString &filePath)
+{
+    Q_UNUSED(filePath)
+    updateUI();
+}
+
+void MainWindow::onFileExported(const QString &filePath)
+{
+    Q_UNUSED(filePath)
+    // 导出完成，无需特殊处理
+}
+
+void MainWindow::onStatusMessageChanged(const QString &message)
+{
+    if (m_statusLabel) {
+        m_statusLabel->setText(message);
+    }
+}
+
+void MainWindow::onWindowTitleChanged(const QString &title)
+{
+    setWindowTitle(title);
+}
+
+// EffectManager信号处理函数
+void MainWindow::onEffectApplied(const QString &effectName)
+{
+    Q_UNUSED(effectName)
+    // 效果应用完成，无需特殊处理
+}
+
+void MainWindow::onEffectCleared()
+{
+    // 效果清除完成，无需特殊处理
 }
 
 void MainWindow::redo()
 {
-    m_scene->undoStack()->redo();
+    if (m_commandManager) {
+        m_commandManager->redo();
+    }
 }
 
 void MainWindow::selectTool()
@@ -1681,981 +1881,6 @@ void MainWindow::onPenCapStyleChanged(int style)
 {
     // TODO: 实现钢笔端点样式设置
     // 需要在钢笔工具中添加相应的方法
-}
-
-void MainWindow::deleteSelected()
-{
-    if (!m_scene)
-        return;
-
-    QList<QGraphicsItem *> selected = m_scene->selectedItems();
-    if (selected.isEmpty())
-        return;
-
-    // 先清除选择，避免在删除过程中出现问题
-    m_scene->clearSelection();
-
-    // 使用撤销栈来删除项目，而不是直接删除
-    foreach (QGraphicsItem *item, selected)
-    {
-        if (item)
-        {
-            // 使用DrawingScene的RemoveItemCommand
-            // 这里我们需要访问DrawingScene的撤销栈
-            m_scene->removeItem(item);
-            // 不要手动删除item，QGraphicsScene会自动管理内存
-        }
-    }
-    m_scene->setModified(true);
-}
-
-void MainWindow::copySelected()
-{
-    if (!m_scene)
-        return;
-
-    QList<QGraphicsItem *> selected = m_scene->selectedItems();
-    if (selected.isEmpty())
-        return;
-
-    // 创建MIME数据来存储复制的项目
-    QMimeData *mimeData = new QMimeData();
-    
-    // 使用JSON格式存储数据，更简单可靠
-    QString jsonData = "[";
-    
-    bool first = true;
-    for (QGraphicsItem *item : selected) {
-        DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(item);
-        if (shape) {
-            if (!first) {
-                jsonData += ",";
-            }
-            first = false;
-            
-            jsonData += "{";
-            jsonData += QString("\"type\":%1,").arg((int)shape->shapeType());
-            jsonData += QString("\"x\":%1,").arg(shape->pos().x());
-            jsonData += QString("\"y\":%1,").arg(shape->pos().y());
-            
-            // 写入变换矩阵
-            QTransform transform = shape->transform();
-            if (!transform.isIdentity()) {
-                jsonData += QString("\"transform\":{\"m11\":%1,\"m12\":%2,\"m21\":%3,\"m22\":%4,\"dx\":%5,\"dy\":%6},")
-                            .arg(transform.m11())
-                            .arg(transform.m12())
-                            .arg(transform.m21())
-                            .arg(transform.m22())
-                            .arg(transform.dx())
-                            .arg(transform.dy());
-            } else {
-                jsonData += "\"transform\":null,";
-            }
-            
-            // 写入样式数据
-            QPen pen = shape->strokePen();
-            QBrush brush = shape->fillBrush();
-            jsonData += QString("\"stroke\":{\"color\":\"%1\",\"width\":%2,\"style\":%3},")
-                        .arg(pen.color().name())
-                        .arg(pen.width())
-                        .arg((int)pen.style());
-            jsonData += QString("\"fill\":{\"color\":\"%1\",\"style\":%2}")
-                        .arg(brush.color().name())
-                        .arg((int)brush.style());
-            
-            // 写入滤镜数据
-            bool hasFilter = false;
-            if (shape->blurEffect()) {
-                QGraphicsBlurEffect *blur = shape->blurEffect();
-                jsonData += QString(",\"blur\":{\"radius\":%1}").arg(blur->blurRadius());
-                hasFilter = true;
-            } else if (shape->dropShadowEffect()) {
-                QGraphicsDropShadowEffect *shadow = shape->dropShadowEffect();
-                jsonData += QString(",\"shadow\":{\"color\":\"%1\",\"blurRadius\":%2,\"offsetX\":%3,\"offsetY\":%4}")
-                            .arg(shadow->color().name())
-                            .arg(shadow->blurRadius())
-                            .arg(shadow->offset().x())
-                            .arg(shadow->offset().y());
-                hasFilter = true;
-            }
-            
-            // 写入几何数据
-            bool hasGeometry = false;
-            switch (shape->shapeType()) {
-                case DrawingShape::Rectangle: {
-                    DrawingRectangle *rect = static_cast<DrawingRectangle*>(shape);
-                    jsonData += QString(",\"rect\":{\"x\":%1,\"y\":%2,\"w\":%3,\"h\":%4}")
-                                .arg(rect->rectangle().x())
-                                .arg(rect->rectangle().y())
-                                .arg(rect->rectangle().width())
-                                .arg(rect->rectangle().height());
-                    hasGeometry = true;
-                    break;
-                }
-                case DrawingShape::Ellipse: {
-                    DrawingEllipse *ellipse = static_cast<DrawingEllipse*>(shape);
-                    jsonData += QString(",\"ellipse\":{\"x\":%1,\"y\":%2,\"w\":%3,\"h\":%4}")
-                                .arg(ellipse->ellipse().x())
-                                .arg(ellipse->ellipse().y())
-                                .arg(ellipse->ellipse().width())
-                                .arg(ellipse->ellipse().height());
-                    hasGeometry = true;
-                    break;
-                }
-                case DrawingShape::Line: {
-                    DrawingLine *line = static_cast<DrawingLine*>(shape);
-                    jsonData += QString(",\"line\":{\"x1\":%1,\"y1\":%2,\"x2\":%3,\"y2\":%4}")
-                                .arg(line->line().x1())
-                                .arg(line->line().y1())
-                                .arg(line->line().x2())
-                                .arg(line->line().y2());
-                    hasGeometry = true;
-                    break;
-                }
-                case DrawingShape::Path: {
-                    DrawingPath *pathShape = dynamic_cast<DrawingPath*>(shape);
-                    if (pathShape) {
-                        // 使用变换后的路径
-                        QPainterPath painterPath = pathShape->transformedShape();
-                        QString pathStr;
-                        
-                        for (int i = 0; i < painterPath.elementCount(); ++i) {
-                            QPainterPath::Element element = painterPath.elementAt(i);
-                            if (i > 0) pathStr += ";";
-                            pathStr += QString("%1,%2,%3").arg(element.type).arg(element.x).arg(element.y);
-                        }
-                        
-                        if (pathStr.isEmpty()) {
-                            pathStr = "0,0,0"; // 默认一个MoveTo元素
-                        }
-                        
-                        jsonData += QString(",\"path\":\"%1\"").arg(pathStr);
-                        hasGeometry = true;
-                    }
-                    break;
-                }
-                default:
-                    // 跳过未知类型
-                    break;
-            }
-            
-            jsonData += "}";
-        }
-    }
-    
-    jsonData += "]";
-    
-    
-    
-    // 使用Base64编码确保数据完整性
-    QByteArray encodedData = jsonData.toUtf8().toBase64();
-    mimeData->setData("application/vectorflow/shapes", encodedData);
-    
-    // 放到剪贴板 - 剪贴板会接管mimeData的所有权
-    QClipboard *clipboard = QApplication::clipboard();
-    if (clipboard) {
-        clipboard->setMimeData(mimeData);
-    } else {
-        delete mimeData; // 如果剪贴板不可用，手动删除
-    }
-    
-    m_statusLabel->setText(QString("已复制 %1 个项目").arg(selected.size()));
-}
-
-// 粘贴撤销命令类
-class PasteCommand : public QUndoCommand
-{
-public:
-    PasteCommand(DrawingScene *scene, const QList<QGraphicsItem*>& items, QUndoCommand *parent = nullptr)
-        : QUndoCommand("粘贴", parent), m_scene(scene), m_items(items)
-    {
-    }
-    
-    ~PasteCommand() override
-    {
-        // 析构时删除所有对象，防止内存泄漏
-        for (QGraphicsItem *item : m_items) {
-            if (item) {
-                delete item;
-            }
-        }
-    }
-
-    void undo() override
-    {
-        for (QGraphicsItem *item : m_items) {
-            if (item && item->scene()) {
-                m_scene->removeItem(item);
-                // 不要删除对象，只是从场景中移除
-            }
-        }
-        m_scene->setModified(true);
-    }
-
-    void redo() override
-    {
-        for (QGraphicsItem *item : m_items) {
-            if (item && !item->scene()) {
-                m_scene->addItem(item);
-            }
-        }
-        m_scene->setModified(true);
-    }
-
-private:
-    DrawingScene *m_scene;
-    QList<QGraphicsItem*> m_items;
-};
-
-void MainWindow::paste()
-{
-    if (!m_scene)
-        return;
-
-    // 检查剪贴板是否可用
-    QClipboard *clipboard = QApplication::clipboard();
-    if (!clipboard) {
-        return;
-    }
-    
-    const QMimeData *mimeData = clipboard->mimeData();
-    if (!mimeData) {
-        return;
-    }
-    
-    if (!mimeData->hasFormat("application/vectorflow/shapes")) {
-        return;
-    }
-
-    QByteArray copyData = mimeData->data("application/vectorflow/shapes");
-    
-    // 解码Base64数据
-    QByteArray decodedData = QByteArray::fromBase64(copyData);
-    QString jsonData = QString::fromUtf8(decodedData);
-    
-    
-    
-    // 简单的JSON解析（基础实现）
-    // 移除外层方括号
-    if (jsonData.startsWith("[") && jsonData.endsWith("]")) {
-        jsonData = jsonData.mid(1, jsonData.length() - 2);
-    }
-    
-    // 分割对象（简单实现，不处理嵌套）
-    QStringList objectStrings;
-    int braceLevel = 0;
-    int start = 0;
-    
-    for (int i = 0; i < jsonData.length(); ++i) {
-        if (jsonData[i] == '{') {
-            if (braceLevel == 0) {
-                start = i;
-            }
-            braceLevel++;
-        } else if (jsonData[i] == '}') {
-            braceLevel--;
-            if (braceLevel == 0) {
-                objectStrings.append(jsonData.mid(start, i - start + 1));
-            }
-        }
-    }
-    
-    if (objectStrings.isEmpty())
-        return;
-
-    // 清除当前选择
-    m_scene->clearSelection();
-    
-    // 偏移量，避免完全重叠
-    QPointF offset(20, 20);
-    
-    // 存储创建的项目用于撤销命令
-    QList<QGraphicsItem*> pastedItems;
-    
-    // 解析并创建图形
-    for (const QString &objStr : objectStrings) {
-        // 简单的键值对解析
-        QMap<QString, QString> props;
-        QString cleanObj = objStr.mid(1, objStr.length() - 2); // 移除 {}
-        
-        // 更智能的解析，处理嵌套对象和字符串值
-        int braceLevel = 0;
-        bool inString = false;
-        int start = 0;
-        
-        for (int i = 0; i < cleanObj.length(); ++i) {
-            if (cleanObj[i] == '"' && (i == 0 || cleanObj[i-1] != '\\')) {
-                inString = !inString;
-            } else if (cleanObj[i] == '{') {
-                if (!inString) braceLevel++;
-            } else if (cleanObj[i] == '}') {
-                if (!inString) braceLevel--;
-            } else if (cleanObj[i] == ',' && braceLevel == 0 && !inString) {
-                // 找到顶级分隔符（不在字符串内）
-                QString pair = cleanObj.mid(start, i - start).trimmed();
-                int colonPos = pair.indexOf(':');
-                if (colonPos > 0) {
-                    QString key = pair.left(colonPos).trimmed().replace("\"", "");
-                    QString value = pair.mid(colonPos + 1).trimmed();
-                    props[key] = value;
-                }
-                start = i + 1;
-            }
-        }
-        
-        // 处理最后一个键值对
-        if (start < cleanObj.length()) {
-            QString pair = cleanObj.mid(start).trimmed();
-            int colonPos = pair.indexOf(':');
-            if (colonPos > 0) {
-                QString key = pair.left(colonPos).trimmed().replace("\"", "");
-                QString value = pair.mid(colonPos + 1).trimmed();
-                props[key] = value;
-            }
-        }
-
-        
-        bool ok;
-        int shapeType = props["type"].toInt(&ok);
-        
-        if (!ok) continue;
-        
-        double x = props["x"].toDouble();
-        double y = props["y"].toDouble();
-        QPointF pos(x, y);
-        
-        
-        
-        DrawingShape *shape = nullptr;
-        
-        switch ((DrawingShape::ShapeType)shapeType) {
-            case DrawingShape::Rectangle: {
-                // 解析rect对象
-                QString rectStr = props["rect"];
-                rectStr = rectStr.mid(1, rectStr.length() - 2); // 移除 {}
-                QStringList rectPairs = rectStr.split(',');
-                
-                if (rectPairs.size() >= 4) {
-                    double rx = rectPairs[0].split(':')[1].toDouble();
-                    double ry = rectPairs[1].split(':')[1].toDouble();
-                    double rw = rectPairs[2].split(':')[1].toDouble();
-                    double rh = rectPairs[3].split(':')[1].toDouble();
-                    
-                    DrawingRectangle *rectangle = new DrawingRectangle(nullptr);
-                    rectangle->setRectangle(QRectF(rx, ry, rw, rh));
-                    rectangle->setPos(pos + offset);
-                    shape = rectangle;
-                    
-                }
-                break;
-            }
-            case DrawingShape::Ellipse: {
-                // 解析ellipse对象
-                QString ellipseStr = props["ellipse"];
-                ellipseStr = ellipseStr.mid(1, ellipseStr.length() - 2); // 移除 {}
-                QStringList ellipsePairs = ellipseStr.split(',');
-                
-                if (ellipsePairs.size() >= 4) {
-                    double ex = ellipsePairs[0].split(':')[1].toDouble();
-                    double ey = ellipsePairs[1].split(':')[1].toDouble();
-                    double ew = ellipsePairs[2].split(':')[1].toDouble();
-                    double eh = ellipsePairs[3].split(':')[1].toDouble();
-                    
-                    DrawingEllipse *ellipseShape = new DrawingEllipse(nullptr);
-                    ellipseShape->setEllipse(QRectF(ex, ey, ew, eh));
-                    ellipseShape->setPos(pos + offset);
-                    shape = ellipseShape;
-                    
-                }
-                break;
-            }
-            case DrawingShape::Line: {
-                // 解析line对象
-                QString lineStr = props["line"];
-                lineStr = lineStr.mid(1, lineStr.length() - 2); // 移除 {}
-                QStringList linePairs = lineStr.split(',');
-                
-                if (linePairs.size() >= 4) {
-                    double x1 = linePairs[0].split(':')[1].toDouble();
-                    double y1 = linePairs[1].split(':')[1].toDouble();
-                    double x2 = linePairs[2].split(':')[1].toDouble();
-                    double y2 = linePairs[3].split(':')[1].toDouble();
-                    
-                    DrawingLine *lineShape = new DrawingLine(QLineF(x1, y1, x2, y2), nullptr);
-                    lineShape->setPos(pos + offset);
-                    shape = lineShape;
-                    
-                }
-                break;
-            }
-            case DrawingShape::Path: {
-                // 解析路径数据
-                QString pathStr = props["path"];
-                pathStr = pathStr.replace("\"", ""); // 移除引号
-                
-                if (!pathStr.isEmpty()) {
-                    DrawingPath *pathShape = new DrawingPath(nullptr);
-                    QPainterPath painterPath;
-                    
-                    // 解析路径元素
-                    QStringList elements = pathStr.split(';');
-                    for (const QString &elemStr : elements) {
-                        QStringList parts = elemStr.split(',');
-                        if (parts.size() >= 3) {
-                            int type = parts[0].toInt();
-                            double x = parts[1].toDouble();
-                            double y = parts[2].toDouble();
-                            
-                            switch (type) {
-                                case 0: // MoveTo
-                                    painterPath.moveTo(x, y);
-                                    break;
-                                case 1: // LineTo
-                                    painterPath.lineTo(x, y);
-                                    break;
-                                case 2: // CurveTo (简化处理)
-                                    if (parts.size() >= 5) {
-                                        double x2 = parts[3].toDouble();
-                                        double y2 = parts[4].toDouble();
-                                        painterPath.quadTo(x, y, x2, y2);
-                                    }
-                                    break;
-                                case 3: // CurveToData
-                                    // 跳过，由前面的CurveTo处理
-                                    break;
-                            }
-                        }
-                    }
-                    
-                    pathShape->setPath(painterPath);
-                    pathShape->setPos(pos + offset);
-                    shape = pathShape;
-                    } else {
-                    // 路径数据为空，跳过创建
-                }
-                break;
-            }
-            default:
-                continue;
-        }
-        
-        if (shape) {
-            // 应用变换矩阵
-            QString transformStr = props["transform"];
-            if (!transformStr.isEmpty() && transformStr != "null") {
-                QString cleanTransform = transformStr.mid(1, transformStr.length() - 2); // 移除 {}
-                QStringList transformPairs = cleanTransform.split(',');
-                
-                if (transformPairs.size() >= 6) {
-                    double m11 = transformPairs[0].split(':')[1].toDouble();
-                    double m12 = transformPairs[1].split(':')[1].toDouble();
-                    double m21 = transformPairs[2].split(':')[1].toDouble();
-                    double m22 = transformPairs[3].split(':')[1].toDouble();
-                    double dx = transformPairs[4].split(':')[1].toDouble();
-                    double dy = transformPairs[5].split(':')[1].toDouble();
-                    
-                    QTransform transform(m11, m12, m21, m22, dx, dy);
-                    shape->applyTransform(transform);
-                }
-            }
-            
-            // 应用样式
-            QString strokeStr = props["stroke"];
-            QString fillStr = props["fill"];
-            
-            // 解析stroke样式
-            if (!strokeStr.isEmpty()) {
-                QString cleanStroke = strokeStr.mid(1, strokeStr.length() - 2); // 移除 {}
-                QStringList strokePairs = cleanStroke.split(',');
-                
-                if (strokePairs.size() >= 3) {
-                    QString colorStr = strokePairs[0].split(':')[1].replace("\"", "");
-                    double width = strokePairs[1].split(':')[1].toDouble();
-                    int style = strokePairs[2].split(':')[1].toInt();
-                    
-                    QPen pen((QColor(colorStr)));
-                    pen.setWidth(width);
-                    pen.setStyle((Qt::PenStyle)style);
-                    shape->setStrokePen(pen);
-                }
-            }
-            
-            // 解析fill样式
-            if (!fillStr.isEmpty()) {
-                QString cleanFill = fillStr.mid(1, fillStr.length() - 2); // 移除 {}
-                QStringList fillPairs = cleanFill.split(',');
-                
-                if (fillPairs.size() >= 2) {
-                    QString colorStr = fillPairs[0].split(':')[1].replace("\"", "");
-                    int style = fillPairs[1].split(':')[1].toInt();
-                    
-                    QBrush brush((QColor(colorStr)));
-                    brush.setStyle((Qt::BrushStyle)style);
-                    shape->setFillBrush(brush);
-                }
-            }
-            
-            // 解析滤镜 - 使用直接字符串查找避免解析器问题
-            if (cleanObj.contains("\"blur\":")) {
-                int blurIndex = cleanObj.indexOf("\"blur\":");
-                if (blurIndex >= 0) {
-                    int valueStart = cleanObj.indexOf(":", blurIndex) + 1;
-                    while (valueStart < cleanObj.length() && cleanObj[valueStart].isSpace()) {
-                        valueStart++;
-                    }
-                    if (valueStart < cleanObj.length() && cleanObj[valueStart] == '{') {
-                        valueStart++;
-                        int valueEnd = valueStart;
-                        while (valueEnd < cleanObj.length() && cleanObj[valueEnd] != '}') {
-                            valueEnd++;
-                        }
-                        QString blurValue = cleanObj.mid(valueStart, valueEnd - valueStart);
-                        QStringList blurPairs = blurValue.split(',');
-                        if (blurPairs.size() >= 1) {
-                            double radius = blurPairs[0].split(':')[1].toDouble();
-                            shape->setBlurEffect(radius);
-                        }
-                    }
-                }
-            }
-            
-            if (cleanObj.contains("\"shadow\":")) {
-                int shadowIndex = cleanObj.indexOf("\"shadow\":");
-                if (shadowIndex >= 0) {
-                    int valueStart = cleanObj.indexOf(":", shadowIndex) + 1;
-                    while (valueStart < cleanObj.length() && cleanObj[valueStart].isSpace()) {
-                        valueStart++;
-                    }
-                    if (valueStart < cleanObj.length() && cleanObj[valueStart] == '{') {
-                        valueStart++;
-                        int valueEnd = valueStart;
-                        while (valueEnd < cleanObj.length() && cleanObj[valueEnd] != '}') {
-                            valueEnd++;
-                        }
-                        QString shadowValue = cleanObj.mid(valueStart, valueEnd - valueStart);
-                        QStringList shadowPairs = shadowValue.split(',');
-                        if (shadowPairs.size() >= 4) {
-                            QString colorStr = shadowPairs[0].split(':')[1].replace("\"", "");
-                            double blurRadius = shadowPairs[1].split(':')[1].toDouble();
-                            double offsetX = shadowPairs[2].split(':')[1].toDouble();
-                            double offsetY = shadowPairs[3].split(':')[1].toDouble();
-                            
-                            shape->setDropShadowEffect(QColor(colorStr), blurRadius, QPointF(offsetX, offsetY));
-                        }
-                    }
-                }
-            }
-            
-            // 添加到粘贴项目列表，而不是直接添加到场景
-            if (shape) {
-                pastedItems.append(shape);
-                shape->setSelected(true);
-            }
-        }
-    }
-    
-    // 创建撤销命令并执行
-    if (!pastedItems.isEmpty()) {
-        PasteCommand *command = new PasteCommand(m_scene, pastedItems);
-        m_scene->undoStack()->push(command);
-        m_statusLabel->setText(QString("已粘贴 %1 个项目").arg(pastedItems.size()));
-    }
-}
-
-void MainWindow::duplicate()
-{
-    // 快速复制粘贴：先复制，然后立即粘贴
-    copySelected();
-    paste();
-}
-
-void MainWindow::applyBlurEffect()
-{
-    if (!m_scene)
-        return;
-
-    QList<QGraphicsItem *> selected = m_scene->selectedItems();
-    if (selected.isEmpty())
-        return;
-
-    // 使用默认模糊半径
-    qreal radius = 5.0;
-
-    // 创建撤销命令
-    class FilterChangeCommand : public QUndoCommand {
-    public:
-        FilterChangeCommand(DrawingScene *scene, const QList<QGraphicsItem*>& items, 
-                          qreal radius, QUndoCommand *parent = nullptr)
-            : QUndoCommand("应用高斯模糊", parent), m_scene(scene), m_items(items), m_radius(radius)
-        {
-            // 保存原始状态
-            for (QGraphicsItem *item : items) {
-                DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(item);
-                if (shape) {
-                    QGraphicsEffect *effect = shape->graphicsEffect();
-                    if (QGraphicsBlurEffect *blur = qobject_cast<QGraphicsBlurEffect*>(effect)) {
-                        QGraphicsBlurEffect *newBlur = new QGraphicsBlurEffect();
-                        newBlur->setBlurRadius(blur->blurRadius());
-                        m_originalEffects[item] = newBlur;
-                    } else if (QGraphicsDropShadowEffect *shadow = qobject_cast<QGraphicsDropShadowEffect*>(effect)) {
-                        QGraphicsDropShadowEffect *newShadow = new QGraphicsDropShadowEffect();
-                        newShadow->setColor(shadow->color());
-                        newShadow->setBlurRadius(shadow->blurRadius());
-                        newShadow->setOffset(shadow->offset());
-                        m_originalEffects[item] = newShadow;
-                    } else {
-                        m_originalEffects[item] = nullptr;
-                    }
-                }
-            }
-        }
-
-        void undo() override {
-            for (QGraphicsItem *item : m_items) {
-                DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(item);
-                if (shape && m_originalEffects.contains(item)) {
-                    shape->setGraphicsEffect(m_originalEffects[item]);
-                }
-            }
-            if (m_scene) m_scene->setModified(true);
-        }
-
-        void redo() override {
-            for (QGraphicsItem *item : m_items) {
-                DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(item);
-                if (shape) {
-                    shape->setBlurEffect(m_radius);
-                }
-            }
-            if (m_scene) m_scene->setModified(true);
-        }
-
-    private:
-        DrawingScene *m_scene;
-        QList<QGraphicsItem*> m_items;
-        qreal m_radius;
-        QHash<QGraphicsItem*, QGraphicsEffect*> m_originalEffects;
-    };
-
-    FilterChangeCommand *command = new FilterChangeCommand(m_scene, selected, radius);
-    m_scene->undoStack()->push(command);
-    m_statusLabel->setText(QString("已应用高斯模糊到 %1 个对象").arg(selected.size()));
-}
-
-void MainWindow::applyDropShadowEffect()
-{
-    if (!m_scene)
-        return;
-
-    QList<QGraphicsItem *> selected = m_scene->selectedItems();
-    if (selected.isEmpty())
-        return;
-
-    // 使用默认阴影参数
-    QColor color = Qt::black;
-    qreal blurRadius = 3.0;
-    qreal offsetX = 3.0;
-    qreal offsetY = 3.0;
-
-    // 创建撤销命令
-    class ShadowFilterCommand : public QUndoCommand {
-    public:
-        ShadowFilterCommand(DrawingScene *scene, const QList<QGraphicsItem*>& items, 
-                           const QColor &color, qreal blurRadius, const QPointF &offset,
-                           QUndoCommand *parent = nullptr)
-            : QUndoCommand("应用阴影效果", parent), m_scene(scene), m_items(items), 
-              m_color(color), m_blurRadius(blurRadius), m_offset(offset)
-        {
-            // 保存原始状态
-            for (QGraphicsItem *item : items) {
-                DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(item);
-                if (shape) {
-                    QGraphicsEffect *effect = shape->graphicsEffect();
-                    if (QGraphicsBlurEffect *blur = qobject_cast<QGraphicsBlurEffect*>(effect)) {
-                        QGraphicsBlurEffect *newBlur = new QGraphicsBlurEffect();
-                        newBlur->setBlurRadius(blur->blurRadius());
-                        m_originalEffects[item] = newBlur;
-                    } else if (QGraphicsDropShadowEffect *shadow = qobject_cast<QGraphicsDropShadowEffect*>(effect)) {
-                        QGraphicsDropShadowEffect *newShadow = new QGraphicsDropShadowEffect();
-                        newShadow->setColor(shadow->color());
-                        newShadow->setBlurRadius(shadow->blurRadius());
-                        newShadow->setOffset(shadow->offset());
-                        m_originalEffects[item] = newShadow;
-                    } else {
-                        m_originalEffects[item] = nullptr;
-                    }
-                }
-            }
-        }
-
-        void undo() override {
-            for (QGraphicsItem *item : m_items) {
-                DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(item);
-                if (shape && m_originalEffects.contains(item)) {
-                    shape->setGraphicsEffect(m_originalEffects[item]);
-                }
-            }
-            if (m_scene) m_scene->setModified(true);
-        }
-
-        void redo() override {
-            for (QGraphicsItem *item : m_items) {
-                DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(item);
-                if (shape) {
-                    shape->setDropShadowEffect(m_color, m_blurRadius, m_offset);
-                }
-            }
-            if (m_scene) m_scene->setModified(true);
-        }
-
-    private:
-        DrawingScene *m_scene;
-        QList<QGraphicsItem*> m_items;
-        QColor m_color;
-        qreal m_blurRadius;
-        QPointF m_offset;
-        QHash<QGraphicsItem*, QGraphicsEffect*> m_originalEffects;
-    };
-
-    ShadowFilterCommand *command = new ShadowFilterCommand(m_scene, selected, color, blurRadius, QPointF(offsetX, offsetY));
-    m_scene->undoStack()->push(command);
-    m_statusLabel->setText(QString("已应用阴影效果到 %1 个对象").arg(selected.size()));
-}
-
-void MainWindow::clearFilterEffect()
-{
-    if (!m_scene)
-        return;
-
-    QList<QGraphicsItem *> selected = m_scene->selectedItems();
-    if (selected.isEmpty())
-        return;
-
-    // 创建撤销命令
-    class ClearFilterCommand : public QUndoCommand {
-    public:
-        ClearFilterCommand(DrawingScene *scene, const QList<QGraphicsItem*>& items, QUndoCommand *parent = nullptr)
-            : QUndoCommand("清除滤镜", parent), m_scene(scene), m_items(items)
-        {
-            // 保存原始状态
-            for (QGraphicsItem *item : items) {
-                DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(item);
-                if (shape) {
-                    QGraphicsEffect *effect = shape->graphicsEffect();
-                    if (QGraphicsBlurEffect *blur = qobject_cast<QGraphicsBlurEffect*>(effect)) {
-                        QGraphicsBlurEffect *newBlur = new QGraphicsBlurEffect();
-                        newBlur->setBlurRadius(blur->blurRadius());
-                        m_originalEffects[item] = newBlur;
-                    } else if (QGraphicsDropShadowEffect *shadow = qobject_cast<QGraphicsDropShadowEffect*>(effect)) {
-                        QGraphicsDropShadowEffect *newShadow = new QGraphicsDropShadowEffect();
-                        newShadow->setColor(shadow->color());
-                        newShadow->setBlurRadius(shadow->blurRadius());
-                        newShadow->setOffset(shadow->offset());
-                        m_originalEffects[item] = newShadow;
-                    } else {
-                        m_originalEffects[item] = nullptr;
-                    }
-                }
-            }
-        }
-
-        void undo() override {
-            for (QGraphicsItem *item : m_items) {
-                DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(item);
-                if (shape && m_originalEffects.contains(item)) {
-                    shape->setGraphicsEffect(m_originalEffects[item]);
-                }
-            }
-            if (m_scene) m_scene->setModified(true);
-        }
-
-        void redo() override {
-            for (QGraphicsItem *item : m_items) {
-                DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(item);
-                if (shape) {
-                    shape->clearFilter();
-                }
-            }
-            if (m_scene) m_scene->setModified(true);
-        }
-
-    private:
-        DrawingScene *m_scene;
-        QList<QGraphicsItem*> m_items;
-        QHash<QGraphicsItem*, QGraphicsEffect*> m_originalEffects;
-    };
-
-    ClearFilterCommand *command = new ClearFilterCommand(m_scene, selected);
-    m_scene->undoStack()->push(command);
-    m_statusLabel->setText(QString("已清除 %1 个对象的滤镜效果").arg(selected.size()));
-}
-
-void MainWindow::convertTextToPath()
-{
-    if (!m_scene)
-        return;
-
-    QList<QGraphicsItem *> selected = m_scene->selectedItems();
-    if (selected.isEmpty())
-        return;
-
-    QList<DrawingShape*> convertedShapes;
-    
-    foreach (QGraphicsItem *item, selected) {
-        DrawingText *textShape = qgraphicsitem_cast<DrawingText*>(item);
-        if (textShape) {
-            // 将文本转换为路径
-            DrawingPath *pathShape = textShape->convertToPath();
-            if (pathShape) {
-                // 添加到场景
-                m_scene->addItem(pathShape);
-                pathShape->setSelected(true);
-                convertedShapes.append(pathShape);
-                
-                // 移除原始文本
-                m_scene->removeItem(textShape);
-                delete textShape;
-            }
-        }
-    }
-    
-    if (!convertedShapes.isEmpty()) {
-        m_scene->setModified(true);
-        m_statusLabel->setText(QString("已将 %1 个文本转换为路径").arg(convertedShapes.size()));
-    } else {
-        m_statusLabel->setText("没有选中的文本对象");
-    }
-}
-
-void MainWindow::selectAll()
-{
-    foreach (QGraphicsItem *item, m_scene->items())
-    {
-        item->setSelected(true);
-    }
-}
-
-void MainWindow::deselectAll()
-{
-    m_scene->clearSelection();
-}
-
-void MainWindow::zoomIn()
-{
-    m_canvas->zoomIn();
-}
-
-void MainWindow::zoomOut()
-{
-    m_canvas->zoomOut();
-}
-
-void MainWindow::resetZoom()
-{
-    m_canvas->resetZoom();
-}
-
-void MainWindow::fitToWindow()
-{
-    m_canvas->fitToWindow();
-}
-
-void MainWindow::toggleGrid()
-{
-    if (m_scene)
-    {
-        m_scene->setGridVisible(!m_scene->isGridVisible());
-        m_toggleGridAction->setChecked(m_scene->isGridVisible());
-    }
-}
-
-void MainWindow::toggleGridAlignment()
-{
-    if (m_scene)
-    {
-        bool enabled = !m_scene->isGridAlignmentEnabled();
-        m_scene->setGridAlignmentEnabled(enabled);
-        m_toggleGridAlignmentAction->setChecked(enabled);
-        m_statusLabel->setText(enabled ? "网格对齐已启用" : "网格对齐已禁用");
-    }
-}
-
-void MainWindow::groupSelected()
-{
-    if (!m_scene) return;
-    
-    QList<QGraphicsItem *> selected = m_scene->selectedItems();
-    
-    if (selected.size() < 2) {
-        // 如果没有选中足够多的项目，给出提示
-        m_statusLabel->setText("需要至少选择2个项目才能组合");
-        return;
-    }
-    
-    // 使用场景的组合方法，这会创建撤销命令
-    m_scene->groupSelectedItems();
-    
-    // 更新状态标签
-    m_statusLabel->setText(QString("已组合 %1 个项目").arg(selected.size()));
-}
-
-void MainWindow::ungroupSelected()
-{
-    if (!m_scene) return;
-    
-    QList<QGraphicsItem *> selected = m_scene->selectedItems();
-    
-    if (selected.isEmpty()) {
-        m_statusLabel->setText("没有选中的项目");
-        return;
-    }
-    
-    // 计算要取消组合的数量
-    int groupCount = 0;
-    for (QGraphicsItem *item : selected) {
-        if (item && item->type() == QGraphicsItem::UserType + 1) {
-            DrawingShape *shape = static_cast<DrawingShape*>(item);
-            if (shape && shape->shapeType() == DrawingShape::Group) {
-                groupCount++;
-            }
-        }
-    }
-    
-    if (groupCount == 0) {
-        m_statusLabel->setText("没有选中的组合项目");
-        return;
-    }
-    
-    // 使用场景的取消组合方法，这会创建撤销命令
-    m_scene->ungroupSelectedItems();
-    
-    // 更新状态标签
-    m_statusLabel->setText(QString("已取消组合 %1 个组").arg(groupCount));
-}
-
-void MainWindow::showGridSettings()
-{
-    // 这里可以创建一个设置对话框来配置网格
-    // 暂时使用简单的消息框
-    if (m_scene)
-    {
-        bool ok;
-        int size = QInputDialog::getInt(this, "网格设置",
-                                        "请输入网格大小 (像素):",
-                                        m_scene->gridSize(),
-                                        5, 100, 1, &ok);
-        if (ok)
-        {
-            m_scene->setGridSize(size);
-        }
-
-        // 询问用户是否要更改网格颜色
-        QColor color = QColorDialog::getColor(m_scene->gridColor(), this, "选择网格颜色");
-        if (color.isValid())
-        {
-            m_scene->setGridColor(color);
-        }
-    }
 }
 
 void MainWindow::updateZoomLabel()
@@ -2844,7 +2069,9 @@ void MainWindow::onApplyColorToSelection(const QColor &color, bool isFill)
     
     // 创建并推送撤销命令
     ColorChangeCommand *command = new ColorChangeCommand(m_scene, shapes, oldFillColors, oldStrokeColors, color, isFill);
-    m_scene->undoStack()->push(command);
+    if (m_commandManager) {
+        m_commandManager->pushCommand(command);
+    }
     
     // 更新场景
     m_scene->update();
@@ -2897,7 +2124,7 @@ void MainWindow::onObjectStateChanged(DrawingShape* shape)
 
 void MainWindow::onSceneChanged()
 {
-    m_isModified = true;
+    // 现在由DrawingCanvas内部管理修改状态
     updateUI(); // 更新窗口标题显示修改状态
 }
 
@@ -2936,23 +2163,19 @@ void MainWindow::keyReleaseEvent(QKeyEvent *event)
 
 void MainWindow::updateUI()
 {
-    // Update window title
-    QString title = "VectorQt - 矢量绘图应用";
-    if (!m_currentFile.isEmpty())
-    {
-        title += " - " + QFileInfo(m_currentFile).fileName();
+    // Update window title - 现在由FileManager处理
+    if (m_fileManager) {
+        // 触发FileManager更新窗口标题
+        m_fileManager->updateWindowTitle();
+    } else {
+        setWindowTitle("VectorQt - 矢量绘图应用");
     }
-    if (m_isModified)
-    {
-        title += " *";
-    }
-    setWindowTitle(title);
 
-    // Update undo/redo actions
-    if (m_scene && m_scene->undoStack())
+    // Update undo/redo actions - 使用CommandManager
+    if (m_commandManager)
     {
-        m_undoAction->setEnabled(m_scene->undoStack()->canUndo());
-        m_redoAction->setEnabled(m_scene->undoStack()->canRedo());
+        m_undoAction->setEnabled(m_commandManager->canUndo());
+        m_redoAction->setEnabled(m_commandManager->canRedo());
     }
     else
     {
@@ -2993,8 +2216,12 @@ void MainWindow::updateUI()
         m_ungroupAction->setEnabled(false);
     }
 
-    // Update save action
-    m_saveAction->setEnabled(m_isModified);
+    // Update save action - 现在由DrawingScene管理修改状态
+    if (DrawingScene* drawingScene = qobject_cast<DrawingScene*>(m_canvas ? m_canvas->scene() : nullptr)) {
+        m_saveAction->setEnabled(drawingScene->isModified());
+    } else {
+        m_saveAction->setEnabled(false);
+    }
 }
 
 void MainWindow::resizeEvent(QResizeEvent *event)
@@ -3024,7 +2251,8 @@ void MainWindow::resizeEvent(QResizeEvent *event)
 
 void MainWindow::closeEvent(QCloseEvent *event)
 {
-    if (m_isModified)
+    DrawingScene* drawingScene = m_canvas ? qobject_cast<DrawingScene*>(m_canvas->scene()) : nullptr;
+    if (m_fileManager && drawingScene && drawingScene->isModified())
     {
         QMessageBox::StandardButton reply = QMessageBox::question(this, "VectorQt",
                                                                   "文档已修改，是否保存？",
@@ -3032,7 +2260,10 @@ void MainWindow::closeEvent(QCloseEvent *event)
 
         if (reply == QMessageBox::Save)
         {
-            saveFile();
+            if (!m_fileManager->saveFile()) {
+                event->ignore();
+                return;
+            }
         }
         else if (reply == QMessageBox::Cancel)
         {
@@ -3050,794 +2281,6 @@ void MainWindow::closeEvent(QCloseEvent *event)
     event->accept();
 }
 
-void MainWindow::bringToFront()
-{
-    if (m_scene) {
-        m_scene->bringToFront();
-        m_statusLabel->setText("置于顶层");
-    }
-}
-
-void MainWindow::sendToBack()
-{
-    if (m_scene) {
-        m_scene->sendToBack();
-        m_statusLabel->setText("置于底层");
-    }
-}
-
-void MainWindow::bringForward()
-{
-    if (m_scene) {
-        m_scene->bringForward();
-        m_statusLabel->setText("上移一层");
-    }
-}
-
-void MainWindow::sendBackward()
-{
-    if (m_scene) {
-        m_scene->sendBackward();
-        m_statusLabel->setText("下移一层");
-    }
-}
-
-void MainWindow::showContextMenu(const QPointF &pos)
-{
-    QMenu contextMenu(this);
-    
-    // 获取选中项数量用于条件判断
-    int selectedCount = m_scene ? m_scene->selectedItems().size() : 0;
-    
-    // 添加基本操作
-    contextMenu.addAction(m_copyAction);
-    contextMenu.addAction(m_pasteAction);
-    contextMenu.addAction(m_duplicateAction);
-    contextMenu.addSeparator();
-    
-    // 添加滤镜子菜单
-    QMenu *filterContextMenu = contextMenu.addMenu("滤镜");
-    filterContextMenu->addAction(m_blurEffectAction);
-    filterContextMenu->addAction(m_dropShadowEffectAction);
-    filterContextMenu->addSeparator();
-    filterContextMenu->addAction(m_clearFilterAction);
-    contextMenu.addSeparator();
-    
-    contextMenu.addAction(m_deleteAction);
-    contextMenu.addSeparator();
-    
-    // 添加Z序控制子菜单
-    QMenu *zOrderMenu = contextMenu.addMenu("Z序");
-    zOrderMenu->addAction(m_bringToFrontAction);
-    zOrderMenu->addAction(m_sendToBackAction);
-    zOrderMenu->addSeparator();
-    zOrderMenu->addAction(m_bringForwardAction);
-    zOrderMenu->addAction(m_sendBackwardAction);
-    
-    // 添加对齐子菜单
-    QMenu *alignMenu = contextMenu.addMenu("对齐");
-    alignMenu->addAction(m_alignLeftAction);
-    alignMenu->addAction(m_alignCenterAction);
-    alignMenu->addAction(m_alignRightAction);
-    alignMenu->addSeparator();
-    alignMenu->addAction(m_alignTopAction);
-    alignMenu->addAction(m_alignMiddleAction);
-    alignMenu->addAction(m_alignBottomAction);
-    alignMenu->addSeparator();
-    alignMenu->addAction(m_sameWidthAction);
-    alignMenu->addAction(m_sameHeightAction);
-    alignMenu->addAction(m_sameSizeAction);
-    alignMenu->addSeparator();
-    alignMenu->addAction(m_distributeHorizontalAction);
-    alignMenu->addAction(m_distributeVerticalAction);
-    
-    // 根据选中数量启用/禁用对齐功能
-    bool canAlign = selectedCount >= 1;
-    bool canDistribute = selectedCount >= 3;
-    m_alignLeftAction->setEnabled(canAlign);
-    m_alignCenterAction->setEnabled(canAlign);
-    m_alignRightAction->setEnabled(canAlign);
-    m_alignTopAction->setEnabled(canAlign);
-    m_alignMiddleAction->setEnabled(canAlign);
-    m_alignBottomAction->setEnabled(canAlign);
-    m_distributeHorizontalAction->setEnabled(canDistribute);
-    m_distributeVerticalAction->setEnabled(canDistribute);
-    
-    // 添加组合操作
-    contextMenu.addAction(m_groupAction);
-    contextMenu.addAction(m_ungroupAction);
-    m_groupAction->setEnabled(selectedCount >= 2);  // 需要至少2个对象才能组合
-    
-    contextMenu.addSeparator();
-    
-    // 添加路径编辑菜单
-    QMenu *pathMenu = contextMenu.addMenu("路径编辑");
-    
-    // 路径编辑功能需要至少1个选中对象
-    bool canEditPath = selectedCount >= 1;
-    
-    // 布尔运算需要至少2个选中对象
-    bool canBoolean = selectedCount >= 2;
-    
-    // 布尔运算菜单
-    QMenu *booleanMenu = pathMenu->addMenu("布尔运算");
-    
-    QAction *unionAction = booleanMenu->addAction("合并");
-    unionAction->setEnabled(canBoolean);
-    QAction *intersectAction = booleanMenu->addAction("相交");
-    intersectAction->setEnabled(canBoolean);
-    QAction *subtractAction = booleanMenu->addAction("减去");
-    subtractAction->setEnabled(canBoolean);
-    QAction *xorAction = booleanMenu->addAction("异或");
-    xorAction->setEnabled(canBoolean);
-    
-    // 路径操作菜单
-    QMenu *pathOpsMenu = pathMenu->addMenu("路径操作");
-    
-    QAction *simplifyAction = pathOpsMenu->addAction("简化路径");
-    simplifyAction->setEnabled(canEditPath);
-    QAction *smoothAction = pathOpsMenu->addAction("平滑路径");
-    smoothAction->setEnabled(canEditPath);
-    QAction *curveAction = pathOpsMenu->addAction("转换为曲线");
-    curveAction->setEnabled(canEditPath);
-    QAction *offsetAction = pathOpsMenu->addAction("偏移路径");
-    offsetAction->setEnabled(canEditPath);
-    QAction *clipAction = pathOpsMenu->addAction("裁剪路径");
-    clipAction->setEnabled(canEditPath);
-    
-    // 创建形状菜单
-    QMenu *shapeMenu = pathMenu->addMenu("创建形状");
-    
-    QAction *arrowAction = shapeMenu->addAction("箭头");
-    QAction *starAction = shapeMenu->addAction("星形");
-    QAction *gearAction = shapeMenu->addAction("齿轮");
-    
-    // 检查是否有选中的文本对象
-    bool hasTextSelection = false;
-    if (m_scene) {
-        QList<QGraphicsItem *> selected = m_scene->selectedItems();
-        for (QGraphicsItem *item : selected) {
-            DrawingText *textShape = qgraphicsitem_cast<DrawingText*>(item);
-            if (textShape) {
-                hasTextSelection = true;
-                break;
-            }
-        }
-    }
-    
-    // 如果有选中的文本，添加文本转路径选项
-    QAction *convertTextToPathAction = nullptr;
-    if (hasTextSelection) {
-        pathMenu->addSeparator();
-        convertTextToPathAction = pathMenu->addAction("文本转路径");
-    }
-    
-    // 显示菜单
-    QAction *selectedAction = contextMenu.exec(m_canvas->view()->mapToGlobal(m_canvas->view()->mapFromScene(pos)));
-    
-    // 处理菜单选择
-    if (selectedAction == unionAction) {
-        executeBooleanOperation(static_cast<int>(PathEditor::Union));
-    } else if (selectedAction == intersectAction) {
-        executeBooleanOperation(static_cast<int>(PathEditor::Intersection));
-    } else if (selectedAction == subtractAction) {
-        executeBooleanOperation(static_cast<int>(PathEditor::Subtraction));
-    } else if (selectedAction == xorAction) {
-        executeBooleanOperation(static_cast<int>(PathEditor::Xor));
-    } else if (selectedAction == simplifyAction) {
-        executePathOperation("simplify");
-    } else if (selectedAction == smoothAction) {
-        executePathOperation("smooth");
-    } else if (selectedAction == curveAction) {
-        executePathOperation("curve");
-    } else if (selectedAction == offsetAction) {
-        executePathOperation("offset");
-    } else if (selectedAction == clipAction) {
-        executePathOperation("clip");
-    } else if (selectedAction == arrowAction) {
-        createShapeAtPosition("arrow", pos);
-    } else if (selectedAction == starAction) {
-        createShapeAtPosition("star", pos);
-    } else if (selectedAction == gearAction) {
-        createShapeAtPosition("gear", pos);
-    } else if (selectedAction == convertTextToPathAction) {
-        convertSelectedTextToPath();
-    }
-}
-
-void MainWindow::alignLeft()
-{
-    if (!m_scene) return;
-    
-    QList<QGraphicsItem*> selectedItems = m_scene->selectedItems();
-    if (selectedItems.isEmpty()) {
-        m_statusLabel->setText("没有选中的项目");
-        return;
-    }
-    
-    // 计算所有选中项目的最左边界
-    qreal leftmost = std::numeric_limits<qreal>::max();
-    for (QGraphicsItem* item : selectedItems) {
-        QRectF bounds = item->mapToScene(item->boundingRect()).boundingRect();
-        leftmost = qMin(leftmost, bounds.left());
-    }
-    
-    // 将所有项目对齐到最左边界
-    for (QGraphicsItem* item : selectedItems) {
-        QRectF bounds = item->mapToScene(item->boundingRect()).boundingRect();
-        qreal deltaX = leftmost - bounds.left();
-        item->setPos(item->pos().x() + deltaX, item->pos().y());
-    }
-    
-    m_scene->update();
-    m_scene->setModified(true);
-    m_statusLabel->setText(QString("已左对齐 %1 个项目").arg(selectedItems.size()));
-}
-
-void MainWindow::alignCenter()
-{
-    if (!m_scene) return;
-    
-    QList<QGraphicsItem*> selectedItems = m_scene->selectedItems();
-    if (selectedItems.isEmpty()) {
-        m_statusLabel->setText("没有选中的项目");
-        return;
-    }
-    
-    // 计算所有选中项目的中心位置
-    qreal leftmost = std::numeric_limits<qreal>::max();
-    qreal rightmost = std::numeric_limits<qreal>::lowest();
-    for (QGraphicsItem* item : selectedItems) {
-        QRectF bounds = item->mapToScene(item->boundingRect()).boundingRect();
-        leftmost = qMin(leftmost, bounds.left());
-        rightmost = qMax(rightmost, bounds.right());
-    }
-    
-    qreal centerX = (leftmost + rightmost) / 2.0;
-    
-    // 将所有项目水平居中对齐
-    for (QGraphicsItem* item : selectedItems) {
-        QRectF bounds = item->mapToScene(item->boundingRect()).boundingRect();
-        qreal itemCenterX = (bounds.left() + bounds.right()) / 2.0;
-        qreal deltaX = centerX - itemCenterX;
-        item->setPos(item->pos().x() + deltaX, item->pos().y());
-    }
-    
-    m_scene->update();
-    m_scene->setModified(true);
-    m_statusLabel->setText(QString("已水平居中对齐 %1 个项目").arg(selectedItems.size()));
-}
-
-void MainWindow::alignRight()
-{
-    if (!m_scene) return;
-    
-    QList<QGraphicsItem*> selectedItems = m_scene->selectedItems();
-    if (selectedItems.isEmpty()) {
-        m_statusLabel->setText("没有选中的项目");
-        return;
-    }
-    
-    // 计算所有选中项目的最右边界
-    qreal rightmost = std::numeric_limits<qreal>::lowest();
-    for (QGraphicsItem* item : selectedItems) {
-        QRectF bounds = item->mapToScene(item->boundingRect()).boundingRect();
-        rightmost = qMax(rightmost, bounds.right());
-    }
-    
-    // 将所有项目对齐到最右边界
-    for (QGraphicsItem* item : selectedItems) {
-        QRectF bounds = item->mapToScene(item->boundingRect()).boundingRect();
-        qreal deltaX = rightmost - bounds.right();
-        item->setPos(item->pos().x() + deltaX, item->pos().y());
-    }
-    
-    m_scene->update();
-    m_scene->setModified(true);
-    m_statusLabel->setText(QString("已右对齐 %1 个项目").arg(selectedItems.size()));
-}
-
-void MainWindow::alignTop()
-{
-    if (!m_scene) return;
-    
-    QList<QGraphicsItem*> selectedItems = m_scene->selectedItems();
-    if (selectedItems.isEmpty()) {
-        m_statusLabel->setText("没有选中的项目");
-        return;
-    }
-    
-    // 计算所有选中项目的最顶边界
-    qreal topmost = std::numeric_limits<qreal>::max();
-    for (QGraphicsItem* item : selectedItems) {
-        QRectF bounds = item->mapToScene(item->boundingRect()).boundingRect();
-        topmost = qMin(topmost, bounds.top());
-    }
-    
-    // 将所有项目对齐到最顶边界
-    for (QGraphicsItem* item : selectedItems) {
-        QRectF bounds = item->mapToScene(item->boundingRect()).boundingRect();
-        qreal deltaY = topmost - bounds.top();
-        item->setPos(item->pos().x(), item->pos().y() + deltaY);
-    }
-    
-    m_scene->update();
-    m_scene->setModified(true);
-    m_statusLabel->setText(QString("已顶部对齐 %1 个项目").arg(selectedItems.size()));
-}
-
-void MainWindow::alignMiddle()
-{
-    if (!m_scene) return;
-    
-    QList<QGraphicsItem*> selectedItems = m_scene->selectedItems();
-    if (selectedItems.isEmpty()) {
-        m_statusLabel->setText("没有选中的项目");
-        return;
-    }
-    
-    // 计算所有选中项目的中心位置
-    qreal topmost = std::numeric_limits<qreal>::max();
-    qreal bottommost = std::numeric_limits<qreal>::lowest();
-    for (QGraphicsItem* item : selectedItems) {
-        QRectF bounds = item->mapToScene(item->boundingRect()).boundingRect();
-        topmost = qMin(topmost, bounds.top());
-        bottommost = qMax(bottommost, bounds.bottom());
-    }
-    
-    qreal centerY = (topmost + bottommost) / 2.0;
-    
-    // 将所有项目垂直居中对齐
-    for (QGraphicsItem* item : selectedItems) {
-        QRectF bounds = item->mapToScene(item->boundingRect()).boundingRect();
-        qreal itemCenterY = (bounds.top() + bounds.bottom()) / 2.0;
-        qreal deltaY = centerY - itemCenterY;
-        item->setPos(item->pos().x(), item->pos().y() + deltaY);
-    }
-    
-    m_scene->update();
-    m_scene->setModified(true);
-    m_statusLabel->setText(QString("已垂直居中对齐 %1 个项目").arg(selectedItems.size()));
-}
-
-void MainWindow::alignBottom()
-{
-    if (!m_scene) return;
-    
-    QList<QGraphicsItem*> selectedItems = m_scene->selectedItems();
-    if (selectedItems.isEmpty()) {
-        m_statusLabel->setText("没有选中的项目");
-        return;
-    }
-    
-    // 计算所有选中项目的最底边界
-    qreal bottommost = std::numeric_limits<qreal>::lowest();
-    for (QGraphicsItem* item : selectedItems) {
-        QRectF bounds = item->mapToScene(item->boundingRect()).boundingRect();
-        bottommost = qMax(bottommost, bounds.bottom());
-    }
-    
-    // 将所有项目对齐到最底边界
-    for (QGraphicsItem* item : selectedItems) {
-        QRectF bounds = item->mapToScene(item->boundingRect()).boundingRect();
-        qreal deltaY = bottommost - bounds.bottom();
-        item->setPos(item->pos().x(), item->pos().y() + deltaY);
-    }
-    
-    m_scene->update();
-    m_scene->setModified(true);
-    m_statusLabel->setText(QString("已底部对齐 %1 个项目").arg(selectedItems.size()));
-}
-
-void MainWindow::sameWidth()
-{
-    if (!m_scene) return;
-    
-    QList<QGraphicsItem*> selectedItems = m_scene->selectedItems();
-    if (selectedItems.size() < 2) {
-        m_statusLabel->setText("需要至少选择2个项目");
-        return;
-    }
-    
-    // 找到第一个选中项目的宽度作为目标宽度
-    QGraphicsItem* firstItem = selectedItems.first();
-    QRectF firstBounds = firstItem->mapToScene(firstItem->boundingRect()).boundingRect();
-    qreal targetWidth = firstBounds.width();
-    
-    // 创建撤销命令
-    class SameWidthCommand : public QUndoCommand
-    {
-    public:
-        SameWidthCommand(DrawingScene *scene, const QList<QGraphicsItem*>& items, qreal width, QUndoCommand *parent = nullptr)
-            : QUndoCommand("同宽", parent), m_scene(scene), m_items(items), m_targetWidth(width)
-        {
-            // 保存原始变换
-            for (QGraphicsItem* item : m_items) {
-                m_originalTransforms.append(item->transform());
-            }
-        }
-        
-        void undo() override {
-            for (int i = 0; i < m_items.size(); ++i) {
-                m_items[i]->setTransform(m_originalTransforms[i]);
-            }
-            m_scene->update();
-            m_scene->setModified(true);
-        }
-        
-        void redo() override {
-            for (QGraphicsItem* item : m_items) {
-                QRectF bounds = item->mapToScene(item->boundingRect()).boundingRect();
-                qreal currentWidth = bounds.width();
-                qreal scaleX = m_targetWidth / currentWidth;
-                
-                // 检查是否是 DrawingShape，使用专门的方法
-                DrawingShape* shape = qgraphicsitem_cast<DrawingShape*>(item);
-                if (shape) {
-                    // 重置变换然后应用新的缩放
-                    shape->setTransform(QTransform());
-                    shape->scaleAroundAnchor(scaleX, 1.0, shape->boundingRect().center());
-                } else {
-                    // 对于其他类型的项目，使用通用方法
-                    QTransform transform;
-                    transform.scale(scaleX, 1.0);
-                    item->setTransform(transform);
-                }
-            }
-            m_scene->update();
-            m_scene->setModified(true);
-        }
-        
-    private:
-        DrawingScene *m_scene;
-        QList<QGraphicsItem*> m_items;
-        qreal m_targetWidth;
-        QVector<QTransform> m_originalTransforms;
-    };
-    
-    // 应用同宽操作
-    for (QGraphicsItem* item : selectedItems) {
-        QRectF bounds = item->mapToScene(item->boundingRect()).boundingRect();
-        qreal currentWidth = bounds.width();
-        qreal scaleX = targetWidth / currentWidth;
-        
-        // 检查是否是 DrawingShape，使用专门的方法
-        DrawingShape* shape = qgraphicsitem_cast<DrawingShape*>(item);
-        if (shape) {
-            // 重置变换然后应用新的缩放
-            shape->setTransform(QTransform());
-            shape->scaleAroundAnchor(scaleX, 1.0, shape->boundingRect().center());
-        } else {
-            // 对于其他类型的项目，使用通用方法
-            QTransform transform;
-            transform.scale(scaleX, 1.0);
-            item->setTransform(transform);
-        }
-    }
-    
-    // 创建并推送撤销命令
-    SameWidthCommand *command = new SameWidthCommand(m_scene, selectedItems, targetWidth);
-    m_scene->undoStack()->push(command);
-    
-    m_scene->update();
-    m_scene->setModified(true);
-    m_statusLabel->setText(QString("已设置 %1 个项目为相同宽度").arg(selectedItems.size()));
-}
-
-void MainWindow::sameHeight()
-{
-    if (!m_scene) return;
-    
-    QList<QGraphicsItem*> selectedItems = m_scene->selectedItems();
-    if (selectedItems.size() < 2) {
-        m_statusLabel->setText("需要至少选择2个项目");
-        return;
-    }
-    
-    // 找到第一个选中项目的高度作为目标高度
-    QGraphicsItem* firstItem = selectedItems.first();
-    QRectF firstBounds = firstItem->mapToScene(firstItem->boundingRect()).boundingRect();
-    qreal targetHeight = firstBounds.height();
-    
-    // 创建撤销命令
-    class SameHeightCommand : public QUndoCommand
-    {
-    public:
-        SameHeightCommand(DrawingScene *scene, const QList<QGraphicsItem*>& items, qreal height, QUndoCommand *parent = nullptr)
-            : QUndoCommand("同高", parent), m_scene(scene), m_items(items), m_targetHeight(height)
-        {
-            // 保存原始变换
-            for (QGraphicsItem* item : m_items) {
-                m_originalTransforms.append(item->transform());
-            }
-        }
-        
-        void undo() override {
-            for (int i = 0; i < m_items.size(); ++i) {
-                m_items[i]->setTransform(m_originalTransforms[i]);
-            }
-            m_scene->update();
-            m_scene->setModified(true);
-        }
-        
-        void redo() override {
-            for (QGraphicsItem* item : m_items) {
-                QRectF bounds = item->mapToScene(item->boundingRect()).boundingRect();
-                qreal currentHeight = bounds.height();
-                qreal scaleY = m_targetHeight / currentHeight;
-                
-                // 检查是否是 DrawingShape，使用专门的方法
-                DrawingShape* shape = qgraphicsitem_cast<DrawingShape*>(item);
-                if (shape) {
-                    // 重置变换然后应用新的缩放
-                    shape->setTransform(QTransform());
-                    shape->scaleAroundAnchor(1.0, scaleY, shape->boundingRect().center());
-                } else {
-                    // 对于其他类型的项目，使用通用方法
-                    QTransform transform;
-                    transform.scale(1.0, scaleY);
-                    item->setTransform(transform);
-                }
-            }
-            m_scene->update();
-            m_scene->setModified(true);
-        }
-        
-    private:
-        DrawingScene *m_scene;
-        QList<QGraphicsItem*> m_items;
-        qreal m_targetHeight;
-        QVector<QTransform> m_originalTransforms;
-    };
-    
-    // 应用同高操作
-    for (QGraphicsItem* item : selectedItems) {
-        QRectF bounds = item->mapToScene(item->boundingRect()).boundingRect();
-        qreal currentHeight = bounds.height();
-        qreal scaleY = targetHeight / currentHeight;
-        
-        // 检查是否是 DrawingShape，使用专门的方法
-        DrawingShape* shape = qgraphicsitem_cast<DrawingShape*>(item);
-        if (shape) {
-            // 重置变换然后应用新的缩放
-            shape->setTransform(QTransform());
-            shape->scaleAroundAnchor(1.0, scaleY, shape->boundingRect().center());
-        } else {
-            // 对于其他类型的项目，使用通用方法
-            QTransform transform;
-            transform.scale(1.0, scaleY);
-            item->setTransform(transform);
-        }
-    }
-    
-    // 创建并推送撤销命令
-    SameHeightCommand *command = new SameHeightCommand(m_scene, selectedItems, targetHeight);
-    m_scene->undoStack()->push(command);
-    
-    m_scene->update();
-    m_scene->setModified(true);
-    m_statusLabel->setText(QString("已设置 %1 个项目为相同高度").arg(selectedItems.size()));
-}
-
-void MainWindow::sameSize()
-{
-    if (!m_scene) return;
-    
-    QList<QGraphicsItem*> selectedItems = m_scene->selectedItems();
-    if (selectedItems.size() < 2) {
-        m_statusLabel->setText("需要至少选择2个项目");
-        return;
-    }
-    
-    // 找到第一个选中项目的尺寸作为目标尺寸
-    QGraphicsItem* firstItem = selectedItems.first();
-    QRectF firstBounds = firstItem->mapToScene(firstItem->boundingRect()).boundingRect();
-    qreal targetWidth = firstBounds.width();
-    qreal targetHeight = firstBounds.height();
-    
-    // 创建撤销命令
-    class SameSizeCommand : public QUndoCommand
-    {
-    public:
-        SameSizeCommand(DrawingScene *scene, const QList<QGraphicsItem*>& items, qreal width, qreal height, QUndoCommand *parent = nullptr)
-            : QUndoCommand("同大小", parent), m_scene(scene), m_items(items), m_targetWidth(width), m_targetHeight(height)
-        {
-            // 保存原始变换
-            for (QGraphicsItem* item : m_items) {
-                m_originalTransforms.append(item->transform());
-            }
-        }
-        
-        void undo() override {
-            for (int i = 0; i < m_items.size(); ++i) {
-                m_items[i]->setTransform(m_originalTransforms[i]);
-            }
-            m_scene->update();
-            m_scene->setModified(true);
-        }
-        
-        void redo() override {
-            for (QGraphicsItem* item : m_items) {
-                QRectF bounds = item->mapToScene(item->boundingRect()).boundingRect();
-                qreal currentWidth = bounds.width();
-                qreal currentHeight = bounds.height();
-                qreal scaleX = m_targetWidth / currentWidth;
-                qreal scaleY = m_targetHeight / currentHeight;
-                
-                // 检查是否是 DrawingShape，使用专门的方法
-                DrawingShape* shape = qgraphicsitem_cast<DrawingShape*>(item);
-                if (shape) {
-                    // 重置变换然后应用新的缩放
-                    shape->setTransform(QTransform());
-                    shape->scaleAroundAnchor(scaleX, scaleY, shape->boundingRect().center());
-                } else {
-                    // 对于其他类型的项目，使用通用方法
-                    QTransform transform;
-                    transform.scale(scaleX, scaleY);
-                    item->setTransform(transform);
-                }
-            }
-            m_scene->update();
-            m_scene->setModified(true);
-        }
-        
-    private:
-        DrawingScene *m_scene;
-        QList<QGraphicsItem*> m_items;
-        qreal m_targetWidth;
-        qreal m_targetHeight;
-        QVector<QTransform> m_originalTransforms;
-    };
-    
-    // 应用同大小操作
-    for (QGraphicsItem* item : selectedItems) {
-        QRectF bounds = item->mapToScene(item->boundingRect()).boundingRect();
-        qreal currentWidth = bounds.width();
-        qreal currentHeight = bounds.height();
-        qreal scaleX = targetWidth / currentWidth;
-        qreal scaleY = targetHeight / currentHeight;
-        
-        // 检查是否是 DrawingShape，使用专门的方法
-        DrawingShape* shape = qgraphicsitem_cast<DrawingShape*>(item);
-        if (shape) {
-            // 重置变换然后应用新的缩放
-            shape->setTransform(QTransform());
-            shape->scaleAroundAnchor(scaleX, scaleY, shape->boundingRect().center());
-        } else {
-            // 对于其他类型的项目，使用通用方法
-            QTransform transform;
-            transform.scale(scaleX, scaleY);
-            item->setTransform(transform);
-        }
-    }
-    
-    // 创建并推送撤销命令
-    SameSizeCommand *command = new SameSizeCommand(m_scene, selectedItems, targetWidth, targetHeight);
-    m_scene->undoStack()->push(command);
-    
-    m_scene->update();
-    m_scene->setModified(true);
-    m_statusLabel->setText(QString("已设置 %1 个项目为相同大小").arg(selectedItems.size()));
-}
-
-// 🌟 参考线创建槽函数
-void MainWindow::onGuideRequested(const QPointF &position, Qt::Orientation orientation)
-{
-    // 提取参考线位置（只需要一个坐标）
-    qreal guidePos = (orientation == Qt::Horizontal) ? position.y() : position.x();
-    
-    // 检查是否已存在相同位置的参考线
-    QList<DrawingScene::Guide> existingGuides = m_scene->guides();
-    for (const DrawingScene::Guide &guide : existingGuides) {
-        if (guide.orientation == orientation && qAbs(guide.position - guidePos) < 2.0) {
-            // 如果已存在，则删除该参考线
-            m_scene->removeGuide(orientation, guide.position);
-            m_statusLabel->setText(QString("删除参考线: %1 @ %2")
-                .arg(orientation == Qt::Horizontal ? "水平" : "垂直")
-                .arg(guidePos, 0, 'f', 1));
-            return;
-        }
-    }
-    
-    // 添加新参考线
-    m_scene->addGuide(orientation, guidePos);
-    m_statusLabel->setText(QString("创建参考线: %1 @ %2")
-        .arg(orientation == Qt::Horizontal ? "水平" : "垂直")
-        .arg(guidePos, 0, 'f', 1));
-}
-
-void MainWindow::clearAllGuides()
-{
-    if (!m_scene) return;
-    
-    m_scene->clearGuides();
-    m_statusLabel->setText("已清除所有参考线");
-}
-
-void MainWindow::distributeHorizontal()
-{
-    if (!m_scene) return;
-    
-    QList<QGraphicsItem*> selectedItems = m_scene->selectedItems();
-    if (selectedItems.size() < 3) {
-        m_statusLabel->setText("水平分布需要至少3个项目");
-        return;
-    }
-    
-    // 按X坐标排序
-    std::sort(selectedItems.begin(), selectedItems.end(), [](QGraphicsItem* a, QGraphicsItem* b) {
-        return a->pos().x() < b->pos().x();
-    });
-    
-    // 计算总宽度和间距
-    qreal totalWidth = 0;
-    QList<qreal> widths;
-    for (QGraphicsItem* item : selectedItems) {
-        qreal w = item->boundingRect().width();
-        widths.append(w);
-        totalWidth += w;
-    }
-    
-    qreal leftmost = selectedItems.first()->pos().x();
-    qreal rightmost = selectedItems.last()->pos().x() + widths.last();
-    qreal totalSpace = rightmost - leftmost - totalWidth;
-    qreal spacing = totalSpace / (selectedItems.size() - 1);
-    
-    // 重新分布
-    qreal currentX = leftmost;
-    for (int i = 0; i < selectedItems.size(); ++i) {
-        QGraphicsItem* item = selectedItems[i];
-        item->setPos(currentX, item->pos().y());
-        currentX += widths[i] + spacing;
-    }
-    
-    m_scene->update();
-    m_scene->setModified(true);
-    m_statusLabel->setText(QString("已水平分布 %1 个项目").arg(selectedItems.size()));
-}
-
-void MainWindow::distributeVertical()
-{
-    if (!m_scene) return;
-    
-    QList<QGraphicsItem*> selectedItems = m_scene->selectedItems();
-    if (selectedItems.size() < 3) {
-        m_statusLabel->setText("垂直分布需要至少3个项目");
-        return;
-    }
-    
-    // 按Y坐标排序
-    std::sort(selectedItems.begin(), selectedItems.end(), [](QGraphicsItem* a, QGraphicsItem* b) {
-        return a->pos().y() < b->pos().y();
-    });
-    
-    // 计算总高度和间距
-    qreal totalHeight = 0;
-    QList<qreal> heights;
-    for (QGraphicsItem* item : selectedItems) {
-        qreal h = item->boundingRect().height();
-        heights.append(h);
-        totalHeight += h;
-    }
-    
-    qreal topmost = selectedItems.first()->pos().y();
-    qreal bottommost = selectedItems.last()->pos().y() + heights.last();
-    qreal totalSpace = bottommost - topmost - totalHeight;
-    qreal spacing = totalSpace / (selectedItems.size() - 1);
-    
-    // 重新分布
-    qreal currentY = topmost;
-    for (int i = 0; i < selectedItems.size(); ++i) {
-        QGraphicsItem* item = selectedItems[i];
-        item->setPos(item->pos().x(), currentY);
-        currentY += heights[i] + spacing;
-    }
-    
-    m_scene->update();
-    m_scene->setModified(true);
-    m_statusLabel->setText(QString("已垂直分布 %1 个项目").arg(selectedItems.size()));
-}
-
 QColor MainWindow::getCurrentFillColor() const
 {
     if (m_colorPalette) {
@@ -3846,350 +2289,7 @@ QColor MainWindow::getCurrentFillColor() const
     return Qt::blue; // 默认颜色
 }
 
-// 路径布尔运算槽函数实现
-void MainWindow::pathUnion()
-{
-    performPathBooleanOperation(0, "联合"); // PathEditor::Union = 0
-}
 
-void MainWindow::pathSubtract()
-{
-    performPathBooleanOperation(2, "减去"); // PathEditor::Subtraction = 2
-}
-
-void MainWindow::pathIntersect()
-{
-    performPathBooleanOperation(1, "相交"); // PathEditor::Intersection = 1
-}
-
-void MainWindow::pathXor()
-{
-    performPathBooleanOperation(3, "异或"); // PathEditor::Xor = 3
-}
-
-// 路径编辑槽函数
-void MainWindow::pathSimplify()
-{
-    executePathOperation("simplify");
-}
-
-void MainWindow::pathSmooth()
-{
-    executePathOperation("smooth");
-}
-
-void MainWindow::pathReverse()
-{
-    if (!m_scene) return;
-    
-    QList<QGraphicsItem*> selectedItems = m_scene->selectedItems();
-    if (selectedItems.isEmpty()) {
-        m_statusLabel->setText("请先选择要反转的路径");
-        return;
-    }
-    
-    for (QGraphicsItem *item : selectedItems) {
-        DrawingShape *shape = dynamic_cast<DrawingShape*>(item);
-        if (shape && shape->shapeType() == DrawingShape::Path) {
-            DrawingPath *drawingPath = dynamic_cast<DrawingPath*>(shape);
-            if (drawingPath) {
-                QPainterPath originalPath = drawingPath->path();
-                QPainterPath reversedPath;
-                
-                // 反转路径：创建一个新路径，按相反顺序添加元素
-                for (int i = originalPath.elementCount() - 1; i >= 0; --i) {
-                    QPainterPath::Element element = originalPath.elementAt(i);
-                    if (element.isMoveTo()) {
-                        reversedPath.moveTo(element.x, element.y);
-                    } else if (element.isLineTo()) {
-                        reversedPath.lineTo(element.x, element.y);
-                    } else if (element.isCurveTo()) {
-                        reversedPath.cubicTo(element.x, element.y, element.x, element.y, element.x, element.y);
-                    } else if (element.type == QPainterPath::CurveToDataElement) {
-                        reversedPath.cubicTo(element.x, element.y, element.x, element.y, element.x, element.y);
-                    }
-                }
-                
-                drawingPath->setPath(reversedPath);
-                m_statusLabel->setText("路径已反转");
-            }
-        }
-    }
-    
-    m_scene->update();
-    m_scene->setModified(true);
-}
-
-void MainWindow::generateShape()
-{
-    if (!m_scene) return;
-    
-    QList<QGraphicsItem*> selectedItems = m_scene->selectedItems();
-    if (selectedItems.isEmpty()) {
-        m_statusLabel->setText("请先选择要生成图形的路径");
-        return;
-    }
-    
-    for (QGraphicsItem *item : selectedItems) {
-        DrawingShape *shape = dynamic_cast<DrawingShape*>(item);
-        if (shape && shape->shapeType() == DrawingShape::Path) {
-            DrawingPath *drawingPath = dynamic_cast<DrawingPath*>(shape);
-            if (drawingPath) {
-                QPainterPath originalPath = drawingPath->path();
-                
-                // 尝试生成标准图形：星形
-                QPointF center = originalPath.boundingRect().center();
-                qreal radius = qMax(originalPath.boundingRect().width(), originalPath.boundingRect().height()) / 2;
-                QPainterPath starPath = PathEditor::createStar(center, radius, 5);
-                
-                drawingPath->setPath(starPath);
-                m_statusLabel->setText("已生成星形");
-            }
-        }
-    }
-    
-    m_scene->update();
-    m_scene->setModified(true);
-}
-
-// 执行路径布尔运算的通用方法
-void MainWindow::performPathBooleanOperation(int op, const QString &opName)
-{
-    if (!m_scene) return;
-    
-    QList<QGraphicsItem*> selectedItems = m_scene->selectedItems();
-    if (selectedItems.size() < 2) {
-        m_statusLabel->setText(QString("%1操作需要至少选中2个图形").arg(opName));
-        return;
-    }
-    
-    // 收集所有选中图形的路径
-    QList<QPainterPath> paths;
-    QList<DrawingShape*> shapes;
-    
-    for (QGraphicsItem *item : selectedItems) {
-        DrawingShape *shape = dynamic_cast<DrawingShape*>(item);
-        if (shape) {
-            // 获取图形的路径
-            QPainterPath shapePath;
-            
-            // 根据图形类型获取路径
-            if (shape->shapeType() == DrawingShape::Path) {
-                DrawingPath *drawingPath = dynamic_cast<DrawingPath*>(shape);
-                if (drawingPath) {
-                    shapePath = drawingPath->path();
-                }
-            } else {
-                // 对于其他图形，创建对应的路径
-                QRectF bounds = shape->boundingRect();
-                if (shape->shapeType() == DrawingShape::Rectangle) {
-                    shapePath.addRect(bounds);
-                } else if (shape->shapeType() == DrawingShape::Ellipse) {
-                    shapePath.addEllipse(bounds);
-                }
-                // 可以添加更多图形类型的支持
-            }
-            
-            if (!shapePath.isEmpty()) {
-                paths.append(shapePath);
-                shapes.append(shape);
-            }
-        }
-    }
-    
-    if (paths.size() < 2) {
-        m_statusLabel->setText(QString("没有找到可进行%1操作的图形").arg(opName));
-        return;
-    }
-    
-    // 执行布尔运算
-    QPainterPath resultPath = paths[0];
-    for (int i = 1; i < paths.size(); ++i) {
-        resultPath = PathEditor::booleanOperation(resultPath, paths[i], static_cast<PathEditor::BooleanOperation>(op));
-    }
-    
-    if (resultPath.isEmpty()) {
-        m_statusLabel->setText(QString("%1操作结果为空").arg(opName));
-        return;
-    }
-    
-    // 创建新的路径图形
-    DrawingPath *newPath = new DrawingPath();
-    newPath->setPath(resultPath);
-    
-    // 设置新图形的位置和样式
-    if (!shapes.isEmpty()) {
-        // 使用第一个图形的位置
-        newPath->setPos(shapes.first()->pos());
-        
-        // 使用第一个图形的样式
-        newPath->setFillBrush(shapes.first()->fillBrush());
-        newPath->setStrokePen(shapes.first()->strokePen());
-    }
-    
-    // 添加到场景
-    m_scene->addItem(newPath);
-    
-    // 删除原始图形
-    for (DrawingShape *shape : shapes) {
-        m_scene->removeItem(shape);
-        delete shape;
-    }
-    
-    // 选中新创建的图形
-    newPath->setSelected(true);
-    
-    // 标记场景已修改
-    m_scene->setModified(true);
-    
-    m_statusLabel->setText(QString("%1操作完成").arg(opName));
-}
-
-// 执行布尔运算
-void MainWindow::executeBooleanOperation(int op)
-{
-    if (!m_scene) return;
-    
-    QList<QGraphicsItem *> selected = m_scene->selectedItems();
-    if (selected.size() < 2) {
-        m_statusLabel->setText("需要选择至少两个路径进行布尔运算");
-        return;
-    }
-    
-    // 获取前两个选中的形状
-    DrawingShape *shape1 = qgraphicsitem_cast<DrawingShape*>(selected[0]);
-    DrawingShape *shape2 = qgraphicsitem_cast<DrawingShape*>(selected[1]);
-    
-    if (!shape1 || !shape2) {
-        m_statusLabel->setText("选择的对象不是有效的路径");
-        return;
-    }
-    
-    // 执行布尔运算
-    QPainterPath result;
-    try {
-        // 获取形状的实际位置
-        QPointF pos1 = shape1->pos();
-        QPointF pos2 = shape2->pos();
-        
-        // 获取基础路径（不包含位置）
-        QPainterPath path1Base = shape1->transformedShape();
-        QPainterPath path2Base = shape2->transformedShape();
-        
-        // 创建包含位置信息的路径
-        QPainterPath path1WithPos;
-        QPainterPath path2WithPos;
-        
-        // 将路径平移到正确的位置
-        QTransform transform1;
-        transform1.translate(pos1.x(), pos1.y());
-        path1WithPos = transform1.map(path1Base);
-        
-        QTransform transform2;
-        transform2.translate(pos2.x(), pos2.y());
-        path2WithPos = transform2.map(path2Base);
-        
-        result = PathEditor::booleanOperation(
-            path1WithPos, 
-            path2WithPos, 
-            static_cast<PathEditor::BooleanOperation>(op)
-        );
-    } catch (...) {
-        m_statusLabel->setText("布尔运算异常");
-        return;
-    }
-    
-    // 检查结果是否为空
-    if (result.isEmpty()) {
-        m_statusLabel->setText("布尔运算结果为空");
-        return;
-    }
-    
-    // 创建新的路径对象
-    DrawingPath *newPath = new DrawingPath();
-    
-    // 计算结果路径的边界框
-    QRectF resultBounds = result.boundingRect();
-    
-    // 布尔运算的结果已经包含了正确的位置信息
-    // 我们需要将结果路径转换为相对于图形原点的路径
-    // 计算结果路径的实际位置（使用第一个路径的位置作为参考）
-    QPointF resultPos = shape1->pos();
-    
-    // 创建一个变换，将路径移动到相对于图形原点的位置
-    QTransform offsetTransform;
-    offsetTransform.translate(-resultBounds.left(), -resultBounds.top());
-    QPainterPath adjustedPath = offsetTransform.map(result);
-    
-    // 设置调整后的路径
-    newPath->setPath(adjustedPath);
-    
-    // 设置新路径的位置为第一个形状的位置
-    newPath->setPos(shape1->pos());
-    
-    // 复制样式
-    newPath->setStrokePen(shape1->strokePen());
-    newPath->setFillBrush(shape1->fillBrush());
-    
-    // 从场景中移除原始形状，并从图层中移除
-    // 获取形状所属的图层
-    DrawingLayer *layer1 = nullptr;
-    DrawingLayer *layer2 = nullptr;
-    
-    // 查找形状所属的图层
-    LayerManager *layerManager = LayerManager::instance();
-    for (int i = 0; i < layerManager->layerCount(); ++i) {
-        DrawingLayer *layer = layerManager->layer(i);
-        if (layer->shapes().contains(shape1)) {
-            layer1 = layer;
-        }
-        if (layer->shapes().contains(shape2)) {
-            layer2 = layer;
-        }
-    }
-    
-    // 从场景中移除原始形状
-    m_scene->removeItem(shape1);
-    m_scene->removeItem(shape2);
-    
-    // 从图层中移除原始形状
-    if (layer1) {
-        layer1->removeShape(shape1);
-    }
-    if (layer2 && layer2 != layer1) {
-        layer2->removeShape(shape2);
-    }
-    
-    // 添加新路径到场景
-    m_scene->addItem(newPath);
-    newPath->setSelected(true);
-    
-    // 将新路径添加到第一个形状的图层中
-    if (layer1) {
-        layer1->addShape(newPath);
-    }
-    
-    // 更新图层面板显示
-    LayerManager::instance()->updateLayerPanel();
-    
-    // 删除原始形状
-    delete shape1;
-    delete shape2;
-    
-    // 标记场景已修改
-    m_scene->setModified(true);
-    
-    QString opName;
-    switch (static_cast<PathEditor::BooleanOperation>(op)) {
-        case PathEditor::Union: opName = "合并"; break;
-        case PathEditor::Intersection: opName = "相交"; break;
-        case PathEditor::Subtraction: opName = "减去"; break;
-        case PathEditor::Xor: opName = "异或"; break;
-        default: opName = "布尔运算"; break;
-    }
-    
-    m_statusLabel->setText(QString("%1操作完成").arg(opName));
-}
 
 // 路径操作撤销命令
 class PathOperationCommand : public QUndoCommand
@@ -4311,226 +2411,7 @@ private:
     DrawingLayer *m_targetLayer;
 };
 
-// 执行路径操作
-void MainWindow::executePathOperation(const QString &operation)
-{
-    if (!m_scene) return;
-    
-    QList<QGraphicsItem *> selected = m_scene->selectedItems();
-    if (selected.isEmpty()) {
-        m_statusLabel->setText("需要选择一个路径进行操作");
-        return;
-    }
-    
-    DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(selected[0]);
-    if (!shape) {
-        m_statusLabel->setText("选择的对象不是有效的路径");
-        return;
-    }
-    
-    // 使用变换后的路径
-    QPainterPath transformedPath = shape->transformedShape();
-    QPainterPath resultPath;
-    
-    if (operation == "simplify") {
-        resultPath = PathEditor::simplifyPath(transformedPath, 0.5);
-    } else if (operation == "smooth") {
-        resultPath = PathEditor::smoothPath(transformedPath, 0.5);
-    } else if (operation == "curve") {
-        resultPath = PathEditor::convertToCurve(transformedPath);
-    } else if (operation == "offset") {
-        resultPath = PathEditor::offsetPath(transformedPath, 5);
-    } else if (operation == "clip") {
-        // 使用图形的边界框作为裁剪区域
-        QRectF bounds = transformedPath.boundingRect();
-        QRectF clipRect = bounds.adjusted(10, 10, -10, -10); // 稍微缩小边界框
-        resultPath = PathEditor::clipPath(transformedPath, clipRect);
-    }
-    
-    if (resultPath.isEmpty()) {
-        m_statusLabel->setText("路径操作失败");
-        return;
-    }
-    
-    // 创建一个新的DrawingPath来存储结果
-    DrawingPath *newPath = new DrawingPath();
-    
-    // 重置路径的位置信息
-    QRectF bounds = resultPath.boundingRect();
-    QTransform offsetTransform;
-    offsetTransform.translate(-bounds.left(), -bounds.top());
-    QPainterPath adjustedPath = offsetTransform.map(resultPath);
-    newPath->setPath(adjustedPath);
-    newPath->setPos(shape->pos() + bounds.topLeft());
-    newPath->setStrokePen(shape->strokePen());
-    newPath->setFillBrush(shape->fillBrush());
-    
-    // 创建撤销命令 - 在修改场景之前创建
-    QString operationText;
-    if (operation == "simplify") operationText = "简化路径";
-    else if (operation == "smooth") operationText = "平滑路径";
-    else if (operation == "curve") operationText = "转换为曲线";
-    else if (operation == "offset") operationText = "偏移路径";
-    else if (operation == "clip") operationText = "裁剪路径";
-    else operationText = "路径操作";
-    
-    PathOperationCommand *command = new PathOperationCommand(m_scene, shape, newPath, operationText);
-    
-    // 推送撤销命令，让命令处理场景和图层的同步
-    m_scene->undoStack()->push(command);
-    
-    QString opName;
-    if (operation == "simplify") opName = "简化";
-    else if (operation == "smooth") opName = "平滑";
-    else if (operation == "curve") opName = "转换为曲线";
-    else if (operation == "offset") opName = "偏移";
-    else if (operation == "clip") opName = "裁剪";
-    else opName = "路径操作";
-    
-    m_statusLabel->setText(QString("%1操作完成").arg(opName));
-}
-
 // 在指定位置创建形状
-void MainWindow::createShapeAtPosition(const QString &shapeType, const QPointF &pos)
-{
-    if (!m_scene) return;
-    
-    QPainterPath shape;
-    
-    if (shapeType == "arrow") {
-        shape = PathEditor::createArrow(
-            QPointF(pos.x() - 50, pos.y()),
-            QPointF(pos.x() + 50, pos.y())
-        );
-    } else if (shapeType == "star") {
-        shape = PathEditor::createStar(pos, 50, 5);
-    } else if (shapeType == "gear") {
-        shape = PathEditor::createGear(pos, 50, 8);
-    }
-    
-    if (shape.isEmpty()) {
-        m_statusLabel->setText("创建形状失败");
-        return;
-    }
-    
-    DrawingPath *newPath = new DrawingPath();
-    newPath->setPath(shape);
-    newPath->setPos(0, 0);
-    newPath->setStrokePen(QPen(Qt::black, 2));
-    
-    if (shapeType == "star") {
-        newPath->setFillBrush(QBrush(Qt::yellow));
-    } else if (shapeType == "gear") {
-        newPath->setFillBrush(QBrush(Qt::gray));
-    } else {
-        newPath->setFillBrush(Qt::NoBrush);
-    }
-    
-    m_scene->addItem(newPath);
-    newPath->setSelected(true);
-    
-    // 标记场景已修改
-    m_scene->setModified(true);
-    
-    QString shapeName;
-    if (shapeType == "arrow") shapeName = "箭头";
-    else if (shapeType == "star") shapeName = "星形";
-    else if (shapeType == "gear") shapeName = "齿轮";
-    else shapeName = "形状";
-    
-    m_statusLabel->setText(QString("创建%1完成").arg(shapeName));
-}
-
-// 将选中的文本转换为路径
-void MainWindow::convertSelectedTextToPath()
-{
-    if (!m_scene) return;
-    
-    QList<QGraphicsItem *> selected = m_scene->selectedItems();
-    QList<DrawingShape*> convertedShapes;
-    
-    for (QGraphicsItem *item : selected) {
-        DrawingText *textShape = qgraphicsitem_cast<DrawingText*>(item);
-        if (textShape) {
-            // 将文本转换为路径
-            DrawingPath *pathShape = textShape->convertToPath();
-            if (pathShape) {
-                // 添加到场景
-                m_scene->addItem(pathShape);
-                pathShape->setSelected(true);
-                convertedShapes.append(pathShape);
-                
-                // 获取文本所属的图层
-                DrawingLayer *layer = nullptr;
-                LayerManager *layerManager = LayerManager::instance();
-                for (int i = 0; i < layerManager->layerCount(); ++i) {
-                    DrawingLayer *checkLayer = layerManager->layer(i);
-                    if (checkLayer->shapes().contains(textShape)) {
-                        layer = checkLayer;
-                        break;
-                    }
-                }
-                
-                // 安全地移除原始文本
-                textShape->setSelected(false);
-                m_scene->removeItem(textShape);
-                
-                // 从图层中移除原始文本
-                if (layer) {
-                    layer->removeShape(textShape);
-                }
-                
-                // 将新路径添加到原文本的图层中
-                if (layer) {
-                    layer->addShape(pathShape);
-                }
-                
-                delete textShape;
-            }
-        }
-    }
-    
-    if (!convertedShapes.isEmpty()) {
-        m_scene->setModified(true);
-        m_statusLabel->setText(QString("已将 %1 个文本转换为路径").arg(convertedShapes.size()));
-        
-        // 更新图层面板显示
-        LayerManager::instance()->updateLayerPanel();
-    }
-}
-
-void MainWindow::togglePerformancePanel()
-{
-    // 性能监控现在集成在属性面板的tab页中
-    // 切换到性能监控tab页
-    if (m_tabbedPropertyPanel) {
-        // 找到性能监控tab的索引
-        for (int i = 0; i < m_tabbedPropertyPanel->count(); ++i) {
-            if (m_tabbedPropertyPanel->tabText(i) == "性能监控") {
-                m_tabbedPropertyPanel->setCurrentIndex(i);
-                break;
-            }
-        }
-    }
-    
-    // 更新菜单状态
-    if (m_togglePerformancePanelAction) {
-        m_togglePerformancePanelAction->setChecked(true);
-    }
-}
-
-void MainWindow::onToolSwitchRequested(int toolType)
-{
-    if (m_toolManager) {
-        // 切换到指定工具
-        m_toolManager->switchTool(static_cast<ToolType>(toolType));
-        
-        // 更新场景中的当前工具状态
-        if (m_scene) {
-            m_scene->setCurrentTool(toolType);
-        }
-    }
-}
 
 void MainWindow::updateToolBarState(int currentTool)
 {
@@ -4554,36 +2435,196 @@ void MainWindow::updateToolBarState(int currentTool)
         case ToolType::NodeEdit:
             if (m_nodeEditToolAction) m_nodeEditToolAction->setChecked(true);
             break;
-        case ToolType::Polygon:
-            if (m_polygonToolAction) m_polygonToolAction->setChecked(true);
-            break;
-        case ToolType::Polyline:
-            if (m_polylineToolAction) m_polylineToolAction->setChecked(true);
-            break;
-        case ToolType::Brush:
-            if (m_brushToolAction) m_brushToolAction->setChecked(true);
-            break;
-        case ToolType::Pen:
-            if (m_penToolAction) m_penToolAction->setChecked(true);
-            break;
-        case ToolType::Fill:
-            if (m_fillToolAction) m_fillToolAction->setChecked(true);
-            break;
-        case ToolType::GradientFill:
-            if (m_gradientFillToolAction) m_gradientFillToolAction->setChecked(true);
-            break;
-        case ToolType::Eraser:
-            if (m_eraserToolAction) m_eraserToolAction->setChecked(true);
-            break;
-        case ToolType::Text:
-            if (m_textToolAction) m_textToolAction->setChecked(true);
-            break;
-        case ToolType::PathEdit:
-            if (m_pathEditToolAction) m_pathEditToolAction->setChecked(true);
-            break;
         default:
             break;
     }
 }
 
+// 委托给ZoomManager的方法
+void MainWindow::zoomIn()
+{
+    if (m_canvas) {
+        m_canvas->zoomIn();
+    }
+}
 
+void MainWindow::zoomOut()
+{
+    if (m_canvas) {
+        m_canvas->zoomOut();
+    }
+}
+
+void MainWindow::resetZoom()
+{
+    if (m_canvas) {
+        m_canvas->resetZoom();
+    }
+}
+
+void MainWindow::fitToWindow()
+{
+    if (m_canvas) {
+        m_canvas->fitToWindow();
+    }
+}
+
+// 委托给EffectManager的方法
+void MainWindow::applyBlurEffect()
+{
+    if (m_effectManager) {
+        m_effectManager->applyBlurEffect();
+    }
+}
+
+void MainWindow::applyDropShadowEffect()
+{
+    if (m_effectManager) {
+        m_effectManager->applyDropShadowEffect();
+    }
+}
+
+void MainWindow::clearFilterEffect()
+{
+    if (m_effectManager) {
+        m_effectManager->clearFilterEffect();
+    }
+}
+
+// 委托给GridManager的方法
+void MainWindow::showGridSettings()
+{
+    if (m_gridManager) {
+        m_gridManager->showGridSettings();
+    }
+}
+
+void MainWindow::clearAllGuides()
+{
+    if (m_scene) {
+        m_scene->clearGuides();
+    }
+}
+
+// 委托给SelectionManager的方法
+void MainWindow::showContextMenu(const QPointF &pos)
+{
+    QMenu contextMenu(this);
+    
+    // 添加基本编辑操作
+    if (m_scene && !m_scene->selectedItems().isEmpty()) {
+        contextMenu.addAction(m_copyAction);
+        contextMenu.addAction(m_pasteAction);
+        contextMenu.addAction(m_duplicateAction);
+        contextMenu.addSeparator();
+        contextMenu.addAction(m_deleteAction);
+        contextMenu.addSeparator();
+        
+        // 添加对齐操作
+        QMenu *alignMenu = contextMenu.addMenu("对齐");
+        alignMenu->addAction(m_alignLeftAction);
+        alignMenu->addAction(m_alignCenterAction);
+        alignMenu->addAction(m_alignRightAction);
+        alignMenu->addSeparator();
+        alignMenu->addAction(m_alignTopAction);
+        alignMenu->addAction(m_alignMiddleAction);
+        alignMenu->addAction(m_alignBottomAction);
+        
+        // 添加路径操作
+        if (m_scene->selectedItems().count() > 1) {
+            QMenu *pathMenu = contextMenu.addMenu("路径操作");
+            pathMenu->addAction(m_pathUnionAction);
+            pathMenu->addAction(m_pathSubtractAction);
+            pathMenu->addAction(m_pathIntersectAction);
+            pathMenu->addAction(m_pathXorAction);
+            pathMenu->addSeparator();
+            pathMenu->addAction(m_pathSimplifyAction);
+            pathMenu->addAction(m_pathSmoothAction);
+            pathMenu->addAction(m_pathReverseAction);
+        }
+        
+        // 添加滤镜操作
+        QMenu *filterMenu = contextMenu.addMenu("滤镜");
+        filterMenu->addAction(m_blurEffectAction);
+        filterMenu->addAction(m_dropShadowEffectAction);
+        filterMenu->addSeparator();
+        filterMenu->addAction(m_clearFilterAction);
+        
+        // 添加组合操作
+        if (m_scene->selectedItems().count() > 1) {
+            contextMenu.addSeparator();
+            contextMenu.addAction(m_groupAction);
+        }
+        
+        // 添加取消组合操作（检查是否有选中的组合对象）
+        bool hasGroup = false;
+        for (QGraphicsItem *item : m_scene->selectedItems()) {
+            DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(item);
+            if (shape && shape->shapeType() == DrawingShape::Group) {
+                hasGroup = true;
+                break;
+            }
+        }
+        if (hasGroup) {
+            if (m_scene->selectedItems().count() == 1) {
+                contextMenu.addAction(m_ungroupAction);
+            } else {
+                // 如果有多个选中项且包含组合对象，添加分隔符和取消组合
+                contextMenu.addSeparator();
+                contextMenu.addAction(m_ungroupAction);
+            }
+        } else if (m_scene->selectedItems().count() > 1) {
+            // 如果没有组合对象但有多于一个选中项，添加分隔符
+            contextMenu.addSeparator();
+        }
+    } else {
+        contextMenu.addAction(m_pasteAction);
+    }
+    
+    contextMenu.exec(m_canvas->view()->mapToGlobal(m_canvas->view()->mapFromScene(pos)));
+}
+
+// 工具切换方法
+void MainWindow::onToolSwitchRequested(int toolType)
+{
+    if (m_toolManager) {
+        m_toolManager->switchTool(static_cast<ToolType>(toolType));
+    }
+}
+
+// 委托给其他管理器的方法
+void MainWindow::togglePerformancePanel()
+{
+    // 性能面板现在集成在属性面板的tab中
+    // 简单切换到性能面板（假设是最后一个tab）
+    if (m_tabbedPropertyPanel) {
+        int count = m_tabbedPropertyPanel->count();
+        if (count > 0) {
+            m_tabbedPropertyPanel->setCurrentIndex(count - 1);
+        }
+    }
+}
+
+// 🌟 参考线相关槽函数
+void MainWindow::onGuideRequested(const QPointF &position, Qt::Orientation orientation)
+{
+    if (!m_scene) return;
+    
+    // 创建参考线
+    qreal pos = orientation == Qt::Horizontal ? position.y() : position.x();
+    m_scene->addGuide(orientation, pos);
+    
+    // 更新状态消息
+    QString message = orientation == Qt::Horizontal ? "添加水平参考线" : "添加垂直参考线";
+    updateStatusBar(message);
+}
+
+void MainWindow::setupUndoView()
+{
+    if (m_undoView && m_commandManager) {
+        m_undoView->setStack(m_commandManager->undoStack());
+        qDebug() << "QUndoView set to CommandManager undoStack";
+    } else {
+        qDebug() << "Failed to set QUndoView - m_undoView:" << m_undoView << "m_commandManager:" << m_commandManager;
+    }
+}

@@ -167,6 +167,11 @@ public:
     
     // 🌟 将变换烘焙到图形的内部几何结构中
     virtual void bakeTransform(const QTransform &transform);
+    
+    // 序列化接口 - 用于复制粘贴功能
+    virtual QByteArray serialize() const;
+    virtual void deserialize(const QByteArray &data);
+    virtual DrawingShape* clone() const;
 
 // 渲染
     void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget) override;
@@ -262,6 +267,12 @@ public:
 protected:
     void paintShape(QPainter *painter) override;
 
+public:
+    // 序列化方法
+    QByteArray serialize() const override;
+    void deserialize(const QByteArray &data) override;
+    DrawingShape* clone() const override;
+
 private:
     QRectF m_rect;
     qreal m_cornerRadius = 0.0;  // 圆角半径
@@ -315,6 +326,12 @@ public:
 
 protected:
     void paintShape(QPainter *painter) override;
+
+public:
+    // 序列化方法
+    QByteArray serialize() const override;
+    void deserialize(const QByteArray &data) override;
+    DrawingShape* clone() const override;
 
 private:
     QRectF m_rect;
@@ -385,6 +402,12 @@ protected:
     void mousePressEvent(QGraphicsSceneMouseEvent *event) override;
     void mouseMoveEvent(QGraphicsSceneMouseEvent *event) override;
     void mouseReleaseEvent(QGraphicsSceneMouseEvent *event) override;
+    
+public:
+    // 序列化方法
+    QByteArray serialize() const override;
+    void deserialize(const QByteArray &data) override;
+    DrawingShape* clone() const override;
     
 private:
     // 控制点交互相关

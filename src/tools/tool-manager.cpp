@@ -125,6 +125,11 @@ bool ToolManager::switchTool(ToolBase* tool)
     // 激活新工具
     updateCurrentTool(tool, newType);
     
+    // 更新DrawingScene中的当前工具类型
+    if (m_scene) {
+        m_scene->setCurrentTool(static_cast<int>(newType));
+    }
+    
     if (m_currentTool) {
         // 恢复工具状态
         if (m_toolStateManager) {

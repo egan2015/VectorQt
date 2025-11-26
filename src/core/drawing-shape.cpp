@@ -7,6 +7,8 @@
 #include <QPointer>
 #include <QUuid>
 #include <QAtomicInt>
+#include <QDataStream>
+#include <QIODevice>
 
 #include "../core/drawing-shape.h"
 #include "../core/drawing-document.h"
@@ -641,6 +643,86 @@ void DrawingRectangle::bakeTransform(const QTransform &transform)
     update();
 }
 
+// DrawingRectangle 序列化方法
+QByteArray DrawingRectangle::serialize() const
+{
+    QByteArray data = DrawingShape::serialize();
+    QDataStream stream(&data, QIODevice::WriteOnly);
+    
+    // 跳过基类已写入的数据
+    stream.device()->seek(stream.device()->size());
+    
+    // 写入矩形特定属性
+    stream << m_rect;
+    stream << m_cornerRadius;
+    stream << m_fRatioX;
+    stream << m_fRatioY;
+    stream << strokePen();
+    stream << fillBrush();
+    
+    return data;
+}
+
+void DrawingRectangle::deserialize(const QByteArray &data)
+{
+    QDataStream stream(data);
+    
+    // 读取基类数据
+    int typeValue;
+    stream >> typeValue;
+    
+    QPointF position;
+    stream >> position;
+    setPos(position);
+    
+    qreal scaleValue;
+    stream >> scaleValue;
+    setScale(scaleValue);
+    
+    qreal rotationValue;
+    stream >> rotationValue;
+    setRotation(rotationValue);
+    
+    QTransform transform;
+    stream >> transform;
+    setTransform(transform);
+    
+    qreal zValue;
+    stream >> zValue;
+    setZValue(zValue);
+    
+    bool visible;
+    stream >> visible;
+    setVisible(visible);
+    
+    bool enabled;
+    stream >> enabled;
+    setEnabled(enabled);
+    
+    // 读取矩形特定属性
+    stream >> m_rect;
+    stream >> m_cornerRadius;
+    stream >> m_fRatioX;
+    stream >> m_fRatioY;
+    
+    QPen newPen;
+    stream >> newPen;
+    setStrokePen(newPen);
+    
+    QBrush newBrush;
+    stream >> newBrush;
+    setFillBrush(newBrush);
+    
+    update();
+}
+
+DrawingShape* DrawingRectangle::clone() const
+{
+    DrawingRectangle *copy = new DrawingRectangle();
+    copy->deserialize(serialize());
+    return copy;
+}
+
 // DrawingEllipse
 DrawingEllipse::DrawingEllipse(QGraphicsItem *parent)
     : DrawingShape(Ellipse, parent)
@@ -948,6 +1030,80 @@ void DrawingEllipse::bakeTransform(const QTransform &transform)
     
     // 更新显示
     update();
+}
+
+// DrawingEllipse 序列化方法
+QByteArray DrawingEllipse::serialize() const
+{
+    QByteArray data = DrawingShape::serialize();
+    QDataStream stream(&data, QIODevice::WriteOnly);
+    
+    // 跳过基类已写入的数据
+    stream.device()->seek(stream.device()->size());
+    
+    // 写入椭圆特定属性
+    stream << m_rect;
+    stream << strokePen();
+    stream << fillBrush();
+    
+    return data;
+}
+
+void DrawingEllipse::deserialize(const QByteArray &data)
+{
+    QDataStream stream(data);
+    
+    // 读取基类数据
+    int typeValue;
+    stream >> typeValue;
+    
+    QPointF position;
+    stream >> position;
+    setPos(position);
+    
+    qreal scaleValue;
+    stream >> scaleValue;
+    setScale(scaleValue);
+    
+    qreal rotationValue;
+    stream >> rotationValue;
+    setRotation(rotationValue);
+    
+    QTransform transform;
+    stream >> transform;
+    setTransform(transform);
+    
+    qreal zValue;
+    stream >> zValue;
+    setZValue(zValue);
+    
+    bool visible;
+    stream >> visible;
+    setVisible(visible);
+    
+    bool enabled;
+    stream >> enabled;
+    setEnabled(enabled);
+    
+    // 读取椭圆特定属性
+    stream >> m_rect;
+    
+    QPen newPen;
+    stream >> newPen;
+    setStrokePen(newPen);
+    
+    QBrush newBrush;
+    stream >> newBrush;
+    setFillBrush(newBrush);
+    
+    update();
+}
+
+DrawingShape* DrawingEllipse::clone() const
+{
+    DrawingEllipse *copy = new DrawingEllipse();
+    copy->deserialize(serialize());
+    return copy;
 }
 
 // DrawingPath
@@ -1481,6 +1637,120 @@ void DrawingPath::paintShape(QPainter *painter)
         painter->setPen(oldPen);
         painter->setBrush(oldBrush);
     }
+}
+
+// DrawingPath 序列化方法
+QByteArray DrawingPath::serialize() const
+{
+    QByteArray data = DrawingShape::serialize();
+    QDataStream stream(&data, QIODevice::WriteOnly);
+    
+    // 跳过基类已写入的数据
+    stream.device()->seek(stream.device()->size());
+    
+    // 写入路径特定属性
+    stream << m_path;
+    
+    // 手动序列化路径元素
+    stream << static_cast<int>(m_pathElements.size());
+    for (const QPainterPath::Element &element : m_pathElements) {
+        stream << static_cast<int>(element.type);
+        stream << element.x;
+        stream << element.y;
+    }
+    
+    stream << m_controlPoints;
+    stream << m_controlPointTypes;
+    stream << m_markerId;
+    stream << m_markerPixmap;
+    stream << m_markerTransform;
+    stream << m_showControlPolygon;
+    stream << strokePen();
+    stream << fillBrush();
+    
+    return data;
+}
+
+void DrawingPath::deserialize(const QByteArray &data)
+{
+    QDataStream stream(data);
+    
+    // 读取基类数据
+    int typeValue;
+    stream >> typeValue;
+    
+    QPointF position;
+    stream >> position;
+    setPos(position);
+    
+    qreal scaleValue;
+    stream >> scaleValue;
+    setScale(scaleValue);
+    
+    qreal rotationValue;
+    stream >> rotationValue;
+    setRotation(rotationValue);
+    
+    QTransform transform;
+    stream >> transform;
+    setTransform(transform);
+    
+    qreal zValue;
+    stream >> zValue;
+    setZValue(zValue);
+    
+    bool visible;
+    stream >> visible;
+    setVisible(visible);
+    
+    bool enabled;
+    stream >> enabled;
+    setEnabled(enabled);
+    
+    // 读取路径特定属性
+    stream >> m_path;
+    
+    // 手动反序列化路径元素
+    int elementCount;
+    stream >> elementCount;
+    m_pathElements.clear();
+    for (int i = 0; i < elementCount; ++i) {
+        int typeValue;
+        qreal x, y;
+        stream >> typeValue;
+        stream >> x;
+        stream >> y;
+        
+        QPainterPath::Element element;
+        element.type = static_cast<QPainterPath::ElementType>(typeValue);
+        element.x = x;
+        element.y = y;
+        m_pathElements.append(element);
+    }
+    
+    stream >> m_controlPoints;
+    stream >> m_controlPointTypes;
+    stream >> m_markerId;
+    stream >> m_markerPixmap;
+    stream >> m_markerTransform;
+    stream >> m_showControlPolygon;
+    
+    QPen newPen;
+    stream >> newPen;
+    setStrokePen(newPen);
+    
+    QBrush newBrush;
+    stream >> newBrush;
+    setFillBrush(newBrush);
+    
+    update();
+}
+
+DrawingShape* DrawingPath::clone() const
+{
+    DrawingPath *copy = new DrawingPath();
+    copy->deserialize(serialize());
+    return copy;
 }
 
 // DrawingText
@@ -2326,6 +2596,72 @@ void DrawingShape::setDropShadowEffect(const QColor &color, qreal blurRadius, co
     setGraphicsEffect(shadowEffect);
     smartUpdate();
     notifyObjectStateChanged();
+}
+
+// 序列化接口默认实现
+QByteArray DrawingShape::serialize() const
+{
+    QByteArray data;
+    QDataStream stream(&data, QIODevice::WriteOnly);
+    
+    // 写入形状类型
+    stream << static_cast<int>(m_type);
+    
+    // 写入基本属性
+    stream << pos();
+    stream << scale();
+    stream << rotation();
+    stream << transform();
+    stream << zValue();
+    stream << isVisible();
+    stream << isEnabled();
+    
+    return data;
+}
+
+void DrawingShape::deserialize(const QByteArray &data)
+{
+    QDataStream stream(data);
+    
+    // 读取形状类型（用于验证）
+    int typeValue;
+    stream >> typeValue;
+    
+    // 读取基本属性
+    QPointF position;
+    stream >> position;
+    setPos(position);
+    
+    qreal scaleValue;
+    stream >> scaleValue;
+    setScale(scaleValue);
+    
+    qreal rotationValue;
+    stream >> rotationValue;
+    setRotation(rotationValue);
+    
+    QTransform transform;
+    stream >> transform;
+    setTransform(transform);
+    
+    qreal zValue;
+    stream >> zValue;
+    setZValue(zValue);
+    
+    bool visible;
+    stream >> visible;
+    setVisible(visible);
+    
+    bool enabled;
+    stream >> enabled;
+    setEnabled(enabled);
+}
+
+DrawingShape* DrawingShape::clone() const
+{
+    // TODO: 实现基础克隆逻辑
+    // 暂时返回nullptr，子类必须重写此方法
+    return nullptr;
 }
 
 void DrawingShape::clearFilter()

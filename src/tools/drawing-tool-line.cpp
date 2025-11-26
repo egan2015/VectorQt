@@ -3,6 +3,7 @@
 #include "../tools/drawing-tool-line.h"
 #include "../ui/drawingscene.h"
 #include "../ui/drawingview.h"
+#include "../ui/command-manager.h"
 
 DrawingToolLine::DrawingToolLine(QObject *parent)
     : ToolBase(parent)
@@ -73,50 +74,15 @@ bool DrawingToolLine::mouseReleaseEvent(QMouseEvent *event, const QPointF &scene
             if (m_scene) {
                 m_scene->setModified(true);
                 
-                // 使用DrawingScene中的AddItemCommand
-                class AddItemCommand : public QUndoCommand
-                {
-                public:
-                    AddItemCommand(DrawingScene *scene, QGraphicsItem *item, QUndoCommand *parent = nullptr)
-                        : QUndoCommand("添加直线", parent), m_scene(scene), m_item(item) {}
-                    
-                    void undo() override {
-                        if (m_scene && m_item) {
-                            m_scene->removeItem(m_item);
-                        }
-                    }
-                    
-                    void redo() override {
-                        if (m_scene && m_item) {
-                            m_scene->addItem(m_item);
-                            
-                            // 自动选中新创建的图形
-                            m_item->setSelected(true);
-                            
-                            // 清除其他选中项
-                            for (QGraphicsItem *item : m_scene->selectedItems()) {
-                                if (item != m_item) {
-                                    item->setSelected(false);
-                                }
-                            }
-                        }
-                    }
-                    
-                    ~AddItemCommand() {
-                        // 在撤销命令被销毁时，如果item不在场景中，则删除它
-                        if (m_item && m_scene && !m_scene->items().contains(m_item)) {
-                            delete m_item;
-                        }
-                    }
-                    
-                private:
-                    DrawingScene *m_scene;
-                    QGraphicsItem *m_item;
-                };
-                
-                // 创建并推送撤销命令
-                AddItemCommand *command = new AddItemCommand(m_scene, m_currentLine);
-                m_scene->undoStack()->push(command);
+                // 使用统一的CreateCommand
+                CreateCommand *command = new CreateCommand(m_scene->commandManager(), m_currentLine, "添加直线");
+                if (m_scene->commandManager()) {
+                    m_scene->commandManager()->pushCommand(command);
+                } else {
+                    // 降级处理：直接执行
+                    command->redo();
+                    delete command;
+                }
             }
             
             m_currentLine = nullptr; // 不删除，让场景管理

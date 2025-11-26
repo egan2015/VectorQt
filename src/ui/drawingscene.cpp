@@ -16,6 +16,7 @@
 #include "../core/drawing-layer.h"
 #include "../core/layer-manager.h"
 #include "../core/performance-monitor.h"
+#include "../ui/command-manager.h"
 
 class AddItemCommand : public QUndoCommand
 {
@@ -132,7 +133,7 @@ private:
     bool m_itemVisible = true;
 };
 
-class TransformCommand : public QUndoCommand
+class SceneTransformCommand : public QUndoCommand
 {
 public:
     enum TransformType {
@@ -145,7 +146,7 @@ public:
     
     using TransformState = DrawingScene::TransformState;
     
-    TransformCommand(DrawingScene *scene, const QList<DrawingShape*>& shapes, const QList<TransformState>& oldStates, TransformType type = Generic, QUndoCommand *parent = nullptr)
+    SceneTransformCommand(DrawingScene *scene, const QList<DrawingShape*>& shapes, const QList<TransformState>& oldStates, TransformType type = Generic, QUndoCommand *parent = nullptr)
         : QUndoCommand(getCommandText(type, shapes), parent), m_scene(scene), m_shapes(shapes), m_transformType(type), m_oldStates(oldStates)
     {
         // 立即捕获变换后的状态（因为这是在变换结束时调用的）
@@ -161,7 +162,7 @@ public:
     }
     
     // 新的构造函数，接受新状态作为参数
-    TransformCommand(DrawingScene *scene, const QList<DrawingShape*>& shapes, const QList<TransformState>& oldStates, const QList<TransformState>& newStates, TransformType type = Generic, QUndoCommand *parent = nullptr)
+    SceneTransformCommand(DrawingScene *scene, const QList<DrawingShape*>& shapes, const QList<TransformState>& oldStates, const QList<TransformState>& newStates, TransformType type = Generic, QUndoCommand *parent = nullptr)
         : QUndoCommand(getCommandText(type, shapes), parent), m_scene(scene), m_shapes(shapes), m_transformType(type), m_oldStates(oldStates), m_newStates(newStates)
     {
     }
@@ -237,7 +238,7 @@ public:
     }
     
     void undo() override {
-        qDebug() << "TransformCommand::undo called, shapes count:" << m_shapes.size();
+        qDebug() << "SceneTransformCommand::undo called, shapes count:" << m_shapes.size();
         
         // 恢复到变换前的状态
         for (int i = 0; i < m_shapes.size() && i < m_oldStates.size(); ++i) {
@@ -269,7 +270,7 @@ public:
     }
     
     void redo() override {
-        qDebug() << "TransformCommand::redo called, shapes count:" << m_shapes.size();
+        qDebug() << "SceneTransformCommand::redo called, shapes count:" << m_shapes.size();
         
         // 应用到变换后的状态
         for (int i = 0; i < m_shapes.size() && i < m_newStates.size(); ++i) {
@@ -559,6 +560,7 @@ DrawingScene::DrawingScene(QObject *parent)
     , m_guideSnapEnabled(true)
     , m_scaleHintVisible(false)
     , m_rotateHintVisible(false)
+    , m_commandManager(nullptr)
     , m_currentTool(0) // 默认为选择工具
 {
     // 不在这里创建选择层，只在选择工具激活时创建
@@ -579,6 +581,29 @@ void DrawingScene::setModified(bool modified)
     }
 }
 
+void DrawingScene::setCommandManager(CommandManager *commandManager)
+{
+    m_commandManager = commandManager;
+}
+
+QUndoStack* DrawingScene::undoStack()
+{
+    return m_commandManager ? m_commandManager->undoStack() : nullptr;
+}
+
+void DrawingScene::pushCommand(QUndoCommand *command)
+{
+    if (m_commandManager) {
+        m_commandManager->pushCommand(command);
+    } else {
+        // 如果没有CommandManager，直接执行命令并删除
+        command->redo();
+        delete command;
+        qDebug() << "Warning: No CommandManager set, command executed without undo support";
+    }
+    setModified(true);
+}
+
 void DrawingScene::clearScene()
 {
     // 先清除所有选择
@@ -593,7 +618,9 @@ void DrawingScene::clearScene()
         }
     }
     
-    m_undoStack.clear();
+    if (m_commandManager) {
+        m_commandManager->clear();
+    }
     setModified(false);
 }
 
@@ -644,29 +671,28 @@ void DrawingScene::endTransform()
     }
     
     // 确定变换类型
-    TransformCommand::TransformType commandType = TransformCommand::Generic;
+    SceneTransformCommand::TransformType commandType = SceneTransformCommand::Generic;
     switch (m_currentTransformType) {
-        case Move: commandType = TransformCommand::Move; break;
-        case Scale: commandType = TransformCommand::Scale; break;
-        case Rotate: commandType = TransformCommand::Rotate; break;
-        case Skew: commandType = TransformCommand::Skew; break;
-        default: commandType = TransformCommand::Generic; break;
+        case Move: commandType = SceneTransformCommand::Move; break;
+        case Scale: commandType = SceneTransformCommand::Scale; break;
+        case Rotate: commandType = SceneTransformCommand::Rotate; break;
+        case Skew: commandType = SceneTransformCommand::Skew; break;
+        default: commandType = SceneTransformCommand::Generic; break;
     }
     
     // 创建变换命令，使用保存的图形引用而不是当前选择
-    TransformCommand *command = new TransformCommand(this, m_transformShapes, m_transformOldStates, commandType);
+    SceneTransformCommand *command = new SceneTransformCommand(this, m_transformShapes, m_transformOldStates, commandType);
     
     // 检查是否有实际的变化，如果有变化则推送到撤销栈
     bool hasChanged = command->hasChanged();
-    qDebug() << "TransformCommand hasChanged:" << hasChanged << "Shapes count:" << m_transformShapes.size();
+    qDebug() << "SceneTransformCommand hasChanged:" << hasChanged << "Shapes count:" << m_transformShapes.size();
     
     if (hasChanged) {
-        m_undoStack.push(command);
-        setModified(true);
-        qDebug() << "TransformCommand pushed to undo stack. Stack size:" << m_undoStack.count();
+        pushCommand(command);
+        qDebug() << "SceneTransformCommand pushed to command manager. Stack size:" << (m_commandManager ? m_commandManager->undoStack()->count() : 0);
     } else {
         // 没有实际变化，删除命令
-        qDebug() << "TransformCommand deleted (no actual changes)";
+        qDebug() << "SceneTransformCommand deleted (no actual changes)";
         delete command;
     }
     
@@ -683,22 +709,21 @@ void DrawingScene::endTransformWithStates(const QList<TransformState>& newStates
     }
     
     // 确定变换类型
-    TransformCommand::TransformType commandType = TransformCommand::Generic;
+    SceneTransformCommand::TransformType commandType = SceneTransformCommand::Generic;
     switch (m_currentTransformType) {
-        case Move: commandType = TransformCommand::Move; break;
-        case Scale: commandType = TransformCommand::Scale; break;
-        case Rotate: commandType = TransformCommand::Rotate; break;
-        case Skew: commandType = TransformCommand::Skew; break;
-        default: commandType = TransformCommand::Generic; break;
+        case Move: commandType = SceneTransformCommand::Move; break;
+        case Scale: commandType = SceneTransformCommand::Scale; break;
+        case Rotate: commandType = SceneTransformCommand::Rotate; break;
+        case Skew: commandType = SceneTransformCommand::Skew; break;
+        default: commandType = SceneTransformCommand::Generic; break;
     }
     
     // 创建变换命令，使用提供的新状态而不是当前图形状态
-    TransformCommand *command = new TransformCommand(this, m_transformShapes, m_transformOldStates, newStates, commandType);
+    SceneTransformCommand *command = new SceneTransformCommand(this, m_transformShapes, m_transformOldStates, newStates, commandType);
     
     // 直接推送到撤销栈，不检查hasChanged（因为我们明确提供了新状态）
-    m_undoStack.push(command);
-    setModified(true);
-    qDebug() << "TransformCommand pushed with provided states. Stack size:" << m_undoStack.count();
+    pushCommand(command);
+    qDebug() << "SceneTransformCommand pushed with provided states. Stack size:" << (m_commandManager ? m_commandManager->undoStack()->count() : 0);
     
     // 清理临时状态
     m_transformOldStates.clear();
@@ -783,7 +808,7 @@ void DrawingScene::keyPressEvent(QKeyEvent *event)
             if (!deleteCommands.isEmpty()) {
                 // 先执行删除命令（这会自动从场景中移除对象）
                 foreach (RemoveItemCommand *command, deleteCommands) {
-                    m_undoStack.push(command);
+                    pushCommand(command);
                 }
                 
                 // 删除完成后清除选择，这会触发selectionChanged信号
@@ -1682,7 +1707,7 @@ void DrawingScene::groupSelectedItems()
     
     // 创建并执行组合命令
     GroupCommand *command = new GroupCommand(this, shapesToGroup);
-    m_undoStack.push(command);
+    pushCommand(command);
 }
 
 void DrawingScene::ungroupSelectedItems()
@@ -1708,7 +1733,7 @@ void DrawingScene::ungroupSelectedItems()
     // 为每个组合对象创建取消组合命令
     for (DrawingGroup *group : groupsToUngroup) {
         UngroupCommand *command = new UngroupCommand(this, group);
-        m_undoStack.push(command);
+        pushCommand(command);
     }
 }
 

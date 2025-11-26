@@ -8,6 +8,7 @@
 #include "../core/drawing-shape.h"
 #include "../core/drawing-layer.h"
 #include "../core/layer-manager.h"
+#include "../ui/command-manager.h"
 
 // ToolBase
 ToolBase::ToolBase(QObject *parent)
@@ -327,70 +328,15 @@ bool LegacyRectangleTool::mouseReleaseEvent(QMouseEvent *event, const QPointF &s
                     m_scene->setModified(true);
                     
                     // 创建一个简单的撤销命令
-                    class SimpleAddCommand : public QUndoCommand
-                    {
-                    public:
-                        SimpleAddCommand(DrawingScene *scene, QGraphicsItem *item, DrawingLayer *layer, QUndoCommand *parent = nullptr)
-                            : QUndoCommand("添加矩形", parent), m_scene(scene), m_item(item), m_layer(layer) {}
-                        
-                        void undo() override {
-                            if (m_item) {
-                                if (m_layer) {
-                                    m_layer->removeShape(static_cast<DrawingShape*>(m_item));
-                                } else if (m_scene && m_item->scene() == m_scene) {
-                                    m_scene->removeItem(m_item);
-                                }
-                                m_item->setVisible(false);
-                            }
-                            
-                            // 通知图层内容变化
-                            LayerManager *layerManager = LayerManager::instance();
-                            if (layerManager && m_layer) {
-                                emit layerManager->layerContentChanged(m_layer);
-                            }
-                        }
-                        
-                        void redo() override {
-                            if (m_item) {
-                                if (m_layer) {
-                                    m_layer->addShape(static_cast<DrawingShape*>(m_item));
-                                } else if (m_scene) {
-                                    // 确保项目在场景中
-                                    if (m_item->scene() != m_scene) {
-                                        m_scene->addItem(m_item);
-                                    }
-                                }
-                                m_item->setVisible(true);
-                                
-                                // 自动选中新创建的图形
-                                m_item->setSelected(true);
-                                
-                                // 清除其他选中项
-                                if (m_scene) {
-                                    for (QGraphicsItem *item : m_scene->selectedItems()) {
-                                        if (item != m_item) {
-                                            item->setSelected(false);
-                                        }
-                                    }
-                                }
-                            }
-                            
-                            // 通知图层内容变化
-                            LayerManager *layerManager = LayerManager::instance();
-                            if (layerManager && m_layer) {
-                                emit layerManager->layerContentChanged(m_layer);
-                            }
-                        }
-                        
-                    private:
-                        DrawingScene *m_scene;
-                        QGraphicsItem *m_item;
-                        DrawingLayer *m_layer;
-                    };
-                    
-                    // 创建并推送撤销命令
-                    SimpleAddCommand *command = new SimpleAddCommand(m_scene, m_currentItem, activeLayer);
-                    m_scene->undoStack()->push(command);
+                    // 使用统一的CreateCommand
+                    CreateCommand *command = new CreateCommand(m_scene->commandManager(), m_currentItem, "添加矩形");
+                    if (m_scene->commandManager()) {
+                        m_scene->commandManager()->pushCommand(command);
+                    } else {
+                        // 降级处理：直接使用撤销栈
+                        command->redo();
+                        delete command;
+                    }
                 }
                 // 重要：将所有权转移给场景/图层，不再由工具管理
                 m_currentItem = nullptr;
@@ -601,70 +547,15 @@ bool LegacyEllipseTool::mouseReleaseEvent(QMouseEvent *event, const QPointF &sce
                     m_scene->setModified(true);
                     
                     // 创建一个简单的撤销命令
-                    class SimpleAddCommand : public QUndoCommand
-                    {
-                    public:
-                        SimpleAddCommand(DrawingScene *scene, QGraphicsItem *item, DrawingLayer *layer, QUndoCommand *parent = nullptr)
-                            : QUndoCommand("添加椭圆", parent), m_scene(scene), m_item(item), m_layer(layer) {}
-                        
-                        void undo() override {
-                            if (m_item) {
-                                if (m_layer) {
-                                    m_layer->removeShape(static_cast<DrawingShape*>(m_item));
-                                } else if (m_scene && m_item->scene() == m_scene) {
-                                    m_scene->removeItem(m_item);
-                                }
-                                m_item->setVisible(false);
-                            }
-                            
-                            // 通知图层内容变化
-                            LayerManager *layerManager = LayerManager::instance();
-                            if (layerManager && m_layer) {
-                                emit layerManager->layerContentChanged(m_layer);
-                            }
-                        }
-                        
-                        void redo() override {
-                            if (m_item) {
-                                if (m_layer) {
-                                    m_layer->addShape(static_cast<DrawingShape*>(m_item));
-                                } else if (m_scene) {
-                                    // 确保项目在场景中
-                                    if (m_item->scene() != m_scene) {
-                                        m_scene->addItem(m_item);
-                                    }
-                                }
-                                m_item->setVisible(true);
-                                
-                                // 自动选中新创建的图形
-                                m_item->setSelected(true);
-                                
-                                // 清除其他选中项
-                                if (m_scene) {
-                                    for (QGraphicsItem *item : m_scene->selectedItems()) {
-                                        if (item != m_item) {
-                                            item->setSelected(false);
-                                        }
-                                    }
-                                }
-                            }
-                            
-                            // 通知图层内容变化
-                            LayerManager *layerManager = LayerManager::instance();
-                            if (layerManager && m_layer) {
-                                emit layerManager->layerContentChanged(m_layer);
-                            }
-                        }
-                        
-                    private:
-                        DrawingScene *m_scene;
-                        QGraphicsItem *m_item;
-                        DrawingLayer *m_layer;
-                    };
-                    
-                    // 创建并推送撤销命令
-                    SimpleAddCommand *command = new SimpleAddCommand(m_scene, m_currentItem, activeLayer);
-                    m_scene->undoStack()->push(command);
+                    // 使用统一的CreateCommand
+                    CreateCommand *command = new CreateCommand(m_scene->commandManager(), m_currentItem, "添加椭圆");
+                    if (m_scene->commandManager()) {
+                        m_scene->commandManager()->pushCommand(command);
+                    } else {
+                        // 降级处理：直接使用撤销栈
+                        command->redo();
+                        delete command;
+                    }
                 }
                 m_currentItem = nullptr;
             }

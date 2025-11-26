@@ -37,6 +37,12 @@ class ScrollableToolBar;
 class ToolStateManager;
 class ToolManager;
 class ShortcutManager;
+class FileManager;
+class EffectManager;
+class GridManager;
+class PathOperationsManager;
+class SelectionManager;
+class CommandManager;
 
 
 class MainWindow : public QMainWindow
@@ -57,11 +63,23 @@ protected:
     void keyReleaseEvent(QKeyEvent *event) override;
 
 private slots:
+    // 文件操作槽函数（委托给FileManager）
     void newFile();
     void openFile();
     void saveFile();
     void saveFileAs();
     void exportFile();
+    
+    // FileManager信号处理
+    void onFileOpened(const QString &filePath);
+    void onFileSaved(const QString &filePath);
+    void onFileExported(const QString &filePath);
+    void onStatusMessageChanged(const QString &message);
+    void onWindowTitleChanged(const QString &title);
+    
+    // EffectManager信号处理
+    void onEffectApplied(const QString &effectName);
+    void onEffectCleared();
     void undo();
     void redo();
     void selectTool();
@@ -96,39 +114,14 @@ private slots:
     void onPenJoinStyleChanged(int style);
     void onPenCapStyleChanged(int style);
     
-    void deleteSelected();
-    void copySelected();
-    void paste();
-    void duplicate();  // Ctrl+D 快速复制粘贴
     void applyBlurEffect();  // 应用高斯模糊
     void applyDropShadowEffect();  // 应用阴影效果
     void clearFilterEffect();  // 清除滤镜效果
-    void convertTextToPath();  // 文本转路径
-    void selectAll();
-    void deselectAll();
     void zoomIn();
     void zoomOut();
     void resetZoom();
     void fitToWindow();
-    void toggleGrid();
-    void toggleGridAlignment();
-    void groupSelected();
-    void ungroupSelected();
-    void bringToFront();
-    void sendToBack();
-    void bringForward();
-    void sendBackward();
-    void alignLeft();
-    void alignCenter();
-    void alignRight();
-    void alignTop();
-    void alignMiddle();
-    void alignBottom();
-    void sameWidth();
-    void sameHeight();
-    void sameSize();
-    void distributeHorizontal();
-    void distributeVertical();
+    
     void showGridSettings();
     void about();
     void onSelectionChanged();
@@ -148,27 +141,6 @@ private slots:
     void onGuideRequested(const QPointF &position, Qt::Orientation orientation);
     void clearAllGuides();
     
-    // 路径布尔运算槽函数
-    void pathUnion();
-    void pathSubtract();
-    void pathIntersect();
-    void pathXor();
-    
-    // 路径编辑槽函数
-    void pathSimplify();
-    void pathSmooth();
-    void pathReverse();
-    void generateShape();
-    
-    // 执行路径布尔运算的通用方法
-    void performPathBooleanOperation(int op, const QString &opName);
-    
-    // 新增路径编辑功能
-    void executeBooleanOperation(int op);  // 使用int代替PathEditor::BooleanOperation
-    void executePathOperation(const QString &operation);
-    void createShapeAtPosition(const QString &shapeType, const QPointF &pos);
-    void convertSelectedTextToPath();
-    
     // 性能面板槽函数
     void togglePerformancePanel();
 
@@ -182,6 +154,7 @@ private:
     void setupDocks();
     void setupStatusBar();
     void setupColorPalette();
+    void setupUndoView();
     void createActions();
     void connectActions();
     void updateUI();
@@ -287,22 +260,36 @@ private:
     ToolManager *m_toolManager;
     ShortcutManager *m_shortcutManager;
     
+    // File management system
+    FileManager *m_fileManager;
+    
+    // Effect management system
+    EffectManager *m_effectManager;
+    
+    // Grid management system
+    GridManager *m_gridManager;
+    
+    // Selection management system
+    PathOperationsManager *m_pathOperationsManager;
+    
+    // Selection management system
+    SelectionManager *m_selectionManager;
+    
+    // Command management system
+    CommandManager *m_commandManager;
+    
     QLabel *m_statusLabel;
     QLabel *m_zoomLabel;
     QLabel *m_positionLabel;
     
     // 性能面板（现在集成在属性面板tab中）
     QDockWidget *m_performanceDock; // 保留用于菜单兼容性
-    QString m_currentFile;
-    bool m_isModified;
     
     // UI更新定时器
     QTimer *m_uiUpdateTimer;
     int m_lastSelectedCount;
     
-    // 文件对话框目录记忆
-    QString m_lastOpenDir;
-    QString m_lastSaveDir;
+    
 };
 
 #endif // MAINWINDOW_H

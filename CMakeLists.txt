@@ -22,6 +22,16 @@ set(SOURCES
     src/ui/mainwindow.cpp
     src/ui/drawingscene.cpp
     src/ui/drawingview.cpp
+    src/ui/file-manager.cpp
+    src/ui/effect-manager.cpp
+    src/ui/selection-manager.cpp
+    src/ui/path-operations-manager.cpp
+    src/ui/tool-controller.cpp
+    src/ui/command-manager.cpp
+    src/ui/ui-manager.cpp
+    src/ui/action-manager.cpp
+    src/ui/zoom-manager.cpp
+    src/ui/grid-manager.cpp
     
     
     # 核心模块

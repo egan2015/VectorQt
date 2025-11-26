@@ -132,6 +132,11 @@ MainWindow::MainWindow(QWidget *parent)
                 updateUI();
             }
         }
+        
+        // 检查当前工具并更新工具栏状态
+        if (m_toolManager) {
+            updateToolBarState(static_cast<int>(m_toolManager->currentToolType()));
+        }
     });
     m_uiUpdateTimer->start(100); // 每100ms检查一次
 

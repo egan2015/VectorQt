@@ -849,27 +849,21 @@ QPointF DrawingEllipse::constrainNodePoint(int index, const QPointF &pos) const
     
     switch (index) {
         case 0: {
-            // 水平半径控制：限制在椭圆上边的右半部分
+            // 水平半径控制：只限制在水平轴上，保持Y坐标不变
             // 将点转换到旋转前的坐标系
             QPointF rotatedPos = localPos - center;
             QPointF unrotatedPos;
             unrotatedPos.setX(rotatedPos.x() * qCos(-rotationRad) - rotatedPos.y() * qSin(-rotationRad));
             unrotatedPos.setY(rotatedPos.x() * qSin(-rotationRad) + rotatedPos.y() * qCos(-rotationRad));
             
-            // 将点约束到椭圆上边的右半部分（从顶部中点到右边中点）
-            // 计算角度：顶部是-90度，右边是0度，所以范围是-90到0度
-            qreal angle = qAtan2(unrotatedPos.y(), unrotatedPos.x());
-            angle = qDegreesToRadians(qBound(-90.0, qRadiansToDegrees(angle), 0.0));
-            
-            // 计算椭圆边界上的点
-            qreal a = m_rect.width() / 2.0; // 水平半轴
-            qreal b = m_rect.height() / 2.0; // 垂直半轴
-            qreal cosAngle = qCos(angle);
-            qreal sinAngle = qSin(angle);
-            
-            // 椭圆参数方程，但限制在上边右半部分
-            unrotatedPos.setX(a * cosAngle);
-            unrotatedPos.setY(b * sinAngle);
+            // 只允许在水平方向移动，保持Y坐标为0
+            qreal x = unrotatedPos.x();
+            // 确保最小半径
+            qreal minRadius = 10.0; // 最小半径为10
+            if (qAbs(x) < minRadius) {
+                x = x >= 0 ? minRadius : -minRadius; // 保持方向，只限制最小半径
+            }
+            unrotatedPos.setY(0); // 保持Y坐标为0，只在X轴上移动
             
             // 转换回旋转后的坐标系
             QPointF finalPos;
@@ -1212,7 +1206,7 @@ void DrawingPath::mouseMoveEvent(QGraphicsSceneMouseEvent *event)
     }
     
     // 如果没有拖动控制点，传递给基类处理
-    QGraphicsItem::mouseMoveEvent(event);
+    DrawingShape::mouseMoveEvent(event);
 }
 
 void DrawingPath::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)

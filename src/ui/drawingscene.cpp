@@ -559,10 +559,16 @@ DrawingScene::DrawingScene(QObject *parent)
     , m_guideSnapEnabled(true)
     , m_scaleHintVisible(false)
     , m_rotateHintVisible(false)
+    , m_currentTool(0) // 默认为选择工具
 {
     // 不在这里创建选择层，只在选择工具激活时创建
     // 暂时不连接选择变化信号，避免在初始化时触发
     // connect(this, &DrawingScene::selectionChanged, this, &DrawingScene::onSelectionChanged);
+}
+
+void DrawingScene::setCurrentTool(int toolType)
+{
+    m_currentTool = toolType;
 }
 
 void DrawingScene::setModified(bool modified)
@@ -731,7 +737,24 @@ void DrawingScene::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
 
 void DrawingScene::mouseDoubleClickEvent(QGraphicsSceneMouseEvent *event)
 {
-    // 直接传递给基类处理，让工具系统通过事件传播来处理
+    // 获取双击位置的项目
+    QGraphicsItem *item = itemAt(event->scenePos(), QTransform());
+    
+    if (item) {
+        // 双击图形，在节点编辑和选择工具之间切换
+        DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(item);
+        if (shape) {
+            // 发出工具切换请求信号
+            if (m_currentTool == static_cast<int>(ToolType::NodeEdit)) {
+                emit toolSwitchRequested(static_cast<int>(ToolType::Select));
+            } else {
+                emit toolSwitchRequested(static_cast<int>(ToolType::NodeEdit));
+            }
+            return;
+        }
+    }
+    
+    // 其他情况传递给基类处理
     QGraphicsScene::mouseDoubleClickEvent(event);
 }
 

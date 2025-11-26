@@ -77,20 +77,8 @@ DrawingShape::DrawingShape(ShapeType type, QGraphicsItem *parent)
 
 DrawingShape::~DrawingShape()
 {
-    // 清理graphics effect
-    QGraphicsEffect* effect = graphicsEffect();
-    if (effect) {
-        // Qt会自动删除graphics effect，但我们先设置为nullptr
-        setGraphicsEffect(nullptr);
-    }
-    
-    // 清除可能存在的吸附指示器（防止悬空指针）
-    if (scene()) {
-        DrawingScene *drawingScene = qobject_cast<DrawingScene*>(scene());
-        if (drawingScene) {
-            drawingScene->clearSnapIndicators();
-        }
-    }
+    // 在析构过程中不调用任何可能导致虚函数调用的方法
+    // Qt会自动清理graphics effect和其他资源
 }
 
 QString DrawingShape::generateUniqueId()

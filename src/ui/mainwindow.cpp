@@ -161,7 +161,7 @@ MainWindow::~MainWindow()
         delete m_scene;
         m_scene = nullptr;
     }
-    qDebug() << "Scene cleaned up.";
+    
 }
 
 void MainWindow::setupUI()
@@ -336,6 +336,8 @@ void MainWindow::setupUI()
             this, &MainWindow::onObjectStateChanged);
     connect(m_scene, &DrawingScene::contextMenuRequested,
             this, &MainWindow::showContextMenu);
+    connect(m_scene, &DrawingScene::toolSwitchRequested,
+            this, &MainWindow::onToolSwitchRequested);
     // 连接DrawingCanvas的缩放信号
     connect(m_canvas, &DrawingCanvas::zoomChanged,
             this, &MainWindow::updateZoomLabel);
@@ -769,21 +771,21 @@ void MainWindow::setupDocks()
     
     // 连接图层管理器
     if (m_layerManager) {
-        qDebug() << "Connecting layer manager in setupDocks";
+        
         LayerPanel *layerPanel = m_tabbedPropertyPanel->getLayersPanel();
         if (layerPanel) {
-            qDebug() << "Found layer panel in setupDocks, setting scene and layer manager";
+            
             layerPanel->setScene(m_scene);
             m_layerManager->setLayerPanel(layerPanel);
         } else {
-            qDebug() << "No layer panel found in setupDocks";
+            
         }
         m_layerManager->setScene(m_scene);
         
         // 重要：设置TabbedPropertyPanel的LayerManager引用
         m_tabbedPropertyPanel->setLayerManager(m_layerManager);
     } else {
-        qDebug() << "No layer manager available in setupDocks";
+        
     }
     
     // 连接工具面板信号到槽函数
@@ -1361,15 +1363,15 @@ void MainWindow::newFile()
     
     // 清除所有图层
     if (m_layerManager) {
-        qDebug() << "newFile: Clearing all layers";
+        
         m_layerManager->clearAllLayers();
         // 确保SVG导入标志被重置
         m_layerManager->setSvgImporting(false);
-        qDebug() << "newFile: SVG importing flag set to false";
+        
         // 重新设置场景以创建默认背景图层
-        qDebug() << "newFile: Calling setScene to create default layer";
+        
         m_layerManager->setScene(m_scene);
-        qDebug() << "newFile: Layer count after setScene:" << m_layerManager->layerCount();
+        
     }
     updateUI();
     m_statusLabel->setText("新文档已创建");
@@ -1752,11 +1754,28 @@ void MainWindow::copySelected()
                         .arg(pen.color().name())
                         .arg(pen.width())
                         .arg((int)pen.style());
-            jsonData += QString("\"fill\":{\"color\":\"%1\",\"style\":%2},")
+            jsonData += QString("\"fill\":{\"color\":\"%1\",\"style\":%2}")
                         .arg(brush.color().name())
                         .arg((int)brush.style());
             
+            // 写入滤镜数据
+            bool hasFilter = false;
+            if (shape->blurEffect()) {
+                QGraphicsBlurEffect *blur = shape->blurEffect();
+                jsonData += QString(",\"blur\":{\"radius\":%1}").arg(blur->blurRadius());
+                hasFilter = true;
+            } else if (shape->dropShadowEffect()) {
+                QGraphicsDropShadowEffect *shadow = shape->dropShadowEffect();
+                jsonData += QString(",\"shadow\":{\"color\":\"%1\",\"blurRadius\":%2,\"offsetX\":%3,\"offsetY\":%4}")
+                            .arg(shadow->color().name())
+                            .arg(shadow->blurRadius())
+                            .arg(shadow->offset().x())
+                            .arg(shadow->offset().y());
+                hasFilter = true;
+            }
+            
             // 写入几何数据
+            bool hasGeometry = false;
             switch (shape->shapeType()) {
                 case DrawingShape::Rectangle: {
                     DrawingRectangle *rect = static_cast<DrawingRectangle*>(shape);
@@ -1765,6 +1784,7 @@ void MainWindow::copySelected()
                                 .arg(rect->rectangle().y())
                                 .arg(rect->rectangle().width())
                                 .arg(rect->rectangle().height());
+                    hasGeometry = true;
                     break;
                 }
                 case DrawingShape::Ellipse: {
@@ -1774,6 +1794,7 @@ void MainWindow::copySelected()
                                 .arg(ellipse->ellipse().y())
                                 .arg(ellipse->ellipse().width())
                                 .arg(ellipse->ellipse().height());
+                    hasGeometry = true;
                     break;
                 }
                 case DrawingShape::Line: {
@@ -1783,6 +1804,29 @@ void MainWindow::copySelected()
                                 .arg(line->line().y1())
                                 .arg(line->line().x2())
                                 .arg(line->line().y2());
+                    hasGeometry = true;
+                    break;
+                }
+                case DrawingShape::Path: {
+                    DrawingPath *pathShape = dynamic_cast<DrawingPath*>(shape);
+                    if (pathShape) {
+                        // 使用变换后的路径
+                        QPainterPath painterPath = pathShape->transformedShape();
+                        QString pathStr;
+                        
+                        for (int i = 0; i < painterPath.elementCount(); ++i) {
+                            QPainterPath::Element element = painterPath.elementAt(i);
+                            if (i > 0) pathStr += ";";
+                            pathStr += QString("%1,%2,%3").arg(element.type).arg(element.x).arg(element.y);
+                        }
+                        
+                        if (pathStr.isEmpty()) {
+                            pathStr = "0,0,0"; // 默认一个MoveTo元素
+                        }
+                        
+                        jsonData += QString(",\"path\":\"%1\"").arg(pathStr);
+                        hasGeometry = true;
+                    }
                     break;
                 }
                 default:
@@ -1796,7 +1840,11 @@ void MainWindow::copySelected()
     
     jsonData += "]";
     
-    mimeData->setData("application/vectorflow/shapes", jsonData.toUtf8());
+    
+    
+    // 使用Base64编码确保数据完整性
+    QByteArray encodedData = jsonData.toUtf8().toBase64();
+    mimeData->setData("application/vectorflow/shapes", encodedData);
     
     // 放到剪贴板 - 剪贴板会接管mimeData的所有权
     QClipboard *clipboard = QApplication::clipboard();
@@ -1875,7 +1923,12 @@ void MainWindow::paste()
     }
 
     QByteArray copyData = mimeData->data("application/vectorflow/shapes");
-    QString jsonData = QString::fromUtf8(copyData);
+    
+    // 解码Base64数据
+    QByteArray decodedData = QByteArray::fromBase64(copyData);
+    QString jsonData = QString::fromUtf8(decodedData);
+    
+    
     
     // 简单的JSON解析（基础实现）
     // 移除外层方括号
@@ -1920,17 +1973,20 @@ void MainWindow::paste()
         QMap<QString, QString> props;
         QString cleanObj = objStr.mid(1, objStr.length() - 2); // 移除 {}
         
-        // 更智能的解析，处理嵌套对象
+        // 更智能的解析，处理嵌套对象和字符串值
         int braceLevel = 0;
+        bool inString = false;
         int start = 0;
         
         for (int i = 0; i < cleanObj.length(); ++i) {
-            if (cleanObj[i] == '{') {
-                braceLevel++;
+            if (cleanObj[i] == '"' && (i == 0 || cleanObj[i-1] != '\\')) {
+                inString = !inString;
+            } else if (cleanObj[i] == '{') {
+                if (!inString) braceLevel++;
             } else if (cleanObj[i] == '}') {
-                braceLevel--;
-            } else if (cleanObj[i] == ',' && braceLevel == 0) {
-                // 找到顶级分隔符
+                if (!inString) braceLevel--;
+            } else if (cleanObj[i] == ',' && braceLevel == 0 && !inString) {
+                // 找到顶级分隔符（不在字符串内）
                 QString pair = cleanObj.mid(start, i - start).trimmed();
                 int colonPos = pair.indexOf(':');
                 if (colonPos > 0) {
@@ -1956,6 +2012,7 @@ void MainWindow::paste()
         
         bool ok;
         int shapeType = props["type"].toInt(&ok);
+        
         if (!ok) continue;
         
         double x = props["x"].toDouble();
@@ -2026,6 +2083,53 @@ void MainWindow::paste()
                 }
                 break;
             }
+            case DrawingShape::Path: {
+                // 解析路径数据
+                QString pathStr = props["path"];
+                pathStr = pathStr.replace("\"", ""); // 移除引号
+                
+                if (!pathStr.isEmpty()) {
+                    DrawingPath *pathShape = new DrawingPath(nullptr);
+                    QPainterPath painterPath;
+                    
+                    // 解析路径元素
+                    QStringList elements = pathStr.split(';');
+                    for (const QString &elemStr : elements) {
+                        QStringList parts = elemStr.split(',');
+                        if (parts.size() >= 3) {
+                            int type = parts[0].toInt();
+                            double x = parts[1].toDouble();
+                            double y = parts[2].toDouble();
+                            
+                            switch (type) {
+                                case 0: // MoveTo
+                                    painterPath.moveTo(x, y);
+                                    break;
+                                case 1: // LineTo
+                                    painterPath.lineTo(x, y);
+                                    break;
+                                case 2: // CurveTo (简化处理)
+                                    if (parts.size() >= 5) {
+                                        double x2 = parts[3].toDouble();
+                                        double y2 = parts[4].toDouble();
+                                        painterPath.quadTo(x, y, x2, y2);
+                                    }
+                                    break;
+                                case 3: // CurveToData
+                                    // 跳过，由前面的CurveTo处理
+                                    break;
+                            }
+                        }
+                    }
+                    
+                    pathShape->setPath(painterPath);
+                    pathShape->setPos(pos + offset);
+                    shape = pathShape;
+                    } else {
+                    // 路径数据为空，跳过创建
+                }
+                break;
+            }
             default:
                 continue;
         }
@@ -2086,9 +2190,62 @@ void MainWindow::paste()
                 }
             }
             
+            // 解析滤镜 - 使用直接字符串查找避免解析器问题
+            if (cleanObj.contains("\"blur\":")) {
+                int blurIndex = cleanObj.indexOf("\"blur\":");
+                if (blurIndex >= 0) {
+                    int valueStart = cleanObj.indexOf(":", blurIndex) + 1;
+                    while (valueStart < cleanObj.length() && cleanObj[valueStart].isSpace()) {
+                        valueStart++;
+                    }
+                    if (valueStart < cleanObj.length() && cleanObj[valueStart] == '{') {
+                        valueStart++;
+                        int valueEnd = valueStart;
+                        while (valueEnd < cleanObj.length() && cleanObj[valueEnd] != '}') {
+                            valueEnd++;
+                        }
+                        QString blurValue = cleanObj.mid(valueStart, valueEnd - valueStart);
+                        QStringList blurPairs = blurValue.split(',');
+                        if (blurPairs.size() >= 1) {
+                            double radius = blurPairs[0].split(':')[1].toDouble();
+                            shape->setBlurEffect(radius);
+                        }
+                    }
+                }
+            }
+            
+            if (cleanObj.contains("\"shadow\":")) {
+                int shadowIndex = cleanObj.indexOf("\"shadow\":");
+                if (shadowIndex >= 0) {
+                    int valueStart = cleanObj.indexOf(":", shadowIndex) + 1;
+                    while (valueStart < cleanObj.length() && cleanObj[valueStart].isSpace()) {
+                        valueStart++;
+                    }
+                    if (valueStart < cleanObj.length() && cleanObj[valueStart] == '{') {
+                        valueStart++;
+                        int valueEnd = valueStart;
+                        while (valueEnd < cleanObj.length() && cleanObj[valueEnd] != '}') {
+                            valueEnd++;
+                        }
+                        QString shadowValue = cleanObj.mid(valueStart, valueEnd - valueStart);
+                        QStringList shadowPairs = shadowValue.split(',');
+                        if (shadowPairs.size() >= 4) {
+                            QString colorStr = shadowPairs[0].split(':')[1].replace("\"", "");
+                            double blurRadius = shadowPairs[1].split(':')[1].toDouble();
+                            double offsetX = shadowPairs[2].split(':')[1].toDouble();
+                            double offsetY = shadowPairs[3].split(':')[1].toDouble();
+                            
+                            shape->setDropShadowEffect(QColor(colorStr), blurRadius, QPointF(offsetX, offsetY));
+                        }
+                    }
+                }
+            }
+            
             // 添加到粘贴项目列表，而不是直接添加到场景
-            pastedItems.append(shape);
-            shape->setSelected(true);
+            if (shape) {
+                pastedItems.append(shape);
+                shape->setSelected(true);
+            }
         }
     }
     
@@ -2535,7 +2692,7 @@ void MainWindow::onSelectionChanged()
 {
     if (m_scene) {
         int selectedCount = m_scene->selectedItems().count();
-        qDebug() << "MainWindow::onSelectionChanged: selected items count:" << selectedCount;
+        
         
         // 如果有选中的图形，提示用户可以使用空格键切换到选择工具
         if (selectedCount > 0) {
@@ -2822,9 +2979,7 @@ void MainWindow::updateUI()
         }
         }
         
-        // 调试输出
-        qDebug() << "updateUI: hasMultipleSelection =" << hasMultipleSelection 
-                 << "selected count =" << selected.size();
+        
         
         m_groupAction->setEnabled(hasMultipleSelection);
         m_ungroupAction->setEnabled(hasGroupSelection);
@@ -4356,6 +4511,73 @@ void MainWindow::togglePerformancePanel()
     // 更新菜单状态
     if (m_togglePerformancePanelAction) {
         m_togglePerformancePanelAction->setChecked(true);
+    }
+}
+
+void MainWindow::onToolSwitchRequested(int toolType)
+{
+    if (m_toolManager) {
+        // 切换到指定工具
+        m_toolManager->switchTool(static_cast<ToolType>(toolType));
+        
+        // 更新场景中的当前工具状态
+        if (m_scene) {
+            m_scene->setCurrentTool(toolType);
+        }
+    }
+}
+
+void MainWindow::updateToolBarState(int currentTool)
+{
+    // 根据当前工具更新工具栏按钮的选中状态
+    switch (static_cast<ToolType>(currentTool)) {
+        case ToolType::Select:
+            if (m_outlinePreviewToolAction) m_outlinePreviewToolAction->setChecked(true);
+            break;
+        case ToolType::Rectangle:
+            if (m_rectangleToolAction) m_rectangleToolAction->setChecked(true);
+            break;
+        case ToolType::Ellipse:
+            if (m_ellipseToolAction) m_ellipseToolAction->setChecked(true);
+            break;
+        case ToolType::Line:
+            if (m_lineToolAction) m_lineToolAction->setChecked(true);
+            break;
+        case ToolType::Bezier:
+            if (m_bezierToolAction) m_bezierToolAction->setChecked(true);
+            break;
+        case ToolType::NodeEdit:
+            if (m_nodeEditToolAction) m_nodeEditToolAction->setChecked(true);
+            break;
+        case ToolType::Polygon:
+            if (m_polygonToolAction) m_polygonToolAction->setChecked(true);
+            break;
+        case ToolType::Polyline:
+            if (m_polylineToolAction) m_polylineToolAction->setChecked(true);
+            break;
+        case ToolType::Brush:
+            if (m_brushToolAction) m_brushToolAction->setChecked(true);
+            break;
+        case ToolType::Pen:
+            if (m_penToolAction) m_penToolAction->setChecked(true);
+            break;
+        case ToolType::Fill:
+            if (m_fillToolAction) m_fillToolAction->setChecked(true);
+            break;
+        case ToolType::GradientFill:
+            if (m_gradientFillToolAction) m_gradientFillToolAction->setChecked(true);
+            break;
+        case ToolType::Eraser:
+            if (m_eraserToolAction) m_eraserToolAction->setChecked(true);
+            break;
+        case ToolType::Text:
+            if (m_textToolAction) m_textToolAction->setChecked(true);
+            break;
+        case ToolType::PathEdit:
+            if (m_pathEditToolAction) m_pathEditToolAction->setChecked(true);
+            break;
+        default:
+            break;
     }
 }
 

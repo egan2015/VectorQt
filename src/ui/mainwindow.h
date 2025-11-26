@@ -138,6 +138,8 @@ private slots:
     void onObjectStateChanged(DrawingShape* shape);
     void updateStatusBar(const QString &message);
     void showContextMenu(const QPointF &pos);
+    void onToolSwitchRequested(int toolType);
+    void updateToolBarState(int currentTool);
     
     // 调色板颜色应用槽函数
     void onApplyColorToSelection(const QColor &color, bool isFill);

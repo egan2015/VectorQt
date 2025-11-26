@@ -4,6 +4,7 @@
 #include <QGraphicsScene>
 #include <QUndoStack>
 #include "../core/drawing-group.h"
+#include "../tools/tool-manager.h"
 
 class DrawingShape;
 class DrawingGroup;
@@ -40,6 +41,9 @@ public:
     // 激活/停用选择工具时调用
     void activateSelectionTool();
     void deactivateSelectionTool();
+    
+    // 设置当前工具
+    void setCurrentTool(int toolType);
     
     // 变换撤销支持
     enum TransformType {
@@ -212,6 +216,7 @@ signals:
     void sceneAboutToBeCleared(); // 圳景即将被清理通知
     void allToolsClearHandles(); // 通知所有工具清理手柄
     void contextMenuRequested(const QPointF &pos); // 右键菜单请求信号
+    void toolSwitchRequested(int toolType); // 工具切换请求信号
 
 protected:
     void mousePressEvent(QGraphicsSceneMouseEvent *event) override;
@@ -267,6 +272,9 @@ private:
     QList<TransformState> m_transformOldStates;
     QList<DrawingShape*> m_transformShapes;  // 保存变换时的图形引用
     TransformType m_currentTransformType;
+    
+    // 当前工具类型
+    int m_currentTool;
     
     
 };

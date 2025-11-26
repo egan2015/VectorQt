@@ -40,6 +40,7 @@ void HandleManager::createHandles()
         
         CustomHandleItem *handle = new CustomHandleItem(type);
         handle->setSize(getHandleSize());
+        handle->setSpecificColor(QColor(173, 216, 230, 160)); //浅蓝色
         handle->setZValue(2000);
         handle->setVisible(false);
         handle->setOpacity(0.9);

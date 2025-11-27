@@ -5,7 +5,8 @@
 #include <QPainter>
 #include "../ui/drawingview.h"
 #include "../core/toolbase.h"
-#include "tool-switch-state-machine.h"
+#include "../ui/drawingscene.h"
+#include "../ui/snap-manager.h"
 #include "../tools/tool-manager.h"
 
 DrawingView::DrawingView(QGraphicsScene *scene, QWidget *parent)
@@ -13,7 +14,7 @@ DrawingView::DrawingView(QGraphicsScene *scene, QWidget *parent)
     , m_zoomLevel(1.0)
     , m_currentTool(nullptr)
     , m_toolManager(nullptr)
-    , m_stateMachine(nullptr)
+    
 {
     // Qt原生渲染优化
     setRenderHint(QPainter::Antialiasing);
@@ -101,13 +102,7 @@ void DrawingView::mousePressEvent(QMouseEvent *event)
     QPointF scenePos = mapToScene(event->pos());
     emit mousePositionChanged(scenePos);
     
-    // 首先让状态机处理鼠标事件
-    if (m_stateMachine) {
-        QGraphicsItem* item = scene() ? scene()->itemAt(scenePos, transform()) : nullptr;
-        if (m_stateMachine->handleMousePress(event, scenePos, item)) {
-            return; // 状态机处理了事件
-        }
-    }
+    
     
     if (m_currentTool && m_currentTool->mousePressEvent(event, scenePos)) {
         return;
@@ -120,10 +115,7 @@ void DrawingView::mouseMoveEvent(QMouseEvent *event)
     QPointF scenePos = mapToScene(event->pos());
     emit mousePositionChanged(scenePos);
     
-    // 让状态机处理鼠标移动事件
-    if (m_stateMachine && m_stateMachine->handleMouseMove(event, scenePos)) {
-        return;
-    }
+    
     
     if (m_currentTool && m_currentTool->mouseMoveEvent(event, scenePos)) {
         return;
@@ -135,9 +127,10 @@ void DrawingView::mouseReleaseEvent(QMouseEvent *event)
 {
     QPointF scenePos = mapToScene(event->pos());
     
-    // 让状态机处理鼠标释放事件
-    if (m_stateMachine && m_stateMachine->handleMouseRelease(event)) {
-        return;
+    // 清除吸附指示器
+    DrawingScene *drawingScene = qobject_cast<DrawingScene*>(scene());
+    if (drawingScene && drawingScene->snapManager()) {
+        drawingScene->snapManager()->clearSnapIndicators();
     }
     
     if (m_currentTool && m_currentTool->mouseReleaseEvent(event, scenePos)) {
@@ -178,19 +171,7 @@ void DrawingView::setToolManager(ToolManager* toolManager)
     m_toolManager = toolManager;
 }
 
-void DrawingView::setToolSwitchStateMachine(ToolSwitchStateMachine* stateMachine)
-{
-    if (m_stateMachine) {
-        disconnect(m_stateMachine, nullptr, this, nullptr);
-    }
-    
-    m_stateMachine = stateMachine;
-    
-    if (m_stateMachine) {
-        connect(m_stateMachine, &ToolSwitchStateMachine::toolSwitchRequested,
-                this, &DrawingView::onToolSwitchRequested);
-    }
-}
+
 
 void DrawingView::onToolSwitchRequested(ToolType newTool)
 {

@@ -13,6 +13,7 @@ class CommandManager;
 class TransformCommand;
 class GroupCommand;
 class UngroupCommand;
+class SnapManager;
 
 class DrawingScene : public QGraphicsScene
 {
@@ -33,11 +34,18 @@ public:
     bool isModified() const { return m_isModified; }
     void setModified(bool modified);
     
+    // 公共命令执行方法
+    void executeCommand(QUndoCommand *command);
+    
     void clearScene();
     
     // CommandManager 访问
     void setCommandManager(CommandManager *commandManager);
     CommandManager* commandManager() const { return m_commandManager; }
+    
+    // SnapManager 访问
+    void setSnapManager(SnapManager *snapManager);
+    SnapManager* snapManager() const { return m_snapManager; }
     
     // 选择层管理
     // SelectionLayer* selectionLayer() const { return m_selectionLayer; } // 已移除 - 老的选择层系统
@@ -81,28 +89,18 @@ public:
     QColor gridColor() const;
     
     // 网格对齐功能
-    QPointF alignToGrid(const QPointF &pos) const;
-    QPointF alignToGrid(const QPointF &pos, DrawingShape *excludeShape, bool *isObjectSnap = nullptr);
-    QRectF alignToGrid(const QRectF &rect) const;
     
-    // Smart snapping feature - only snap when close to grid lines
-    struct SnapResult {
-        QPointF snappedPos;
-        bool snappedX;
-        bool snappedY;
-        SnapResult() : snappedX(false), snappedY(false) {}
-    };
-    SnapResult smartAlignToGrid(const QPointF &pos) const;
+    
+    
+    
+    
+    
     
     // 网格对齐开关
     void setGridAlignmentEnabled(bool enabled);
     bool isGridAlignmentEnabled() const;
     
-    // Smart snapping settings
-    void setSnapEnabled(bool enabled);
-    bool isSnapEnabled() const;
-    void setSnapTolerance(int tolerance);
-    int snapTolerance() const;
+    // Smart snapping settings已移至SnapManager
     
     // Guide line system
     struct Guide {
@@ -115,52 +113,19 @@ public:
             : orientation(orient), position(pos), color(col), visible(true) {}
     };
     
+    // 参考线方法（保留在Scene中）
     void addGuide(Qt::Orientation orientation, qreal position);
     void removeGuide(Qt::Orientation orientation, qreal position);
     void clearGuides();
     QList<Guide> guides() const { return m_guides; }
     void setGuideVisible(Qt::Orientation orientation, qreal position, bool visible);
     
-    // Guide line snapping feature
-    struct GuideSnapResult {
-        QPointF snappedPos;
-        bool snappedToGuide;
-        Qt::Orientation snapOrientation;
-        qreal guidePosition;
-        
-        GuideSnapResult() : snappedToGuide(false), snapOrientation(Qt::Horizontal), guidePosition(0) {}
-    };
-    GuideSnapResult snapToGuides(const QPointF &pos) const;
     
-    // Object snapping system
-    enum ObjectSnapType {
-        SnapToLeft,      // 吸附到左边
-        SnapToRight,     // 吸附到右边
-        SnapToTop,       // 吸附到上边
-        SnapToBottom,    // 吸附到下边
-        SnapToCenterX,   // 吸附到水平中心
-        SnapToCenterY,   // 吸附到垂直中心
-        SnapToCorner     // 吸附到角点
-    };
     
-    struct ObjectSnapPoint {
-        QPointF position;    // 场景坐标位置
-        ObjectSnapType type; // 吸附点类型
-        DrawingShape* shape; // 来源图形
-        
-        ObjectSnapPoint(const QPointF &pos, ObjectSnapType t, DrawingShape* s)
-            : position(pos), type(t), shape(s) {}
-    };
     
-    struct ObjectSnapResult {
-        QPointF snappedPos;
-        bool snappedToObject;
-        ObjectSnapType snapType;
-        DrawingShape* targetShape;
-        QString snapDescription; // 吸附描述，用于显示
-        
-        ObjectSnapResult() : snappedToObject(false), snapType(SnapToLeft), targetShape(nullptr) {}
-    };
+    // Object snapping system已移至SnapManager
+    
+    
     
     // Scale hint structure
     struct ScaleHintResult {
@@ -183,22 +148,9 @@ public:
         RotateHintResult() : showHint(false), angle(0.0) {}
     };
     
-    // 对象吸附功能
-    ObjectSnapResult snapToObjects(const QPointF &pos, DrawingShape *excludeShape = nullptr);
-    QList<ObjectSnapPoint> getObjectSnapPoints(DrawingShape *excludeShape = nullptr) const;
+    // 对象吸附功能已移至SnapManager
     
-    // 对象吸附开关
-    void setObjectSnapEnabled(bool enabled);
-    bool isObjectSnapEnabled() const;
-    void setObjectSnapTolerance(int tolerance);
-    int objectSnapTolerance() const;
-    
-    // Object snapping visual feedback
-    void showSnapIndicators(const ObjectSnapResult &snapResult);
-    void clearSnapIndicators();
-    void clearExpiredSnapIndicators(const QPointF &currentPos);
-    void setSnapIndicatorsVisible(bool visible);
-    bool areSnapIndicatorsVisible() const;
+    // 吸附相关方法已移至SnapManager
     
     // Scale hints
     void showScaleHint(const ScaleHintResult &hintResult);
@@ -211,7 +163,10 @@ public:
     RotateHintResult calculateRotateHint(qreal angle, const QPointF &pos);
 
 private:
+    // drawSnapIndicators方法，供SnapManager调用
     void drawSnapIndicators(QPainter *painter);
+    
+    Q_DISABLE_COPY(DrawingScene)
 
 signals:
     void sceneModified(bool modified);
@@ -221,6 +176,7 @@ signals:
     void allToolsClearHandles(); // 通知所有工具清理手柄
     void contextMenuRequested(const QPointF &pos); // 右键菜单请求信号
     void toolSwitchRequested(int toolType); // 工具切换请求信号
+    void gridVisibilityChanged(bool visible);
 
 protected:
     void mousePressEvent(QGraphicsSceneMouseEvent *event) override;
@@ -252,25 +208,15 @@ private:
     int m_gridSize;
     QColor m_gridColor;
     
-    // Smart snapping related
-    bool m_snapEnabled;
-    int m_snapTolerance;
-    bool m_objectSnapEnabled;
-    int m_objectSnapTolerance;
-    bool m_snapIndicatorsVisible;
-    ObjectSnapResult m_lastSnapResult; // 最后一次吸附结果，用于绘制指示器
-    bool m_hasActiveSnap; // 是否有活跃的吸附（真正发生了位置变化）
-    
-    // 参考线吸附
-    bool m_guideSnapEnabled;
+    // 参考线属性（保留在Scene中）
     bool m_guidesEnabled;
+    QList<Guide> m_guides;
     
     // Scale and rotate hints
     ScaleHintResult m_lastScaleHint;
     RotateHintResult m_lastRotateHint;
     bool m_scaleHintVisible;
     bool m_rotateHintVisible;
-    QList<Guide> m_guides;
     
     // 变换撤销支持
     QList<TransformState> m_transformOldStates;
@@ -279,6 +225,9 @@ private:
     
     // CommandManager 引用
     CommandManager *m_commandManager;
+    
+    // SnapManager 引用（合并了网格和对象吸附）
+    SnapManager *m_snapManager;
     
     // 当前工具类型
     int m_currentTool;

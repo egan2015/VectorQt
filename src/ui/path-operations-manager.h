@@ -3,11 +3,13 @@
 
 #include <QObject>
 #include <QString>
+#include <QPainterPath>
 
 class DrawingScene;
 class QMenu;
 class DrawingShape;
 class MainWindow;
+class CommandManager;
 
 class PathOperationsManager : public QObject
 {
@@ -19,6 +21,9 @@ public:
 
     void setScene(DrawingScene *scene);
     DrawingScene *scene() const;
+    
+    void setCommandManager(CommandManager *commandManager);
+    CommandManager *commandManager() const;
 
     // 路径布尔运算操作类型
     enum BooleanOperation {
@@ -32,7 +37,10 @@ public:
     enum PathOperation {
         Simplify,
         Smooth,
-        Reverse
+        Reverse,
+        ConvertToCurve,
+        OffsetPath,
+        ClipPath
     };
 
 signals:
@@ -50,22 +58,19 @@ public slots:
     void pathSimplify();
     void pathSmooth();
     void pathReverse();
+    void pathConvertToCurve();
+    void pathOffsetPath();
+    void pathClipPath();
     
     // 文本转路径
     void convertTextToPath();
-    
-    // 通用路径操作方法（从MainWindow移动过来）
-    void performPathBooleanOperation(int op, const QString &opName);
-    void executeBooleanOperation(int op);
-    void executePathOperation(const QString &operation);
+    void convertSelectedTextToPath();
     
     // 上下文菜单支持
     void addPathOperationsToMenu(QMenu *menu, const QPointF &pos);
     
-    // 路径编辑方法
-    void generateShape();
+    // 创建图形方法
     void createShapeAtPosition(const QString &shapeType, const QPointF &pos);
-    void convertSelectedTextToPath();
 
 private:
     // 执行布尔运算
@@ -77,10 +82,22 @@ private:
     // 检查选择是否适合操作
     bool validateSelectionForBoolean();
     bool validateSelectionForPathOperation();
+    
+    // 路径处理辅助方法
+    QPainterPath simplifyPath(const QPainterPath &path);
+    QPainterPath smoothPath(const QPainterPath &path);
+    
+    // 静态辅助方法
+    static QPainterPath simplifyPathStatic(const QPainterPath &path);
+    static QPainterPath smoothPathStatic(const QPainterPath &path);
+    static QPainterPath convertToCurveStatic(const QPainterPath &path);
+    static QPainterPath offsetPathStatic(const QPainterPath &path, qreal offset);
+    static QPainterPath clipPathStatic(const QPainterPath &path);
 
 private:
     MainWindow *m_mainWindow;
     DrawingScene *m_scene;
+    CommandManager *m_commandManager;
 };
 
 #endif // PATH_OPERATIONS_MANAGER_H

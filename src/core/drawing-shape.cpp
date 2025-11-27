@@ -17,6 +17,7 @@
 #include "../ui/drawingview.h"
 #include "../core/toolbase.h"
 #include "../ui/drawingscene.h"
+#include "../ui/snap-manager.h"
 // BezierControlPointCommand 实现
 BezierControlPointCommand::BezierControlPointCommand(DrawingScene *scene, DrawingPath *path, int pointIndex, 
                                                    const QPointF &oldPos, const QPointF &newPos, QUndoCommand *parent)
@@ -301,10 +302,10 @@ QVariant DrawingShape::itemChange(GraphicsItemChange change, const QVariant &val
         
         DrawingScene *drawingScene = qobject_cast<DrawingScene*>(scene());
         
-        if (drawingScene && drawingScene->isObjectSnapEnabled()) {
-            // 使用alignToGrid方法，它会处理所有吸附逻辑
+        if (drawingScene && drawingScene->snapManager() && drawingScene->snapManager()->isObjectSnapEnabled()) {
+            // 使用SnapManager的alignToGrid方法，它会处理所有吸附逻辑
             bool isObjectSnap = false;
-            QPointF alignedPos = drawingScene->alignToGrid(newPos, this, &isObjectSnap);
+            QPointF alignedPos = drawingScene->snapManager()->alignToGrid(newPos, this, &isObjectSnap);
             
             // 如果位置有变化，返回吸附后的位置
             if (alignedPos != newPos) {

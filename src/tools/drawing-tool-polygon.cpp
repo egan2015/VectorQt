@@ -128,7 +128,7 @@ bool DrawingToolPolygon::mouseDoubleClickEvent(QMouseEvent *event, const QPointF
             
             // 创建并推送撤销命令
             AddItemCommand *command = new AddItemCommand(m_scene, m_currentPolygon);
-            m_scene->undoStack()->push(command);
+            m_scene->executeCommand(command);
             
             m_currentPolygon = nullptr;
         }

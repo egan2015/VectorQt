@@ -5,6 +5,7 @@
 #include "../tools/drawing-tool-bezier.h"
 #include "../ui/drawingscene.h"
 #include "../core/drawing-shape.h"
+#include "../ui/snap-manager.h"
 
 
 DrawingBezierTool::DrawingBezierTool(QObject *parent)
@@ -46,11 +47,11 @@ bool DrawingBezierTool::mousePressEvent(QMouseEvent *event, const QPointF &scene
         DrawingScene *drawingScene = qobject_cast<DrawingScene*>(m_scene);
         if (drawingScene->isGridAlignmentEnabled()) {
             // 使用智能网格吸附
-            DrawingScene::SnapResult gridSnap = drawingScene->smartAlignToGrid(scenePos);
+            SnapResult gridSnap = drawingScene->snapManager()->smartAlignToGrid(scenePos);
             alignedPos = gridSnap.snappedPos;
             
             // 尝试对象吸附
-            DrawingScene::ObjectSnapResult objectSnap = drawingScene->snapToObjects(scenePos);
+            ObjectSnapResult objectSnap = drawingScene->snapManager()->snapToObjects(scenePos);
             if (objectSnap.snappedToObject) {
                 // 对象吸附优先级更高
                 alignedPos = objectSnap.snappedPos;
@@ -115,11 +116,11 @@ bool DrawingBezierTool::mouseMoveEvent(QMouseEvent *event, const QPointF &sceneP
         DrawingScene *drawingScene = qobject_cast<DrawingScene*>(m_scene);
         if (drawingScene->isGridAlignmentEnabled()) {
             // 使用智能网格吸附
-            DrawingScene::SnapResult gridSnap = drawingScene->smartAlignToGrid(scenePos);
+            SnapResult gridSnap = drawingScene->snapManager()->smartAlignToGrid(scenePos);
             alignedPos = gridSnap.snappedPos;
             
             // 尝试对象吸附
-            DrawingScene::ObjectSnapResult objectSnap = drawingScene->snapToObjects(scenePos);
+            ObjectSnapResult objectSnap = drawingScene->snapManager()->snapToObjects(scenePos);
             if (objectSnap.snappedToObject) {
                 // 对象吸附优先级更高
                 alignedPos = objectSnap.snappedPos;
@@ -271,25 +272,25 @@ void DrawingBezierTool::finishDrawing()
             DrawingScene *drawingScene = qobject_cast<DrawingScene*>(m_scene);
             if (drawingScene->isGridAlignmentEnabled()) {
                 // 重新构建路径，应用网格对齐到所有控制点
-                alignedPath.moveTo(drawingScene->alignToGrid(m_controlPoints.first()));
+                alignedPath.moveTo(drawingScene->snapManager()->alignToGrid(m_controlPoints.first()));
                 
                 for (int i = 1; i < m_controlPoints.size(); ) {
                     if (i + 2 < m_controlPoints.size()) {
                         // 有足够的点创建三次贝塞尔曲线
-                        QPointF p1 = drawingScene->alignToGrid(m_controlPoints[i]);
-                        QPointF p2 = drawingScene->alignToGrid(m_controlPoints[i+1]);
-                        QPointF p3 = drawingScene->alignToGrid(m_controlPoints[i+2]);
+                        QPointF p1 = drawingScene->snapManager() ? drawingScene->snapManager()->alignToGrid(m_controlPoints[i]) : m_controlPoints[i];
+                        QPointF p2 = drawingScene->snapManager() ? drawingScene->snapManager()->alignToGrid(m_controlPoints[i+1]) : m_controlPoints[i+1];
+                        QPointF p3 = drawingScene->snapManager() ? drawingScene->snapManager()->alignToGrid(m_controlPoints[i+2]) : m_controlPoints[i+2];
                         alignedPath.cubicTo(p1, p2, p3);
                         i += 3; // 跳过已经处理的两个控制点和终点
                     } else if (i + 1 < m_controlPoints.size()) {
                         // 有足够的点创建二次贝塞尔曲线
-                        QPointF p1 = drawingScene->alignToGrid(m_controlPoints[i]);
-                        QPointF p2 = drawingScene->alignToGrid(m_controlPoints[i+1]);
+                        QPointF p1 = drawingScene->snapManager() ? drawingScene->snapManager()->alignToGrid(m_controlPoints[i]) : m_controlPoints[i];
+                        QPointF p2 = drawingScene->snapManager() ? drawingScene->snapManager()->alignToGrid(m_controlPoints[i+1]) : m_controlPoints[i+1];
                         alignedPath.quadTo(p1, p2);
                         i += 2; // 跳过已经处理的一个控制点和终点
                     } else {
                         // 只有一个点，创建直线
-                        QPointF p1 = drawingScene->alignToGrid(m_controlPoints[i]);
+                        QPointF p1 = drawingScene->snapManager() ? drawingScene->snapManager()->alignToGrid(m_controlPoints[i]) : m_controlPoints[i];
                         alignedPath.lineTo(p1);
                         i += 1; // 移动到下一个点
                     }
@@ -366,7 +367,7 @@ void DrawingBezierTool::finishDrawing()
             
             // 创建并推送撤销命令
             AddItemCommand *command = new AddItemCommand(m_scene, m_currentItem);
-            m_scene->undoStack()->push(command);
+            m_scene->executeCommand(command);
         }
         
         qDebug() << "Finished drawing bezier curve with" << m_controlPoints.size() << "control points";

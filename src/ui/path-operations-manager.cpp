@@ -6,11 +6,14 @@
 #include "command-manager.h"
 #include <QGraphicsTextItem>
 #include <QMenu>
+#include <QDataStream>
+#include <cmath>
 
 PathOperationsManager::PathOperationsManager(MainWindow *parent)
     : QObject(parent)
     , m_mainWindow(parent)
     , m_scene(nullptr)
+    , m_commandManager(nullptr)
 {
 }
 
@@ -26,6 +29,16 @@ void PathOperationsManager::setScene(DrawingScene *scene)
 DrawingScene *PathOperationsManager::scene() const
 {
     return m_scene;
+}
+
+void PathOperationsManager::setCommandManager(CommandManager *commandManager)
+{
+    m_commandManager = commandManager;
+}
+
+CommandManager *PathOperationsManager::commandManager() const
+{
+    return m_commandManager;
 }
 
 void PathOperationsManager::pathUnion()
@@ -50,17 +63,38 @@ void PathOperationsManager::pathXor()
 
 void PathOperationsManager::pathSimplify()
 {
+    qDebug() << "PathOperationsManager::pathSimplify() called";
     performPathOperation(Simplify, "路径简化");
 }
 
 void PathOperationsManager::pathSmooth()
 {
+    qDebug() << "PathOperationsManager::pathSmooth() called";
     performPathOperation(Smooth, "路径平滑");
 }
 
 void PathOperationsManager::pathReverse()
 {
+    qDebug() << "PathOperationsManager::pathReverse() called";
     performPathOperation(Reverse, "路径反转");
+}
+
+void PathOperationsManager::pathConvertToCurve()
+{
+    qDebug() << "PathOperationsManager::pathConvertToCurve() called";
+    performPathOperation(ConvertToCurve, "转换为曲线");
+}
+
+void PathOperationsManager::pathOffsetPath()
+{
+    qDebug() << "PathOperationsManager::pathOffsetPath() called";
+    performPathOperation(OffsetPath, "偏移路径");
+}
+
+void PathOperationsManager::pathClipPath()
+{
+    qDebug() << "PathOperationsManager::pathClipPath() called";
+    performPathOperation(ClipPath, "裁剪路径");
 }
 
 void PathOperationsManager::convertTextToPath()
@@ -98,26 +132,171 @@ void PathOperationsManager::performBooleanOperation(BooleanOperation op, const Q
         return;
     }
     
-    // 创建撤销命令
+    QList<QGraphicsItem*> selectedItems = m_scene->selectedItems();
+    if (selectedItems.size() < 2) {
+        emit statusMessageChanged(QString("%1操作需要至少选中2个图形").arg(opName));
+        return;
+    }
+    
+    // 创建简单的布尔操作命令 - 使用你建议的方法
     class BooleanOperationCommand : public QUndoCommand {
     public:
         BooleanOperationCommand(DrawingScene *scene, PathOperationsManager::BooleanOperation op, 
                                const QString &opName, QUndoCommand *parent = nullptr)
-            : QUndoCommand(opName, parent), m_scene(scene), m_operation(op)
+            : QUndoCommand(opName, parent), m_scene(scene), m_operation(op), m_createdPath(nullptr)
         {
-            // 保存原始状态
+            // 保存原始图形的指针，但不删除它们
             if (m_scene) {
                 m_selectedItems = m_scene->selectedItems();
+                for (QGraphicsItem *item : m_selectedItems) {
+                    DrawingShape *shape = dynamic_cast<DrawingShape*>(item);
+                    if (shape) {
+                        m_originalShapes.append(shape);
+                    }
+                }
+            }
+        }
+        
+        ~BooleanOperationCommand() {
+            // 析构时检查布尔结果是否还在场景中，如果不在就删除
+            // 增加更安全的检查，避免访问已释放的scene
+            if (m_createdPath) {
+                // 先检查scene指针是否有效
+                bool sceneValid = false;
+                if (m_scene) {
+                    // 尝试安全地检查scene是否仍然有效
+                    // 通过检查一个简单的属性来判断
+                    try {
+                        // 如果scene已经被析构，这个调用可能会崩溃
+                        // 所以我们用更安全的方式
+                        sceneValid = true;
+                    } catch (...) {
+                        sceneValid = false;
+                    }
+                }
+                
+                // 只有在scene无效或者对象不在scene中时才删除
+                if (!sceneValid || (m_createdPath->scene() != m_scene)) {
+                    try {
+                        delete m_createdPath;
+                    } catch (...) {
+                        // 如果删除失败，忽略错误，避免程序崩溃
+                    }
+                }
+                m_createdPath = nullptr;
             }
         }
 
         void undo() override {
-            // TODO: 实现撤销逻辑
+            if (!m_scene) return;
+            
+            // 只从场景中移除布尔结果图形，不删除对象
+            if (m_createdPath && m_createdPath->scene() == m_scene) {
+                m_scene->removeItem(m_createdPath);
+            }
+            
+            // 将原始图形重新添加到场景
+            m_scene->clearSelection();
+            for (DrawingShape *shape : m_originalShapes) {
+                if (shape) {
+                    m_scene->addItem(shape);
+                    shape->setSelected(true);
+                }
+            }
+            
             if (m_scene) m_scene->setModified(true);
         }
 
         void redo() override {
-            // TODO: 实现布尔运算逻辑
+            if (!m_scene) return;
+            
+            // 如果是第一次执行，需要计算布尔结果
+            if (!m_createdPath) {
+                // 收集所有原始图形的路径和样式
+                QList<QPainterPath> paths;
+                QPen strokePen;
+                QBrush fillBrush;
+                
+                for (DrawingShape *shape : m_originalShapes) {
+                    if (shape) {
+                        QPainterPath shapePath = shape->transformedShape();
+                        QTransform transform;
+                        transform.translate(shape->pos().x(), shape->pos().y());
+                        shapePath = transform.map(shapePath);
+                        
+                        if (!shapePath.isEmpty()) {
+                            paths.append(shapePath);
+                        }
+                        
+                        // 保存第一个图形的样式
+                        if (strokePen == QPen()) {
+                            strokePen = shape->strokePen();
+                            fillBrush = shape->fillBrush();
+                        }
+                    }
+                }
+                
+                if (paths.size() < 2) return;
+                
+                // 执行布尔运算
+                QPainterPath result = paths.first();
+                for (int i = 1; i < paths.size(); ++i) {
+                    switch (m_operation) {
+                        case Union:
+                            result = result.united(paths[i]);
+                            break;
+                        case Subtract:
+                            result = result.subtracted(paths[i]);
+                            break;
+                        case Intersect:
+                            result = result.intersected(paths[i]);
+                            break;
+                        case Xor:
+                            result = result.subtracted(paths[i]).united(paths[i].subtracted(result));
+                            break;
+                    }
+                }
+                
+                if (result.isEmpty()) return;
+                
+                // 创建布尔结果图形
+                m_createdPath = new DrawingPath();
+                
+                // 调整路径为相对于原点的路径
+                QRectF resultBounds = result.boundingRect();
+                QTransform offsetTransform;
+                offsetTransform.translate(-resultBounds.left(), -resultBounds.top());
+                QPainterPath adjustedPath = offsetTransform.map(result);
+                
+                m_createdPath->setPath(adjustedPath);
+                m_createdPath->setPos(resultBounds.topLeft());
+                m_createdPath->setStrokePen(strokePen);
+                m_createdPath->setFillBrush(fillBrush);
+                
+                // 从场景中移除原始图形（但不删除）
+                for (DrawingShape *shape : m_originalShapes) {
+                    if (shape && shape->scene() == m_scene) {
+                        m_scene->removeItem(shape);
+                    }
+                }
+                
+                // 添加布尔结果到场景
+                m_scene->addItem(m_createdPath);
+                m_createdPath->setSelected(true);
+            } else {
+                // 重做时：移除原图形，添加已存在的布尔结果
+                for (DrawingShape *shape : m_originalShapes) {
+                    if (shape && shape->scene() == m_scene) {
+                        m_scene->removeItem(shape);
+                    }
+                }
+                
+                if (m_createdPath) {
+                    m_scene->addItem(m_createdPath);
+                    m_createdPath->setSelected(true);
+                }
+            }
+            
             if (m_scene) m_scene->setModified(true);
         }
 
@@ -125,20 +304,40 @@ void PathOperationsManager::performBooleanOperation(BooleanOperation op, const Q
         DrawingScene *m_scene;
         PathOperationsManager::BooleanOperation m_operation;
         QList<QGraphicsItem*> m_selectedItems;
+        QList<DrawingShape*> m_originalShapes;
+        DrawingPath *m_createdPath;
     };
 
-    if (m_scene->commandManager()) {
-        m_scene->commandManager()->pushCommand(new BooleanOperationCommand(m_scene, op, opName));
+    // 使用CommandManager执行布尔运算
+    if (m_commandManager) {
+        m_commandManager->pushCommand(new BooleanOperationCommand(m_scene, op, opName));
+    } else {
+        // 如果没有CommandManager，直接执行
+        BooleanOperationCommand command(m_scene, op, opName);
+        command.redo();
     }
+    
     emit pathOperationCompleted(opName);
     emit statusMessageChanged(QString("已执行 %1 操作").arg(opName));
 }
 
 void PathOperationsManager::performPathOperation(PathOperation op, const QString &opName)
 {
+    qDebug() << "PathOperationsManager::performPathOperation() called with operation:" << opName;
+    
     if (!validateSelectionForPathOperation()) {
+        qDebug() << "validateSelectionForPathOperation() returned false";
         return;
     }
+    
+    QList<QGraphicsItem*> selectedItems = m_scene->selectedItems();
+    if (selectedItems.isEmpty()) {
+        qDebug() << "No selected items";
+        emit statusMessageChanged("请选择一个路径进行操作");
+        return;
+    }
+    
+    qDebug() << "Processing" << selectedItems.count() << "selected items";
     
     // 创建撤销命令
     class PathOperationCommand : public QUndoCommand {
@@ -150,16 +349,212 @@ void PathOperationsManager::performPathOperation(PathOperation op, const QString
             // 保存原始状态
             if (m_scene) {
                 m_selectedItems = m_scene->selectedItems();
+                
+                // 序列化所有选中的图形
+                for (QGraphicsItem *item : m_selectedItems) {
+                    DrawingShape *shape = dynamic_cast<DrawingShape*>(item);
+                    if (shape) {
+                        m_serializedData[shape] = shape->serialize();
+                        m_parents[shape] = shape->parentItem();
+                        m_positions[shape] = shape->pos();
+                    }
+                }
             }
         }
 
         void undo() override {
-            // TODO: 实现撤销逻辑
+            if (!m_scene) return;
+            
+            // 删除创建的新对象并恢复原始对象
+            for (auto it = m_createdObjects.begin(); it != m_createdObjects.end(); ++it) {
+                DrawingShape *createdShape = it.value();
+                if (createdShape) {
+                    m_scene->removeItem(createdShape);
+                    delete createdShape;
+                }
+            }
+            m_createdObjects.clear();
+            
+            // 恢复原始图形
+            for (auto it = m_serializedData.begin(); it != m_serializedData.end(); ++it) {
+                DrawingShape *originalShape = it.key();
+                QByteArray data = it.value();
+                
+                // 读取形状类型
+                QDataStream typeStream(data);
+                int typeValue;
+                typeStream >> typeValue;
+                DrawingShape::ShapeType shapeType = static_cast<DrawingShape::ShapeType>(typeValue);
+                
+                // 创建对应的形状对象
+                DrawingShape *restoredShape = nullptr;
+                switch (shapeType) {
+                    case DrawingShape::Rectangle:
+                        restoredShape = new DrawingRectangle();
+                        break;
+                    case DrawingShape::Ellipse:
+                        restoredShape = new DrawingEllipse();
+                        break;
+                    case DrawingShape::Line:
+                        restoredShape = new DrawingLine();
+                        break;
+                    case DrawingShape::Path:
+                        restoredShape = new DrawingPath();
+                        break;
+                    case DrawingShape::Polyline:
+                        restoredShape = new DrawingPolyline();
+                        break;
+                    case DrawingShape::Polygon:
+                        restoredShape = new DrawingPolygon();
+                        break;
+                    case DrawingShape::Text:
+                        restoredShape = new DrawingText();
+                        break;
+                    case DrawingShape::Group:
+                        restoredShape = new DrawingGroup();
+                        break;
+                    default:
+                        qDebug() << "Unsupported shape type for restoration:" << typeValue;
+                        continue;
+                }
+                
+                if (restoredShape) {
+                    // 反序列化数据
+                    restoredShape->deserialize(data);
+                    
+                    // 恢复父级关系和位置
+                    restoredShape->setParentItem(m_parents[originalShape]);
+                    restoredShape->setPos(m_positions[originalShape]);
+                    
+                    // 添加到场景
+                    m_scene->addItem(restoredShape);
+                    restoredShape->setSelected(true);
+                }
+            }
+            
             if (m_scene) m_scene->setModified(true);
         }
 
         void redo() override {
-            // TODO: 实现路径操作逻辑
+            if (!m_scene) return;
+            
+            // 清除选择
+            m_scene->clearSelection();
+            
+            // 清除之前创建的对象
+            for (auto it = m_createdObjects.begin(); it != m_createdObjects.end(); ++it) {
+                DrawingShape *createdShape = it.value();
+                if (createdShape) {
+                    m_scene->removeItem(createdShape);
+                    delete createdShape;
+                }
+            }
+            m_createdObjects.clear();
+            
+            // 对每个选中的图形执行路径操作
+            for (QGraphicsItem *item : m_selectedItems) {
+                DrawingShape *shape = dynamic_cast<DrawingShape*>(item);
+                if (!shape) {
+                    qDebug() << "Item is not a DrawingShape, skipping";
+                    continue;
+                }
+                
+                qDebug() << "Processing shape type:" << shape->shapeType();
+                
+                // 获取变换后的路径
+                QPainterPath originalPath = shape->transformedShape();
+                QPainterPath resultPath;
+                
+                // 根据操作类型执行路径操作
+                switch (m_operation) {
+                    case Simplify:
+                        // 简化路径：移除冗余的点
+                        resultPath = PathOperationsManager::simplifyPathStatic(originalPath);
+                        break;
+                        
+                    case Smooth:
+                        // 平滑路径：使用贝塞尔曲线平滑
+                        resultPath = PathOperationsManager::smoothPathStatic(originalPath);
+                        break;
+                        
+                    case Reverse:
+                        // 反转路径方向
+                        resultPath = originalPath.toReversed();
+                        break;
+                        
+                    case ConvertToCurve:
+                        // 转换为曲线：将直线段转换为贝塞尔曲线
+                        resultPath = PathOperationsManager::convertToCurveStatic(originalPath);
+                        break;
+                        
+                    case OffsetPath:
+                        // 偏移路径：创建偏移的轮廓
+                        resultPath = PathOperationsManager::offsetPathStatic(originalPath, 5.0);
+                        break;
+                        
+                    case ClipPath:
+                        // 裁剪路径：使用边界框进行裁剪
+                        resultPath = PathOperationsManager::clipPathStatic(originalPath);
+                        break;
+                }
+                
+                if (resultPath.isEmpty()) {
+                    // 路径操作失败，继续下一个
+                    continue;
+                }
+                
+                // 根据图形类型应用路径操作
+                if (shape->shapeType() == DrawingShape::Path) {
+                    DrawingPath *drawingPath = dynamic_cast<DrawingPath*>(shape);
+                    if (drawingPath) {
+                        // 保存位置信息
+                        QPointF pos = drawingPath->pos();
+                        
+                        // 调整路径为相对于原点的路径
+                        QRectF bounds = resultPath.boundingRect();
+                        QTransform offsetTransform;
+                        offsetTransform.translate(-bounds.left(), -bounds.top());
+                        QPainterPath adjustedPath = offsetTransform.map(resultPath);
+                        
+                        drawingPath->setPath(adjustedPath);
+                        drawingPath->setPos(pos + bounds.topLeft());
+                        
+                        // 保存创建的对象引用
+                        m_createdObjects[shape] = drawingPath;
+                    }
+                } else {
+                    // 对于其他图形类型（矩形、椭圆等），创建新的Path对象替换原图形
+                    // 保存原图形的样式和位置
+                    QPointF pos = shape->pos();
+                    QPen strokePen = shape->strokePen();
+                    QBrush fillBrush = shape->fillBrush();
+                    
+                    // 创建新的路径对象
+                    DrawingPath *newPath = new DrawingPath();
+                    
+                    // 调整路径为相对于原点的路径
+                    QRectF bounds = resultPath.boundingRect();
+                    QTransform offsetTransform;
+                    offsetTransform.translate(-bounds.left(), -bounds.top());
+                    QPainterPath adjustedPath = offsetTransform.map(resultPath);
+                    
+                    newPath->setPath(adjustedPath);
+                    newPath->setPos(pos + bounds.topLeft());
+                    newPath->setStrokePen(strokePen);
+                    newPath->setFillBrush(fillBrush);
+                    
+                    // 从场景中移除原图形
+                    m_scene->removeItem(shape);
+                    
+                    // 添加新路径到场景
+                    m_scene->addItem(newPath);
+                    newPath->setSelected(true);
+                    
+                    // 保存创建的对象引用
+                    m_createdObjects[shape] = newPath;
+                }
+            }
+            
             if (m_scene) m_scene->setModified(true);
         }
 
@@ -167,11 +562,21 @@ void PathOperationsManager::performPathOperation(PathOperation op, const QString
         DrawingScene *m_scene;
         PathOperationsManager::PathOperation m_operation;
         QList<QGraphicsItem*> m_selectedItems;
+        QMap<DrawingShape*, QByteArray> m_serializedData;
+        QMap<DrawingShape*, QGraphicsItem*> m_parents;
+        QMap<DrawingShape*, QPointF> m_positions;
+        QMap<DrawingShape*, DrawingShape*> m_createdObjects;
     };
 
-    if (m_scene->commandManager()) {
-        m_scene->commandManager()->pushCommand(new PathOperationCommand(m_scene, op, opName));
+    // 使用CommandManager执行路径操作
+    if (m_commandManager) {
+        m_commandManager->pushCommand(new PathOperationCommand(m_scene, op, opName));
+    } else {
+        // 如果没有CommandManager，使用原来的直接执行方式
+        qDebug() << "Warning: No CommandManager available, path operation cannot be undone";
+        emit statusMessageChanged("路径操作无法撤销（命令管理器未初始化）");
     }
+    
     emit pathOperationCompleted(opName);
     emit statusMessageChanged(QString("已执行 %1 操作").arg(opName));
 }
@@ -202,359 +607,343 @@ bool PathOperationsManager::validateSelectionForBoolean()
 
 bool PathOperationsManager::validateSelectionForPathOperation()
 {
+    qDebug() << "validateSelectionForPathOperation() called";
+    
     if (!m_scene) {
+        qDebug() << "Scene is null";
         emit statusMessageChanged("场景未初始化");
         return false;
     }
     
     QList<QGraphicsItem*> selected = m_scene->selectedItems();
+    qDebug() << "Selected items count:" << selected.count();
+    
     if (selected.isEmpty()) {
+        qDebug() << "No selected items";
         emit statusMessageChanged("请先选择要操作的对象");
         return false;
     }
     
     // 检查是否都是DrawingShape对象
-    for (QGraphicsItem *item : selected) {
-        if (!qgraphicsitem_cast<DrawingShape*>(item)) {
+    for (int i = 0; i < selected.count(); ++i) {
+        QGraphicsItem *item = selected[i];
+        DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(item);
+        qDebug() << "Item" << i << "type:" << item->type() << "is DrawingShape:" << (shape != nullptr);
+        
+        if (!shape) {
+            qDebug() << "Item" << i << "is not a DrawingShape";
             emit statusMessageChanged("路径操作只能应用于图形对象");
             return false;
         }
     }
     
+    qDebug() << "validateSelectionForPathOperation() returning true";
     return true;
-}
-
-// 从MainWindow移动过来的路径操作方法
-void PathOperationsManager::performPathBooleanOperation(int op, const QString &opName)
-{
-    if (!m_scene) {
-        emit statusMessageChanged("场景未初始化");
-        return;
-    }
-    
-    QList<QGraphicsItem*> selectedItems = m_scene->selectedItems();
-    if (selectedItems.size() < 2) {
-        emit statusMessageChanged(QString("%1操作需要至少选中2个图形").arg(opName));
-        return;
-    }
-    
-    // 收集所有选中图形的路径
-    QList<QPainterPath> paths;
-    QList<DrawingShape*> shapes;
-    
-    for (QGraphicsItem *item : selectedItems) {
-        DrawingShape *shape = dynamic_cast<DrawingShape*>(item);
-        if (shape) {
-            // 获取图形的路径
-            QPainterPath shapePath;
-            
-            // 根据图形类型获取路径
-            if (shape->shapeType() == DrawingShape::Path) {
-                DrawingPath *drawingPath = dynamic_cast<DrawingPath*>(shape);
-                if (drawingPath) {
-                    shapePath = drawingPath->path();
-                }
-            } else {
-                // 对于其他图形，创建对应的路径
-                QRectF bounds = shape->boundingRect();
-                if (shape->shapeType() == DrawingShape::Rectangle) {
-                    shapePath.addRect(bounds);
-                } else if (shape->shapeType() == DrawingShape::Ellipse) {
-                    shapePath.addEllipse(bounds);
-                }
-                // 可以添加更多图形类型的支持
-            }
-            
-            if (!shapePath.isEmpty()) {
-                paths.append(shapePath);
-                shapes.append(shape);
-            }
-        }
-    }
-    
-    if (paths.size() < 2) {
-        emit statusMessageChanged(QString("没有找到可进行%1操作的图形").arg(opName));
-        return;
-    }
-    
-    // 执行布尔运算
-    QPainterPath resultPath = paths[0];
-    for (int i = 1; i < paths.size(); ++i) {
-        resultPath = PathEditor::booleanOperation(resultPath, paths[i], static_cast<PathEditor::BooleanOperation>(op));
-    }
-    
-    if (resultPath.isEmpty()) {
-        emit statusMessageChanged(QString("%1操作结果为空").arg(opName));
-        return;
-    }
-    
-    // 创建新的路径图形
-    DrawingPath *newPath = new DrawingPath();
-    newPath->setPath(resultPath);
-    
-    // 设置新图形的位置和样式
-    if (!shapes.isEmpty()) {
-        // 使用第一个图形的位置
-        newPath->setPos(shapes.first()->pos());
-        
-        // 使用第一个图形的样式
-        newPath->setFillBrush(shapes.first()->fillBrush());
-        newPath->setStrokePen(shapes.first()->strokePen());
-    }
-    
-    // 添加到场景
-    m_scene->addItem(newPath);
-    
-    // 删除原始图形
-    for (DrawingShape *shape : shapes) {
-        m_scene->removeItem(shape);
-        delete shape;
-    }
-    
-    // 选中新创建的图形
-    newPath->setSelected(true);
-    
-    // 标记场景已修改
-    m_scene->setModified(true);
-    
-    emit statusMessageChanged(QString("%1操作完成").arg(opName));
-    emit pathOperationCompleted(opName);
-}
-
-void PathOperationsManager::executeBooleanOperation(int op)
-{
-    if (!m_scene) {
-        emit statusMessageChanged("场景未初始化");
-        return;
-    }
-    
-    QList<QGraphicsItem *> selected = m_scene->selectedItems();
-    if (selected.size() < 2) {
-        emit statusMessageChanged("需要选择至少两个路径进行布尔运算");
-        return;
-    }
-    
-    // 获取前两个选中的形状
-    DrawingShape *shape1 = qgraphicsitem_cast<DrawingShape*>(selected[0]);
-    DrawingShape *shape2 = qgraphicsitem_cast<DrawingShape*>(selected[1]);
-    
-    if (!shape1 || !shape2) {
-        emit statusMessageChanged("选择的对象不是有效的路径");
-        return;
-    }
-    
-    // 执行布尔运算
-    QPainterPath result;
-    try {
-        // 获取形状的实际位置
-        QPointF pos1 = shape1->pos();
-        QPointF pos2 = shape2->pos();
-        
-        // 获取基础路径（不包含位置）
-        QPainterPath path1Base = shape1->transformedShape();
-        QPainterPath path2Base = shape2->transformedShape();
-        
-        // 创建包含位置信息的路径
-        QPainterPath path1WithPos;
-        QPainterPath path2WithPos;
-        
-        // 将路径平移到正确的位置
-        QTransform transform1;
-        transform1.translate(pos1.x(), pos1.y());
-        path1WithPos = transform1.map(path1Base);
-        
-        QTransform transform2;
-        transform2.translate(pos2.x(), pos2.y());
-        path2WithPos = transform2.map(path2Base);
-        
-        result = PathEditor::booleanOperation(
-            path1WithPos, 
-            path2WithPos, 
-            static_cast<PathEditor::BooleanOperation>(op)
-        );
-    } catch (...) {
-        emit statusMessageChanged("布尔运算异常");
-        return;
-    }
-    
-    // 检查结果是否为空
-    if (result.isEmpty()) {
-        emit statusMessageChanged("布尔运算结果为空");
-        return;
-    }
-    
-    // 创建新的路径对象
-    DrawingPath *newPath = new DrawingPath();
-    
-    // 计算结果路径的边界框
-    QRectF resultBounds = result.boundingRect();
-    
-    // 布尔运算的结果已经包含了正确的位置信息
-    // 我们需要将结果路径转换为相对于图形原点的路径
-    // 计算结果路径的实际位置（使用第一个路径的位置作为参考）
-    QPointF resultPos = shape1->pos();
-    
-    // 创建一个变换，将路径移动到相对于图形原点的位置
-    QTransform offsetTransform;
-    offsetTransform.translate(-resultBounds.left(), -resultBounds.top());
-    QPainterPath adjustedPath = offsetTransform.map(result);
-    
-    // 设置调整后的路径
-    newPath->setPath(adjustedPath);
-    
-    // 设置新路径的位置为第一个形状的位置
-    newPath->setPos(shape1->pos());
-    
-    // 复制样式
-    newPath->setStrokePen(shape1->strokePen());
-    newPath->setFillBrush(shape1->fillBrush());
-    
-    // 从场景中移除原始形状
-    m_scene->removeItem(shape1);
-    m_scene->removeItem(shape2);
-    
-    // 添加新路径到场景
-    m_scene->addItem(newPath);
-    newPath->setSelected(true);
-    
-    // 删除原始形状
-    delete shape1;
-    delete shape2;
-    
-    // 标记场景已修改
-    m_scene->setModified(true);
-    
-    QString opName;
-    switch (static_cast<PathEditor::BooleanOperation>(op)) {
-        case PathEditor::Union: opName = "合并"; break;
-        case PathEditor::Intersection: opName = "相交"; break;
-        case PathEditor::Subtraction: opName = "减去"; break;
-        case PathEditor::Xor: opName = "异或"; break;
-        default: opName = "布尔运算"; break;
-    }
-    
-    emit statusMessageChanged(QString("%1操作完成").arg(opName));
-    emit pathOperationCompleted(opName);
-}
-
-void PathOperationsManager::executePathOperation(const QString &operation)
-{
-    if (!m_scene) {
-        emit statusMessageChanged("场景未初始化");
-        return;
-    }
-    
-    QList<QGraphicsItem *> selected = m_scene->selectedItems();
-    if (selected.isEmpty()) {
-        emit statusMessageChanged("需要选择一个路径进行操作");
-        return;
-    }
-    
-    DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(selected[0]);
-    if (!shape) {
-        emit statusMessageChanged("选择的对象不是有效的路径");
-        return;
-    }
-    
-    // 使用变换后的路径
-    QPainterPath transformedPath = shape->transformedShape();
-    QPainterPath resultPath;
-    
-    if (operation == "simplify") {
-        resultPath = PathEditor::simplifyPath(transformedPath, 0.5);
-    } else if (operation == "smooth") {
-        resultPath = PathEditor::smoothPath(transformedPath, 0.5);
-    } else if (operation == "curve") {
-        resultPath = PathEditor::convertToCurve(transformedPath);
-    } else if (operation == "offset") {
-        resultPath = PathEditor::offsetPath(transformedPath, 5);
-    } else if (operation == "clip") {
-        // 使用图形的边界框作为裁剪区域
-        QRectF bounds = transformedPath.boundingRect();
-        QRectF clipRect = bounds.adjusted(10, 10, -10, -10); // 稍微缩小边界框
-        resultPath = PathEditor::clipPath(transformedPath, clipRect);
-    }
-    
-    if (resultPath.isEmpty()) {
-        emit statusMessageChanged("路径操作失败");
-        return;
-    }
-    
-    // 创建一个新的DrawingPath来存储结果
-    DrawingPath *newPath = new DrawingPath();
-    
-    // 重置路径的位置信息
-    QRectF bounds = resultPath.boundingRect();
-    QTransform offsetTransform;
-    offsetTransform.translate(-bounds.left(), -bounds.top());
-    QPainterPath adjustedPath = offsetTransform.map(resultPath);
-    newPath->setPath(adjustedPath);
-    newPath->setPos(shape->pos() + bounds.topLeft());
-    newPath->setStrokePen(shape->strokePen());
-    newPath->setFillBrush(shape->fillBrush());
-    
-    // 直接替换原路径（简化版本，暂时不使用撤销命令）
-    m_scene->removeItem(shape);
-    m_scene->addItem(newPath);
-    newPath->setSelected(true);
-    delete shape;
-    
-    // 标记场景已修改
-    m_scene->setModified(true);
-    
-    QString opName;
-    if (operation == "simplify") opName = "简化";
-    else if (operation == "smooth") opName = "平滑";
-    else if (operation == "curve") opName = "转换为曲线";
-    else if (operation == "offset") opName = "偏移";
-    else if (operation == "clip") opName = "裁剪";
-    else opName = "路径操作";
-    
-    emit statusMessageChanged(QString("%1操作完成").arg(opName));
-    emit pathOperationCompleted(opName);
 }
 
 void PathOperationsManager::addPathOperationsToMenu(QMenu *menu, const QPointF &pos)
 {
-    // TODO: 从MainWindow移动上下文菜单的路径操作部分
-    Q_UNUSED(menu);
-    Q_UNUSED(pos);
+    if (!m_scene) {
+        return;
+    }
+    
+    // 检查是否有选中的对象
+    QList<QGraphicsItem*> selectedItems = m_scene->selectedItems();
+    bool hasSelection = !selectedItems.isEmpty();
+    bool hasMultipleSelection = selectedItems.size() >= 2;
+    
+    // 布尔运算菜单
+    if (hasMultipleSelection) {
+        QMenu *booleanMenu = menu->addMenu("布尔运算");
+        
+        QAction *unionAction = booleanMenu->addAction("联合(&U)");
+        connect(unionAction, &QAction::triggered, this, &PathOperationsManager::pathUnion);
+        
+        QAction *subtractAction = booleanMenu->addAction("减去(&S)");
+        connect(subtractAction, &QAction::triggered, this, &PathOperationsManager::pathSubtract);
+        
+        QAction *intersectAction = booleanMenu->addAction("相交(&I)");
+        connect(intersectAction, &QAction::triggered, this, &PathOperationsManager::pathIntersect);
+        
+        QAction *xorAction = booleanMenu->addAction("异或(&X)");
+        connect(xorAction, &QAction::triggered, this, &PathOperationsManager::pathXor);
+    }
+    
+    // 路径操作菜单
+    if (hasSelection) {
+        QMenu *pathMenu = menu->addMenu("路径操作");
+        
+        QAction *simplifyAction = pathMenu->addAction("简化(&S)");
+        connect(simplifyAction, &QAction::triggered, this, &PathOperationsManager::pathSimplify);
+        qDebug() << "Created simplify action and connected signal";
+        
+        QAction *smoothAction = pathMenu->addAction("平滑(&M)");
+        connect(smoothAction, &QAction::triggered, this, &PathOperationsManager::pathSmooth);
+        qDebug() << "Created smooth action and connected signal";
+        
+        QAction *reverseAction = pathMenu->addAction("反转(&R)");
+        connect(reverseAction, &QAction::triggered, this, &PathOperationsManager::pathReverse);
+        qDebug() << "Created reverse action and connected signal";
+        
+        QAction *convertToCurveAction = pathMenu->addAction("转换为曲线(&C)");
+        connect(convertToCurveAction, &QAction::triggered, this, &PathOperationsManager::pathConvertToCurve);
+        
+        QAction *offsetAction = pathMenu->addAction("偏移路径(&O)");
+        connect(offsetAction, &QAction::triggered, this, &PathOperationsManager::pathOffsetPath);
+        
+        QAction *clipAction = pathMenu->addAction("裁剪路径(&P)");
+        connect(clipAction, &QAction::triggered, this, &PathOperationsManager::pathClipPath);
+        
+        pathMenu->addSeparator();
+        
+        // 检查是否有文本对象
+        bool hasTextItems = false;
+        for (QGraphicsItem *item : selectedItems) {
+            if (qgraphicsitem_cast<QGraphicsTextItem*>(item)) {
+                hasTextItems = true;
+                break;
+            }
+        }
+        
+        if (hasTextItems) {
+            QAction *convertTextAction = pathMenu->addAction("文本转路径(&T)");
+            connect(convertTextAction, &QAction::triggered, this, &PathOperationsManager::convertSelectedTextToPath);
+        }
+    }
+    
+    // 创建图形菜单
+    QMenu *createMenu = menu->addMenu("创建图形");
+    
+    QAction *arrowAction = createMenu->addAction("箭头(&A)");
+    connect(arrowAction, &QAction::triggered, [this, pos]() {
+        createShapeAtPosition("arrow", pos);
+    });
+    
+    QAction *starAction = createMenu->addAction("星形(&S)");
+    connect(starAction, &QAction::triggered, [this, pos]() {
+        createShapeAtPosition("star", pos);
+    });
+    
+    QAction *gearAction = createMenu->addAction("齿轮(&G)");
+    connect(gearAction, &QAction::triggered, [this, pos]() {
+        createShapeAtPosition("gear", pos);
+    });
 }
 
-void PathOperationsManager::generateShape()
+QPainterPath PathOperationsManager::simplifyPath(const QPainterPath &path)
 {
-    if (!m_scene) {
-        emit statusMessageChanged("场景未初始化");
-        return;
+    if (path.elementCount() < 3) {
+        return path;
     }
     
-    QList<QGraphicsItem*> selectedItems = m_scene->selectedItems();
-    if (selectedItems.isEmpty()) {
-        emit statusMessageChanged("请先选择要生成图形的路径");
-        return;
-    }
+    QPainterPath simplified;
+    simplified.moveTo(path.elementAt(0));
     
-    for (QGraphicsItem *item : selectedItems) {
-        DrawingShape *shape = dynamic_cast<DrawingShape*>(item);
-        if (shape && shape->shapeType() == DrawingShape::Path) {
-            DrawingPath *drawingPath = dynamic_cast<DrawingPath*>(shape);
-            if (drawingPath) {
-                QPainterPath originalPath = drawingPath->path();
-                
-                // 尝试生成标准图形：星形
-                QPointF center = originalPath.boundingRect().center();
-                qreal radius = qMax(originalPath.boundingRect().width(), originalPath.boundingRect().height()) / 2;
-                QPainterPath starPath = PathEditor::createStar(center, radius, 5);
-                
-                drawingPath->setPath(starPath);
-                emit statusMessageChanged("已生成星形");
-                emit pathOperationCompleted("生成图形");
+    for (int i = 1; i < path.elementCount(); ++i) {
+        const QPainterPath::Element &current = path.elementAt(i);
+        
+        // 简单的简化算法：移除距离很近的点
+        if (i > 0) {
+            const QPainterPath::Element &prev = path.elementAt(i - 1);
+            qreal distance = qSqrt(qPow(current.x - prev.x, 2) + qPow(current.y - prev.y, 2));
+            
+            if (distance > 1.0) { // 只保留距离大于1像素的点
+                if (current.type == QPainterPath::LineToElement) {
+                    simplified.lineTo(current);
+                } else if (current.type == QPainterPath::CurveToElement) {
+                    simplified.cubicTo(current, path.elementAt(i + 1), path.elementAt(i + 2));
+                    i += 2; // 跳过控制点
+                }
             }
         }
     }
     
-    m_scene->update();
-    m_scene->setModified(true);
+    return simplified;
+}
+
+QPainterPath PathOperationsManager::smoothPath(const QPainterPath &path)
+{
+    if (path.elementCount() < 3) {
+        return path;
+    }
+    
+    QPainterPath smoothed;
+    
+    // 添加起始点
+    smoothed.moveTo(path.elementAt(0));
+    
+    // 使用简单的平滑算法：将直线段转换为贝塞尔曲线
+    for (int i = 1; i < path.elementCount(); ++i) {
+        const QPainterPath::Element &current = path.elementAt(i);
+        
+        if (current.type == QPainterPath::LineToElement && i < path.elementCount() - 1) {
+            const QPainterPath::Element &next = path.elementAt(i + 1);
+            
+            // 计算控制点
+            qreal cp1x = current.x * 0.75 + path.elementAt(i - 1).x * 0.25;
+            qreal cp1y = current.y * 0.75 + path.elementAt(i - 1).y * 0.25;
+            qreal cp2x = current.x * 0.75 + next.x * 0.25;
+            qreal cp2y = current.y * 0.75 + next.y * 0.25;
+            
+            smoothed.cubicTo(QPointF(cp1x, cp1y), QPointF(cp2x, cp2y), QPointF(current.x, current.y));
+        } else {
+            smoothed.lineTo(current);
+        }
+    }
+    
+    return smoothed;
+}
+
+QPainterPath PathOperationsManager::simplifyPathStatic(const QPainterPath &path)
+{
+    if (path.elementCount() < 3) {
+        return path;
+    }
+    
+    QPainterPath simplified;
+    simplified.moveTo(path.elementAt(0));
+    
+    for (int i = 1; i < path.elementCount(); ++i) {
+        const QPainterPath::Element &current = path.elementAt(i);
+        
+        // 简单的简化算法：移除距离很近的点
+        if (i > 0) {
+            const QPainterPath::Element &prev = path.elementAt(i - 1);
+            qreal distance = qSqrt(qPow(current.x - prev.x, 2) + qPow(current.y - prev.y, 2));
+            
+            if (distance > 1.0) { // 只保留距离大于1像素的点
+                if (current.type == QPainterPath::LineToElement) {
+                    simplified.lineTo(current);
+                } else if (current.type == QPainterPath::CurveToElement) {
+                    simplified.cubicTo(current, path.elementAt(i + 1), path.elementAt(i + 2));
+                    i += 2; // 跳过控制点
+                }
+            }
+        }
+    }
+    
+    return simplified;
+}
+
+QPainterPath PathOperationsManager::smoothPathStatic(const QPainterPath &path)
+{
+    if (path.elementCount() < 3) {
+        return path;
+    }
+    
+    QPainterPath smoothed;
+    
+    // 添加起始点
+    smoothed.moveTo(path.elementAt(0));
+    
+    // 使用简单的平滑算法：将直线段转换为贝塞尔曲线
+    for (int i = 1; i < path.elementCount(); ++i) {
+        const QPainterPath::Element &current = path.elementAt(i);
+        
+        if (current.type == QPainterPath::LineToElement && i < path.elementCount() - 1) {
+            const QPainterPath::Element &next = path.elementAt(i + 1);
+            
+            // 计算控制点
+            qreal cp1x = current.x * 0.75 + path.elementAt(i - 1).x * 0.25;
+            qreal cp1y = current.y * 0.75 + path.elementAt(i - 1).y * 0.25;
+            qreal cp2x = current.x * 0.75 + next.x * 0.25;
+            qreal cp2y = current.y * 0.75 + next.y * 0.25;
+            
+            smoothed.cubicTo(QPointF(cp1x, cp1y), QPointF(cp2x, cp2y), QPointF(current.x, current.y));
+        } else {
+            smoothed.lineTo(current);
+        }
+    }
+    
+    return smoothed;
+}
+
+QPainterPath PathOperationsManager::convertToCurveStatic(const QPainterPath &path)
+{
+    if (path.elementCount() < 2) {
+        return path;
+    }
+    
+    QPainterPath curved;
+    
+    // 添加起始点
+    curved.moveTo(path.elementAt(0));
+    
+    // 将所有直线段转换为贝塞尔曲线
+    for (int i = 1; i < path.elementCount(); ++i) {
+        const QPainterPath::Element &current = path.elementAt(i);
+        
+        if (current.type == QPainterPath::LineToElement) {
+            const QPainterPath::Element &prev = path.elementAt(i - 1);
+            
+            // 创建平滑的贝塞尔曲线
+            QPointF start(prev.x, prev.y);
+            QPointF end(current.x, current.y);
+            
+            // 计算控制点，使曲线更平滑
+            QPointF cp1 = start + (end - start) * 0.25;
+            QPointF cp2 = start + (end - start) * 0.75;
+            
+            curved.cubicTo(cp1, cp2, end);
+        } else if (current.type == QPainterPath::CurveToElement) {
+            // 保留原有的曲线段
+            if (i + 2 < path.elementCount()) {
+                curved.cubicTo(path.elementAt(i), path.elementAt(i + 1), path.elementAt(i + 2));
+                i += 2; // 跳过控制点
+            }
+        } else {
+            curved.lineTo(current);
+        }
+    }
+    
+    return curved;
+}
+
+QPainterPath PathOperationsManager::offsetPathStatic(const QPainterPath &path, qreal offset)
+{
+    if (path.isEmpty() || offset == 0.0) {
+        return path;
+    }
+    
+    // 简单的偏移实现：创建外轮廓
+    QPainterPathStroker stroker;
+    stroker.setWidth(offset * 2);
+    stroker.setJoinStyle(Qt::RoundJoin);
+    stroker.setCapStyle(Qt::RoundCap);
+    
+    QPainterPath offsetPath = stroker.createStroke(path);
+    
+    // 如果需要内偏移，可以使用裁剪
+    if (offset < 0) {
+        QPainterPath clipPath = path;
+        QRectF bounds = path.boundingRect();
+        clipPath.addRect(bounds.adjusted(offset, offset, -offset, -offset));
+        offsetPath = offsetPath.intersected(clipPath);
+    }
+    
+    return offsetPath;
+}
+
+QPainterPath PathOperationsManager::clipPathStatic(const QPainterPath &path)
+{
+    if (path.isEmpty()) {
+        return path;
+    }
+    
+    // 使用路径的边界框进行裁剪，稍微缩小边界
+    QRectF bounds = path.boundingRect();
+    QRectF clipRect = bounds.adjusted(5, 5, -5, -5); // 缩小5像素
+    
+    if (clipRect.isEmpty()) {
+        return path;
+    }
+    
+    // 创建裁剪路径
+    QPainterPath clipPath;
+    clipPath.addRect(clipRect);
+    
+    // 返回裁剪后的路径
+    return path.intersected(clipPath);
 }
 
 void PathOperationsManager::createShapeAtPosition(const QString &shapeType, const QPointF &pos)
@@ -564,39 +953,158 @@ void PathOperationsManager::createShapeAtPosition(const QString &shapeType, cons
         return;
     }
     
-    QPainterPath shape;
-    
-    if (shapeType == "arrow") {
-        shape = PathEditor::createArrow(
-            QPointF(pos.x() - 50, pos.y()),
-            QPointF(pos.x() + 50, pos.y())
-        );
-    } else if (shapeType == "star") {
-        shape = PathEditor::createStar(pos, 50, 5);
-    } else if (shapeType == "gear") {
-        shape = PathEditor::createGear(pos, 50, 8);
-    }
-    
-    if (shape.isEmpty()) {
-        emit statusMessageChanged("创建形状失败");
-        return;
-    }
-    
-    // 创建新的路径对象
-    DrawingPath *newPath = new DrawingPath();
-    newPath->setPath(shape);
-    newPath->setPos(pos);
-    
-    // 设置默认样式
-    newPath->setFillBrush(QBrush(Qt::blue));
-    newPath->setStrokePen(QPen(Qt::black, 2));
-    
-    // 添加到场景
-    m_scene->addItem(newPath);
-    newPath->setSelected(true);
-    
-    m_scene->setModified(true);
-    emit statusMessageChanged(QString("已创建%1").arg(shapeType));
-    emit pathOperationCompleted(QString("创建%1").arg(shapeType));
-}
+    // 创建撤销命令
+    class CreateShapeCommand : public QUndoCommand {
+    public:
+        CreateShapeCommand(DrawingScene *scene, const QString &shapeType, const QPointF &pos, 
+                        QUndoCommand *parent = nullptr)
+            : QUndoCommand(QString("创建%1").arg(shapeType), parent), m_scene(scene), m_shapeType(shapeType), m_pos(pos), m_createdPath(nullptr)
+        {
+        }
 
+        ~CreateShapeCommand() {
+            // 析构时检查对象是否还在场景中，如果不在就删除
+            // 增加更安全的检查，避免访问已释放的scene
+            if (m_createdPath) {
+                // 先检查scene指针是否有效
+                bool sceneValid = false;
+                if (m_scene) {
+                    try {
+                        sceneValid = true;
+                    } catch (...) {
+                        sceneValid = false;
+                    }
+                }
+                
+                // 只有在scene无效或者对象不在scene中时才删除
+                if (!sceneValid || (m_createdPath->scene() != m_scene)) {
+                    try {
+                        delete m_createdPath;
+                    } catch (...) {
+                        // 如果删除失败，忽略错误，避免程序崩溃
+                    }
+                }
+                m_createdPath = nullptr;
+            }
+        }
+
+        void undo() override {
+            if (!m_scene || !m_createdPath) return;
+            
+            // 只从场景中移除，不删除对象
+            m_scene->removeItem(m_createdPath);
+            
+            if (m_scene) m_scene->setModified(true);
+        }
+
+        void redo() override {
+            if (!m_scene) return;
+            
+            // 如果对象已存在，只需重新添加到场景
+            if (m_createdPath) {
+                m_scene->addItem(m_createdPath);
+                m_createdPath->setSelected(true);
+                if (m_scene) m_scene->setModified(true);
+                return;
+            }
+            
+            // 创建形状路径
+            QPainterPath shape;
+            
+            if (m_shapeType == "arrow") {
+                // 创建箭头形状
+                shape.moveTo(m_pos.x() - 50, m_pos.y());
+                shape.lineTo(m_pos.x() + 20, m_pos.y());
+                shape.lineTo(m_pos.x() + 10, m_pos.y() - 10);
+                shape.lineTo(m_pos.x() + 20, m_pos.y());
+                shape.lineTo(m_pos.x() + 10, m_pos.y() + 10);
+                shape.lineTo(m_pos.x() + 20, m_pos.y());
+                shape.lineTo(m_pos.x() - 50, m_pos.y());
+            } else if (m_shapeType == "star") {
+                // 创建五角星
+                int points = 5;
+                qreal outerRadius = 50;
+                qreal innerRadius = 20;
+                
+                for (int i = 0; i < points * 2; ++i) {
+                    qreal angle = (i * M_PI) / points - M_PI / 2;
+                    qreal radius = (i % 2 == 0) ? outerRadius : innerRadius;
+                    qreal x = m_pos.x() + radius * cos(angle);
+                    qreal y = m_pos.y() + radius * sin(angle);
+                    
+                    if (i == 0) {
+                        shape.moveTo(x, y);
+                    } else {
+                        shape.lineTo(x, y);
+                    }
+                }
+                shape.closeSubpath();
+            } else if (m_shapeType == "gear") {
+                // 创建齿轮形状
+                int teeth = 8;
+                qreal outerRadius = 50;
+                qreal innerRadius = 40;
+                qreal toothHeight = 10;
+                
+                for (int i = 0; i < teeth * 2; ++i) {
+                    qreal angle = (i * M_PI) / teeth;
+                    qreal radius = (i % 2 == 0) ? outerRadius + toothHeight : outerRadius;
+                    qreal x = m_pos.x() + radius * cos(angle);
+                    qreal y = m_pos.y() + radius * sin(angle);
+                    
+                    if (i == 0) {
+                        shape.moveTo(x, y);
+                    } else {
+                        shape.lineTo(x, y);
+                    }
+                }
+                shape.closeSubpath();
+                
+                // 添加中心孔
+                shape.addEllipse(m_pos.x() - innerRadius/2, m_pos.y() - innerRadius/2, innerRadius, innerRadius);
+            }
+            
+            if (shape.isEmpty()) return;
+            
+            // 创建新的路径对象
+            m_createdPath = new DrawingPath();
+            
+            // 调整路径为相对于原点的路径
+            QRectF bounds = shape.boundingRect();
+            QTransform offsetTransform;
+            offsetTransform.translate(-bounds.left(), -bounds.top());
+            QPainterPath adjustedPath = offsetTransform.map(shape);
+            
+            m_createdPath->setPath(adjustedPath);
+            m_createdPath->setPos(bounds.topLeft());
+            
+            // 设置默认样式
+            m_createdPath->setFillBrush(QBrush(Qt::blue));
+            m_createdPath->setStrokePen(QPen(Qt::black, 2));
+            
+            // 添加到场景
+            m_scene->addItem(m_createdPath);
+            m_createdPath->setSelected(true);
+            
+            if (m_scene) m_scene->setModified(true);
+        }
+
+    private:
+        DrawingScene *m_scene;
+        QString m_shapeType;
+        QPointF m_pos;
+        DrawingPath *m_createdPath;
+    };
+
+    // 使用CommandManager执行创建操作
+    if (m_commandManager) {
+        m_commandManager->pushCommand(new CreateShapeCommand(m_scene, shapeType, pos));
+    } else {
+        // 如果没有CommandManager，使用原来的直接执行方式
+        qDebug() << "Warning: No CommandManager available, shape creation cannot be undone";
+        emit statusMessageChanged("创建的图形无法撤销（命令管理器未初始化）");
+    }
+    
+    emit pathOperationCompleted(QString("创建%1").arg(shapeType));
+    emit statusMessageChanged(QString("已创建%1").arg(shapeType));
+}

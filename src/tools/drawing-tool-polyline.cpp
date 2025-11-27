@@ -132,7 +132,7 @@ bool DrawingToolPolyline::mouseDoubleClickEvent(QMouseEvent *event, const QPoint
             
             // 创建并推送撤销命令
             AddItemCommand *command = new AddItemCommand(m_scene, m_currentPolyline);
-            m_scene->undoStack()->push(command);
+            m_scene->executeCommand(command);
             
             m_currentPolyline = nullptr;
         }

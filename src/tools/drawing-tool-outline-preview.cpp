@@ -8,6 +8,7 @@
 #include "../core/drawing-shape.h"
 #include "../ui/drawingscene.h"
 #include "../tools/transform-handle.h"
+#include "../ui/snap-manager.h"
 
 namespace
 {
@@ -319,12 +320,19 @@ bool OutlinePreviewTransformTool::mouseMoveEvent(QMouseEvent *event, const QPoin
         QPointF alignedPos = scenePos;
         if (m_scene && m_scene->isGridAlignmentEnabled())
         {
+            // 清除过期的吸附指示器
+            m_scene->snapManager()->clearExpiredSnapIndicators(scenePos);
+            
             // 使用智能网格吸附
-            DrawingScene::SnapResult gridSnap = m_scene->smartAlignToGrid(scenePos);
+            SnapResult gridSnap = m_scene->snapManager()->smartAlignToGrid(scenePos);
             alignedPos = gridSnap.snappedPos;
 
             // 尝试对象吸附
-            DrawingScene::ObjectSnapResult objectSnap = m_scene->snapToObjects(scenePos, nullptr);
+            DrawingShape *excludeShape = nullptr;
+            if (!m_selectedShapes.isEmpty()) {
+                excludeShape = m_selectedShapes.first();
+            }
+            ObjectSnapResult objectSnap = m_scene->snapManager()->snapToObjects(scenePos, excludeShape);
             if (objectSnap.snappedToObject)
             {
                 // 对象吸附优先级更高
@@ -353,12 +361,19 @@ bool OutlinePreviewTransformTool::mouseReleaseEvent(QMouseEvent *event, const QP
         QPointF alignedPos = scenePos;
         if (m_scene && m_scene->isGridAlignmentEnabled())
         {
+            // 清除过期的吸附指示器
+            m_scene->snapManager()->clearExpiredSnapIndicators(scenePos);
+            
             // 使用智能网格吸附
-            DrawingScene::SnapResult gridSnap = m_scene->smartAlignToGrid(scenePos);
+            SnapResult gridSnap = m_scene->snapManager()->smartAlignToGrid(scenePos);
             alignedPos = gridSnap.snappedPos;
 
             // 尝试对象吸附
-            DrawingScene::ObjectSnapResult objectSnap = m_scene->snapToObjects(scenePos, nullptr);
+            DrawingShape *excludeShape = nullptr;
+            if (!m_selectedShapes.isEmpty()) {
+                excludeShape = m_selectedShapes.first();
+            }
+            ObjectSnapResult objectSnap = m_scene->snapManager()->snapToObjects(scenePos, excludeShape);
             if (objectSnap.snappedToObject)
             {
                 // 对象吸附优先级更高
@@ -546,12 +561,19 @@ void OutlinePreviewTransformTool::transform(const QPointF &mousePos, Qt::Keyboar
     QPointF alignedPos = mousePos;
     if (m_scene && m_scene->isGridAlignmentEnabled())
     {
+        // 清除过期的吸附指示器
+        m_scene->snapManager()->clearExpiredSnapIndicators(mousePos);
+        
         // 使用智能网格吸附
-        DrawingScene::SnapResult gridSnap = m_scene->smartAlignToGrid(mousePos);
+        SnapResult gridSnap = m_scene->snapManager()->smartAlignToGrid(mousePos);
         alignedPos = gridSnap.snappedPos;
 
         // 尝试对象吸附（排除当前选中的图形）
-        DrawingScene::ObjectSnapResult objectSnap = m_scene->snapToObjects(mousePos, nullptr);
+        DrawingShape *excludeShape = nullptr;
+        if (!m_selectedShapes.isEmpty()) {
+            excludeShape = m_selectedShapes.first();
+        }
+        ObjectSnapResult objectSnap = m_scene->snapManager()->snapToObjects(mousePos, excludeShape);
         if (objectSnap.snappedToObject)
         {
             // 对象吸附优先级更高

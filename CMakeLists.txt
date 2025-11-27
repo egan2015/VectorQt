@@ -22,16 +22,15 @@ set(SOURCES
     src/ui/mainwindow.cpp
     src/ui/drawingscene.cpp
     src/ui/drawingview.cpp
-    src/ui/file-manager.cpp
+    
     src/ui/effect-manager.cpp
     src/ui/selection-manager.cpp
     src/ui/path-operations-manager.cpp
-    src/ui/tool-controller.cpp
+    
     src/ui/command-manager.cpp
-    src/ui/ui-manager.cpp
-    src/ui/action-manager.cpp
-    src/ui/zoom-manager.cpp
-    src/ui/grid-manager.cpp
+    
+    
+    src/ui/snap-manager.cpp
     
     
     # 核心模块
@@ -50,7 +49,7 @@ set(SOURCES
     src/core/performance-monitor.cpp
     src/ui/colorpalette.cpp
     src/ui/cursor-manager.cpp
-    src/ui/tool-switch-state-machine.cpp
+    
     src/core/layer-manager.cpp
     src/core/patheditor.cpp
     src/core/object-tree-item.cpp
@@ -119,7 +118,7 @@ set(HEADERS
     src/core/performance-monitor.h
     src/ui/colorpalette.h
     src/ui/cursor-manager.h
-    src/ui/tool-switch-state-machine.h
+    
     src/core/layer-manager.h
     src/core/patheditor.h
     src/core/object-tree-item.h

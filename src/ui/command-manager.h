@@ -14,6 +14,7 @@
 
 class DrawingScene;
 class DrawingShape;
+class DrawingGroup;
 
 class CommandManager : public QObject
 {
@@ -119,6 +120,7 @@ public:
 private:
     QMap<DrawingShape*, QGraphicsItem*> m_parents;
     QMap<DrawingShape*, QByteArray> m_serializedData;
+    QMap<DrawingShape*, DrawingShape*> m_restoredShapes; // 原始形状到恢复形状的映射
 };
 
 // 复制命令
@@ -128,6 +130,7 @@ public:
     DuplicateCommand(CommandManager *manager, const QList<DrawingShape*>& shapes,
                     const QPointF &offset, QUndoCommand *parent = nullptr);
     
+    ~DuplicateCommand();
     void undo() override;
     void redo() override;
     
@@ -207,6 +210,39 @@ private:
     QList<QByteArray> m_shapeDataList;
     QPointF m_offset;
     QList<DrawingShape*> m_pastedShapes;
+};
+
+// 分组命令
+class GroupCommand : public SelectionCommand
+{
+public:
+    GroupCommand(CommandManager *manager, const QList<DrawingShape*>& shapes, 
+                 QUndoCommand *parent = nullptr);
+    
+    void undo() override;
+    void redo() override;
+    
+private:
+    DrawingGroup *m_group;
+    QMap<DrawingShape*, QGraphicsItem*> m_parents;
+    QMap<DrawingShape*, QPointF> m_positions;
+};
+
+// 取消分组命令
+class UngroupCommand : public SelectionCommand
+{
+public:
+    UngroupCommand(CommandManager *manager, const QList<DrawingGroup*>& groups, 
+                   QUndoCommand *parent = nullptr);
+    
+    void undo() override;
+    void redo() override;
+    
+private:
+    QList<DrawingGroup*> m_groups;
+    QList<DrawingShape*> m_ungroupedShapes;
+    QMap<DrawingShape*, DrawingGroup*> m_parentGroups;
+    QMap<DrawingShape*, QPointF> m_positions;
 };
 
 #endif // COMMAND_MANAGER_H

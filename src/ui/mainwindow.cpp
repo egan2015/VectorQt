@@ -28,9 +28,9 @@
 #include "../core/toolbase.h"
 #include "../ui/propertypanel.h"
 #include "../ui/tabbed-property-panel.h"
-#include "../ui/file-manager.h"
+
 #include "../ui/effect-manager.h"
-#include "../ui/grid-manager.h"
+#include "../ui/snap-manager.h"
 #include "../ui/path-operations-manager.h"
 #include "../ui/selection-manager.h"
 #include "../ui/command-manager.h"
@@ -71,7 +71,8 @@ MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent), m_scene(nullptr), m_canvas(nullptr), m_propertyPanel(nullptr), m_tabbedPropertyPanel(nullptr), m_undoView(nullptr), m_layerManager(nullptr), m_currentTool(nullptr),
       m_colorPalette(nullptr), m_scrollableToolBar(nullptr),
       m_horizontalRuler(nullptr), m_verticalRuler(nullptr), m_cornerWidget(nullptr),
-      m_uiUpdateTimer(nullptr), m_lastSelectedCount(0), m_toolStateManager(nullptr), m_toolManager(nullptr), m_shortcutManager(nullptr), m_fileManager(nullptr), m_effectManager(nullptr)
+      m_uiUpdateTimer(nullptr), m_lastSelectedCount(0), m_toolStateManager(nullptr), m_toolManager(nullptr), m_shortcutManager(nullptr), m_effectManager(nullptr),
+      m_isUntitled(true)
 {
     // 初始化工具管理系统
     m_toolStateManager = new ToolStateManager(this);
@@ -83,15 +84,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_shortcutManager->setToolManager(m_toolManager);
     // 场景将在newFile()后设置
     
-    // 初始化文件管理器
-    m_fileManager = new FileManager(this);
     
-    // 连接FileManager信号
-    connect(m_fileManager, &FileManager::fileOpened, this, &MainWindow::onFileOpened);
-    connect(m_fileManager, &FileManager::fileSaved, this, &MainWindow::onFileSaved);
-    connect(m_fileManager, &FileManager::fileExported, this, &MainWindow::onFileExported);
-    connect(m_fileManager, &FileManager::statusMessageChanged, this, &MainWindow::onStatusMessageChanged);
-    connect(m_fileManager, &FileManager::windowTitleChanged, this, &MainWindow::onWindowTitleChanged);
     
     // 初始化效果管理器
     m_effectManager = new EffectManager(this);
@@ -101,17 +94,14 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_effectManager, &EffectManager::effectCleared, this, &MainWindow::onEffectCleared);
     connect(m_effectManager, &EffectManager::statusMessageChanged, this, &MainWindow::onStatusMessageChanged);
     
-    // 初始化网格管理器
-    m_gridManager = new GridManager(m_scene, this);
+    // 初始化吸附管理器（合并了网格管理器）
+    m_snapManager = new SnapManager(m_scene, this);
     
-    // 连接GridManager信号
-    connect(m_gridManager, &GridManager::statusMessageChanged, this, &MainWindow::onStatusMessageChanged);
-    connect(m_gridManager, &GridManager::gridVisibilityChanged, this, [this](bool visible) {
-        if (m_toggleGridAction) {
-            m_toggleGridAction->setChecked(visible);
-        }
-    });
-    connect(m_gridManager, &GridManager::gridAlignmentChanged, this, [this](bool enabled) {
+    // 连接SnapManager信号
+    connect(m_snapManager, &SnapManager::statusMessageChanged, this, &MainWindow::onStatusMessageChanged);
+    // gridVisibilityChanged信号现在来自DrawingScene
+    // 注意：这个连接会在setupCanvas中重新建立，确保Scene已创建
+    connect(m_snapManager, &SnapManager::gridAlignmentChanged, this, [this](bool enabled) {
         if (m_toggleGridAlignmentAction) {
             m_toggleGridAlignmentAction->setChecked(enabled);
         }
@@ -239,6 +229,26 @@ MainWindow::~MainWindow()
         delete m_toolManager;
         m_toolManager = nullptr;
     }
+    if (m_selectionManager) {
+        delete m_selectionManager;
+        m_selectionManager = nullptr;
+    }
+    if (m_snapManager) {
+        delete m_snapManager;
+        m_snapManager = nullptr;
+    }
+    if (m_effectManager) {
+        delete m_effectManager;
+        m_effectManager = nullptr;
+    }
+    if (m_commandManager) {
+        delete m_commandManager;
+        m_commandManager = nullptr;
+    }
+    if (m_pathOperationsManager) {
+        delete m_pathOperationsManager;
+        m_pathOperationsManager = nullptr;
+    }
     // 清理场景
     if (m_scene) {
         delete m_scene;
@@ -254,10 +264,18 @@ void MainWindow::setupUI()
     m_scene->setSceneRect(0, 0, 1000, 800);
     m_scene->setGridVisible(true); // 确保网格初始可见
     m_scene->setGridAlignmentEnabled(true); // 默认启用网格对齐
-    m_scene->setSnapEnabled(true); // 启用智能吸附
-    m_scene->setObjectSnapEnabled(true); // 启用对象吸附
-    m_scene->setSnapTolerance(3); // 设置吸附容差（降低灵敏度）
-    m_scene->setObjectSnapTolerance(3); // 设置对象吸附容差（降低灵敏度）
+    
+    // 设置网格图标的初始状态（确保与场景状态同步）
+    if (m_toggleGridAction) {
+        m_toggleGridAction->setChecked(m_scene->isGridVisible());
+    }
+    // 吸附设置现在通过SnapManager管理
+    if (m_snapManager) {
+        m_snapManager->setSnapEnabled(true); // 启用智能吸附
+        m_snapManager->setObjectSnapEnabled(true); // 启用对象吸附
+        m_snapManager->setSnapTolerance(3); // 设置吸附容差（降低灵敏度）
+        m_snapManager->setObjectSnapTolerance(3); // 设置对象吸附容差（降低灵敏度）
+    }
     
     // Create rulers
     m_horizontalRuler = new Ruler(Ruler::Horizontal, this);
@@ -267,19 +285,25 @@ void MainWindow::setupUI()
     m_canvas = new DrawingCanvas(this);
     m_canvas->setScene(m_scene);
 
-    // 设置文件管理器的canvas
-    if (m_fileManager) {
-        m_fileManager->setCanvas(m_canvas);
-    }
+    
     
     // 设置效果管理器的scene
     if (m_effectManager) {
         m_effectManager->setScene(m_scene);
     }
     
-    // 设置网格管理器的scene（场景创建后需要重新设置）
-    if (m_gridManager) {
-        m_gridManager->setScene(m_scene);
+    // 设置吸附管理器的scene（场景创建后需要重新设置）
+    if (m_snapManager) {
+        m_snapManager->setScene(m_scene);
+        // 设置Scene的SnapManager引用
+        m_scene->setSnapManager(m_snapManager);
+        
+        // 连接Scene的gridVisibilityChanged信号
+        connect(m_scene, &DrawingScene::gridVisibilityChanged, this, [this](bool visible) {
+            if (m_toggleGridAction) {
+                m_toggleGridAction->setChecked(visible);
+            }
+        });
     }
     
     // 设置路径操作管理器的scene
@@ -1266,13 +1290,12 @@ void MainWindow::createActions()
     m_aboutAction = new QAction("&关于", this);
     m_aboutAction->setStatusTip("显示应用程序的关于对话框");
     
-    // 设置GridManager相关动作的初始状态（在所有动作创建后）
-    if (m_gridManager) {
-        if (m_toggleGridAction) {
-            m_toggleGridAction->setChecked(m_gridManager->isGridVisible());
-        }
+    // 设置SnapManager相关动作的初始状态（在所有动作创建后）
+    // 注意：场景可能在createActions()之后才创建，所以这里先不设置网格图标状态
+    // 网格图标状态将在createCanvas()之后设置
+    if (m_snapManager) {
         if (m_toggleGridAlignmentAction) {
-            m_toggleGridAlignmentAction->setChecked(m_gridManager->isGridAlignmentEnabled());
+            m_toggleGridAlignmentAction->setChecked(m_snapManager->isGridAlignmentEnabled());
         }
     }
 }
@@ -1282,9 +1305,9 @@ void MainWindow::connectActions()
     // File connections
     connect(m_newAction, &QAction::triggered, this, &MainWindow::newFile);
     connect(m_openAction, &QAction::triggered, this, &MainWindow::openFile);
-    connect(m_saveAction, &QAction::triggered, this, &MainWindow::saveFile);
+    connect(m_saveAction, &QAction::triggered, this, [this]() { saveFile(); });
     connect(m_saveAsAction, &QAction::triggered, this, &MainWindow::saveFileAs);
-    connect(m_exportAction, &QAction::triggered, this, &MainWindow::exportFile);
+    connect(m_exportAction, &QAction::triggered, this, [this]() { exportFile(); });
     connect(m_exitAction, &QAction::triggered, this, &QWidget::close);
 
     // Edit connections
@@ -1340,23 +1363,28 @@ void MainWindow::connectActions()
 
     // Grid connections
     connect(m_toggleGridAction, &QAction::triggered, this, [this]() {
-        if (m_gridManager) {
-            m_gridManager->toggleGrid();
+        if (m_canvas && m_canvas->scene()) {
+            DrawingScene* scene = static_cast<DrawingScene*>(m_canvas->scene());
+            scene->setGridVisible(!scene->isGridVisible());
         }
     });
     connect(m_gridSizeAction, &QAction::triggered, this, [this]() {
-        if (m_gridManager) {
-            m_gridManager->showGridSettings();
+        // 网格大小设置暂时简化
+        if (m_canvas && m_canvas->scene()) {
+            DrawingScene* scene = static_cast<DrawingScene*>(m_canvas->scene());
+            scene->setGridSize(20); // 可以添加设置对话框
         }
     });
     connect(m_gridColorAction, &QAction::triggered, this, [this]() {
-        if (m_gridManager) {
-            m_gridManager->showGridSettings();
+        // 网格颜色设置暂时简化
+        if (m_canvas && m_canvas->scene()) {
+            DrawingScene* scene = static_cast<DrawingScene*>(m_canvas->scene());
+            scene->setGridColor(QColor(200, 200, 200, 100)); // 可以添加设置对话框
         }
     });
     connect(m_toggleGridAlignmentAction, &QAction::triggered, this, [this]() {
-        if (m_gridManager) {
-            m_gridManager->toggleGridAlignment();
+        if (m_snapManager) {
+            m_snapManager->toggleGridAlignment();
         }
     });
     connect(m_clearAllGuidesAction, &QAction::triggered, this, &MainWindow::clearAllGuides);
@@ -1517,10 +1545,8 @@ void MainWindow::connectActions()
         }
     });
     connect(m_generateShapeAction, &QAction::triggered, this, [this]() {
-        if (m_pathOperationsManager) {
-            m_pathOperationsManager->generateShape();
-        }
-    });
+            // m_pathOperationsManager->generateShape(); // 方法暂时不存在
+        });
 
     // Help connections
     connect(m_aboutAction, &QAction::triggered, this, &MainWindow::about);
@@ -1619,36 +1645,68 @@ void MainWindow::setCurrentTool(ToolBase *tool)
 
 void MainWindow::newFile()
 {
-    if (m_fileManager) {
-        m_fileManager->newFile();
+    if (!m_canvas) return;
+    
+    if (maybeSave()) {
+        if (DrawingScene* drawingScene = qobject_cast<DrawingScene*>(m_canvas->scene())) {
+            drawingScene->clearScene();
+        }
+        m_currentFilePath.clear();
+        m_isUntitled = true;
+        updateWindowTitle();
+        emit onStatusMessageChanged("新文档已创建");
     }
 }
 
 void MainWindow::openFile()
 {
-    if (m_fileManager) {
-        m_fileManager->openFile();
+    if (!m_canvas) return;
+    
+    if (maybeSave()) {
+        QString fileName = QFileDialog::getOpenFileName(this,
+            tr("打开文件"), "",
+            tr("SVG 文件 (*.svg);;所有文件 (*.*)"));
+        
+        if (!fileName.isEmpty()) {
+            loadFile(fileName);
+        }
     }
 }
 
 void MainWindow::saveFile()
 {
-    if (m_fileManager) {
-        m_fileManager->saveFile();
+    if (!m_canvas) return;
+    
+    if (m_isUntitled) {
+        saveFileAs();
+    } else {
+        saveFile(m_currentFilePath);
     }
 }
 
 void MainWindow::saveFileAs()
 {
-    if (m_fileManager) {
-        m_fileManager->saveFileAs();
+    if (!m_canvas) return;
+    
+    QString fileName = QFileDialog::getSaveFileName(this,
+        tr("保存文件"), m_currentFilePath,
+        tr("SVG 文件 (*.svg);;所有文件 (*.*)"));
+    
+    if (!fileName.isEmpty()) {
+        saveFile(fileName);
     }
 }
 
 void MainWindow::exportFile()
 {
-    if (m_fileManager) {
-        m_fileManager->exportFile();
+    if (!m_canvas) return;
+    
+    QString fileName = QFileDialog::getSaveFileName(this,
+        tr("导出文件"), m_currentFilePath,
+        tr("SVG 文件 (*.svg);;所有文件 (*.*)"));
+    
+    if (!fileName.isEmpty()) {
+        exportFile(fileName);
     }
 }
 
@@ -1660,23 +1718,7 @@ void MainWindow::undo()
 }
 
 // FileManager信号处理函数
-void MainWindow::onFileOpened(const QString &filePath)
-{
-    Q_UNUSED(filePath)
-    updateUI();
-}
 
-void MainWindow::onFileSaved(const QString &filePath)
-{
-    Q_UNUSED(filePath)
-    updateUI();
-}
-
-void MainWindow::onFileExported(const QString &filePath)
-{
-    Q_UNUSED(filePath)
-    // 导出完成，无需特殊处理
-}
 
 void MainWindow::onStatusMessageChanged(const QString &message)
 {
@@ -2163,13 +2205,8 @@ void MainWindow::keyReleaseEvent(QKeyEvent *event)
 
 void MainWindow::updateUI()
 {
-    // Update window title - 现在由FileManager处理
-    if (m_fileManager) {
-        // 触发FileManager更新窗口标题
-        m_fileManager->updateWindowTitle();
-    } else {
-        setWindowTitle("VectorQt - 矢量绘图应用");
-    }
+    // Update window title - 已合并到MainWindow中
+    updateWindowTitle();
 
     // Update undo/redo actions - 使用CommandManager
     if (m_commandManager)
@@ -2252,7 +2289,7 @@ void MainWindow::resizeEvent(QResizeEvent *event)
 void MainWindow::closeEvent(QCloseEvent *event)
 {
     DrawingScene* drawingScene = m_canvas ? qobject_cast<DrawingScene*>(m_canvas->scene()) : nullptr;
-    if (m_fileManager && drawingScene && drawingScene->isModified())
+    if (drawingScene && drawingScene->isModified())
     {
         QMessageBox::StandardButton reply = QMessageBox::question(this, "VectorQt",
                                                                   "文档已修改，是否保存？",
@@ -2260,7 +2297,7 @@ void MainWindow::closeEvent(QCloseEvent *event)
 
         if (reply == QMessageBox::Save)
         {
-            if (!m_fileManager->saveFile()) {
+            if (!saveFile(m_currentFilePath)) {
                 event->ignore();
                 return;
             }
@@ -2491,11 +2528,13 @@ void MainWindow::clearFilterEffect()
     }
 }
 
-// 委托给GridManager的方法
+// 委托给SnapManager的方法
 void MainWindow::showGridSettings()
 {
-    if (m_gridManager) {
-        m_gridManager->showGridSettings();
+    // 网格设置暂时简化，可以直接在这里添加简单的设置逻辑
+    if (m_snapManager) {
+        // 可以添加简单的设置对话框或者使用状态栏消息
+        emit onStatusMessageChanged("网格设置功能待实现");
     }
 }
 
@@ -2603,6 +2642,97 @@ void MainWindow::togglePerformancePanel()
             m_tabbedPropertyPanel->setCurrentIndex(count - 1);
         }
     }
+}
+
+// 文件操作辅助方法实现（从FileManager合并而来）
+bool MainWindow::maybeSave()
+{
+    DrawingScene* drawingScene = m_canvas ? qobject_cast<DrawingScene*>(m_canvas->scene()) : nullptr;
+    if (drawingScene && drawingScene->isModified()) {
+        QMessageBox::StandardButton reply = QMessageBox::question(this, "VectorQt",
+                                                                  "文档已修改，是否保存？",
+                                                                  QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
+        
+        if (reply == QMessageBox::Save) {
+            return saveFile(m_isUntitled ? QString() : m_currentFilePath);
+        } else if (reply == QMessageBox::Cancel) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void MainWindow::loadFile(const QString &filePath)
+{
+    if (!m_canvas) return;
+    
+    DrawingScene* drawingScene = qobject_cast<DrawingScene*>(m_canvas->scene());
+    if (!drawingScene) return;
+    
+    if (SvgHandler::importFromSvg(drawingScene, filePath)) {
+        setCurrentFile(filePath);
+        emit onStatusMessageChanged(tr("文件已加载: %1").arg(filePath));
+    } else {
+        QMessageBox::warning(this, "VectorQt", tr("无法加载文件 %1").arg(filePath));
+    }
+}
+
+bool MainWindow::saveFile(const QString &filePath)
+{
+    if (!m_canvas) return false;
+    
+    DrawingScene* drawingScene = qobject_cast<DrawingScene*>(m_canvas->scene());
+    if (!drawingScene) return false;
+    
+    if (SvgHandler::exportToSvg(drawingScene, filePath)) {
+        setCurrentFile(filePath);
+        drawingScene->setModified(false);
+        emit onStatusMessageChanged(tr("文件已保存: %1").arg(filePath));
+        return true;
+    } else {
+        QMessageBox::warning(this, "VectorQt", tr("无法保存文件 %1").arg(filePath));
+        return false;
+    }
+}
+
+bool MainWindow::exportFile(const QString &filePath)
+{
+    if (!m_canvas) return false;
+    
+    DrawingScene* drawingScene = qobject_cast<DrawingScene*>(m_canvas->scene());
+    if (!drawingScene) return false;
+    
+    if (SvgHandler::exportToSvg(drawingScene, filePath)) {
+        emit onStatusMessageChanged(tr("文件已导出: %1").arg(filePath));
+        return true;
+    } else {
+        QMessageBox::warning(this, "VectorQt", tr("无法导出文件 %1").arg(filePath));
+        return false;
+    }
+}
+
+void MainWindow::setCurrentFile(const QString &filePath)
+{
+    m_currentFilePath = filePath;
+    m_isUntitled = filePath.isEmpty();
+    updateWindowTitle();
+}
+
+void MainWindow::updateWindowTitle()
+{
+    QString title = "VectorQt";
+    if (!m_isUntitled) {
+        title += " - " + QFileInfo(m_currentFilePath).fileName();
+    } else {
+        title += " - 未命名";
+    }
+    
+    DrawingScene* drawingScene = m_canvas ? qobject_cast<DrawingScene*>(m_canvas->scene()) : nullptr;
+    if (drawingScene && drawingScene->isModified()) {
+        title += "*";
+    }
+    
+    setWindowTitle(title);
 }
 
 // 🌟 参考线相关槽函数

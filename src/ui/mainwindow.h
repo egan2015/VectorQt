@@ -37,9 +37,9 @@ class ScrollableToolBar;
 class ToolStateManager;
 class ToolManager;
 class ShortcutManager;
-class FileManager;
+
 class EffectManager;
-class GridManager;
+class SnapManager;
 class PathOperationsManager;
 class SelectionManager;
 class CommandManager;
@@ -70,10 +70,7 @@ private slots:
     void saveFileAs();
     void exportFile();
     
-    // FileManager信号处理
-    void onFileOpened(const QString &filePath);
-    void onFileSaved(const QString &filePath);
-    void onFileExported(const QString &filePath);
+    
     void onStatusMessageChanged(const QString &message);
     void onWindowTitleChanged(const QString &title);
     
@@ -159,6 +156,14 @@ private:
     void connectActions();
     void updateUI();
     void setCurrentTool(ToolBase *tool);
+    
+    // File management methods (从FileManager合并而来)
+    bool maybeSave();
+    void loadFile(const QString &filePath);
+    bool saveFile(const QString &filePath);
+    bool exportFile(const QString &filePath);
+    void setCurrentFile(const QString &filePath);
+    void updateWindowTitle();
     
     
     DrawingScene *m_scene;
@@ -260,14 +265,13 @@ private:
     ToolManager *m_toolManager;
     ShortcutManager *m_shortcutManager;
     
-    // File management system
-    FileManager *m_fileManager;
+    
     
     // Effect management system
     EffectManager *m_effectManager;
     
-    // Grid management system
-    GridManager *m_gridManager;
+    // Snap management system (合并了GridManager)
+    SnapManager *m_snapManager;
     
     // Selection management system
     PathOperationsManager *m_pathOperationsManager;
@@ -277,6 +281,10 @@ private:
     
     // Command management system
     CommandManager *m_commandManager;
+    
+    // File management system (从FileManager合并而来)
+    QString m_currentFilePath;
+    bool m_isUntitled;
     
     QLabel *m_statusLabel;
     QLabel *m_zoomLabel;

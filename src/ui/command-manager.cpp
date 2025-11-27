@@ -1,6 +1,7 @@
 #include "command-manager.h"
 #include "drawingscene.h"
 #include "../core/drawing-shape.h"
+#include "../core/drawing-group.h"
 #include <QGraphicsItem>
 #include <QDataStream>
 
@@ -149,13 +150,65 @@ PropertyCommand::PropertyCommand(CommandManager *manager, const QList<DrawingSha
 
 void PropertyCommand::undo()
 {
-    // TODO: 实现属性恢复逻辑
+    // 恢复属性值
+    for (DrawingShape *shape : m_shapes) {
+        if (!shape) continue;
+        
+        if (m_propertyName == "fillBrush") {
+            shape->setFillBrush(m_oldValue.value<QBrush>());
+        } else if (m_propertyName == "strokePen") {
+            shape->setStrokePen(m_oldValue.value<QPen>());
+        } else if (m_propertyName == "opacity") {
+            shape->setOpacity(m_oldValue.toReal());
+        } else if (m_propertyName == "rotation") {
+            shape->setRotation(m_oldValue.toReal());
+        } else if (m_propertyName == "scale") {
+            shape->setScale(m_oldValue.toReal());
+        } else if (m_propertyName == "pos") {
+            shape->setPos(m_oldValue.value<QPointF>());
+        } else if (m_propertyName == "zValue") {
+            shape->setZValue(m_oldValue.toReal());
+        } else if (m_propertyName == "visible") {
+            shape->setVisible(m_oldValue.toBool());
+        } else if (m_propertyName == "enabled") {
+            shape->setEnabled(m_oldValue.toBool());
+        }
+        // 可以添加更多属性支持
+    }
+    
+    if (m_scene) m_scene->setModified(true);
     emit m_commandManager->statusMessageChanged("已撤销属性修改");
 }
 
 void PropertyCommand::redo()
 {
-    // TODO: 实现属性设置逻辑
+    // 设置新属性值
+    for (DrawingShape *shape : m_shapes) {
+        if (!shape) continue;
+        
+        if (m_propertyName == "fillBrush") {
+            shape->setFillBrush(m_newValue.value<QBrush>());
+        } else if (m_propertyName == "strokePen") {
+            shape->setStrokePen(m_newValue.value<QPen>());
+        } else if (m_propertyName == "opacity") {
+            shape->setOpacity(m_newValue.toReal());
+        } else if (m_propertyName == "rotation") {
+            shape->setRotation(m_newValue.toReal());
+        } else if (m_propertyName == "scale") {
+            shape->setScale(m_newValue.toReal());
+        } else if (m_propertyName == "pos") {
+            shape->setPos(m_newValue.value<QPointF>());
+        } else if (m_propertyName == "zValue") {
+            shape->setZValue(m_newValue.toReal());
+        } else if (m_propertyName == "visible") {
+            shape->setVisible(m_newValue.toBool());
+        } else if (m_propertyName == "enabled") {
+            shape->setEnabled(m_newValue.toBool());
+        }
+        // 可以添加更多属性支持
+    }
+    
+    if (m_scene) m_scene->setModified(true);
     emit m_commandManager->statusMessageChanged("已应用属性修改");
 }
 
@@ -179,14 +232,64 @@ void DeleteCommand::undo()
     
     // 恢复删除的对象
     for (auto it = m_serializedData.begin(); it != m_serializedData.end(); ++it) {
-        DrawingShape *shape = it.key();
-        if (shape) {
-            // 重新创建对象（需要工厂方法支持）
-            // TODO: 实现对象恢复逻辑
-            if (m_parents.contains(shape)) {
-                shape->setParentItem(m_parents[shape]);
+        DrawingShape *originalShape = it.key();
+        if (!originalShape) continue;
+        
+        // 使用序列化数据重新创建对象
+        QByteArray shapeData = it.value();
+        
+        // 读取形状类型
+        QDataStream typeStream(shapeData);
+        int typeValue;
+        typeStream >> typeValue;
+        DrawingShape::ShapeType shapeType = static_cast<DrawingShape::ShapeType>(typeValue);
+        
+        // 创建对应的形状对象
+        DrawingShape *newShape = nullptr;
+        switch (shapeType) {
+            case DrawingShape::Rectangle:
+                newShape = new DrawingRectangle();
+                break;
+            case DrawingShape::Ellipse:
+                newShape = new DrawingEllipse();
+                break;
+            case DrawingShape::Line:
+                newShape = new DrawingLine();
+                break;
+            case DrawingShape::Path:
+                newShape = new DrawingPath();
+                break;
+            case DrawingShape::Polyline:
+                newShape = new DrawingPolyline();
+                break;
+            case DrawingShape::Polygon:
+                newShape = new DrawingPolygon();
+                break;
+            case DrawingShape::Text:
+                newShape = new DrawingText();
+                break;
+            case DrawingShape::Group:
+                newShape = new DrawingGroup();
+                break;
+            default:
+                qDebug() << "Unsupported shape type for restoration:" << typeValue;
+                continue;
+        }
+        
+        if (newShape) {
+            // 反序列化数据
+            newShape->deserialize(shapeData);
+            
+            // 恢复父级关系
+            if (m_parents.contains(originalShape)) {
+                newShape->setParentItem(m_parents[originalShape]);
             }
-            m_scene->addItem(shape);
+            
+            // 添加到场景
+            m_scene->addItem(newShape);
+            
+            // 更新映射，将原始形状映射到新创建的形状
+            m_restoredShapes[originalShape] = newShape;
         }
     }
     
@@ -197,11 +300,24 @@ void DeleteCommand::redo()
 {
     if (!m_scene) return;
     
-    // 删除对象
-    for (DrawingShape *shape : m_shapes) {
-        if (shape) {
-            m_scene->removeItem(shape);
+    // 如果是第一次执行，删除原始对象
+    if (m_restoredShapes.isEmpty()) {
+        // 删除原始对象
+        for (DrawingShape *shape : m_shapes) {
+            if (shape) {
+                m_scene->removeItem(shape);
+            }
         }
+    } else {
+        // 如果是重做，删除恢复的对象
+        for (auto it = m_restoredShapes.begin(); it != m_restoredShapes.end(); ++it) {
+            DrawingShape *restoredShape = it.value();
+            if (restoredShape) {
+                m_scene->removeItem(restoredShape);
+                delete restoredShape;
+            }
+        }
+        m_restoredShapes.clear();
     }
     
     emit m_commandManager->statusMessageChanged(QString("已删除 %1 个对象").arg(m_shapes.count()));
@@ -221,18 +337,45 @@ DuplicateCommand::DuplicateCommand(CommandManager *manager, const QList<DrawingS
     }
 }
 
+DuplicateCommand::~DuplicateCommand()
+{
+    // 析构时检查复制的对象是否还在场景中，如果不在就删除
+    // 增加更安全的检查，避免访问已释放的scene
+    for (DrawingShape *shape : m_duplicatedShapes) {
+        if (shape) {
+            // 先检查scene指针是否有效
+            bool sceneValid = false;
+            if (m_scene) {
+                try {
+                    sceneValid = true;
+                } catch (...) {
+                    sceneValid = false;
+                }
+            }
+            
+            // 只有在scene无效或者对象不在scene中时才删除
+            if (!sceneValid || (shape->scene() != m_scene)) {
+                try {
+                    delete shape;
+                } catch (...) {
+                    // 如果删除失败，忽略错误，避免程序崩溃
+                }
+            }
+        }
+    }
+    m_duplicatedShapes.clear();
+}
+
 void DuplicateCommand::undo()
 {
     if (!m_scene) return;
     
-    // 删除复制的对象
+    // 只从场景中移除复制的对象，不删除
     for (DrawingShape *shape : m_duplicatedShapes) {
         if (shape) {
             m_scene->removeItem(shape);
-            delete shape;
         }
     }
-    m_duplicatedShapes.clear();
     
     emit m_commandManager->statusMessageChanged("已撤销复制");
 }
@@ -245,9 +388,19 @@ void DuplicateCommand::redo()
         return;
     }
     
-    m_duplicatedShapes.clear();
+    // 如果复制的对象已存在，只需重新添加到场景
+    if (!m_duplicatedShapes.isEmpty()) {
+        for (DrawingShape *shape : m_duplicatedShapes) {
+            if (shape) {
+                m_scene->addItem(shape);
+                shape->setSelected(true);
+            }
+        }
+        emit m_commandManager->statusMessageChanged(QString("已复制 %1 个对象").arg(m_duplicatedShapes.count()));
+        return;
+    }
     
-    // 复制对象
+    // 第一次执行，创建复制的对象
     for (auto it = m_serializedData.begin(); it != m_serializedData.end(); ++it) {
         DrawingShape *original = it.key();
         if (original) {
@@ -331,7 +484,80 @@ void AlignCommand::redo()
     saveNewStates();
     
     // 执行对齐操作
-    // TODO: 实现具体的对齐逻辑
+    if (m_shapes.isEmpty()) return;
+    
+    // 计算对齐边界
+    QRectF combinedBounds = m_shapes.first()->boundingRect();
+    combinedBounds.translate(m_shapes.first()->pos());
+    
+    for (DrawingShape *shape : m_shapes) {
+        QRectF shapeBounds = shape->boundingRect();
+        shapeBounds.translate(shape->pos());
+        combinedBounds |= shapeBounds;
+    }
+    
+    // 根据对齐类型执行对齐
+    switch (m_alignment) {
+        case Left: {
+            qreal leftEdge = combinedBounds.left();
+            for (DrawingShape *shape : m_shapes) {
+                QPointF pos = shape->pos();
+                pos.setX(leftEdge);
+                shape->setPos(pos);
+            }
+            break;
+        }
+        case Center: {
+            qreal center = combinedBounds.left() + combinedBounds.width() / 2;
+            for (DrawingShape *shape : m_shapes) {
+                QRectF bounds = shape->boundingRect();
+                QPointF pos = shape->pos();
+                pos.setX(center - bounds.width() / 2);
+                shape->setPos(pos);
+            }
+            break;
+        }
+        case Right: {
+            qreal rightEdge = combinedBounds.right();
+            for (DrawingShape *shape : m_shapes) {
+                QRectF bounds = shape->boundingRect();
+                QPointF pos = shape->pos();
+                pos.setX(rightEdge - bounds.width());
+                shape->setPos(pos);
+            }
+            break;
+        }
+        case Top: {
+            qreal topEdge = combinedBounds.top();
+            for (DrawingShape *shape : m_shapes) {
+                QPointF pos = shape->pos();
+                pos.setY(topEdge);
+                shape->setPos(pos);
+            }
+            break;
+        }
+        case Middle: {
+            qreal middle = combinedBounds.top() + combinedBounds.height() / 2;
+            for (DrawingShape *shape : m_shapes) {
+                QRectF bounds = shape->boundingRect();
+                QPointF pos = shape->pos();
+                pos.setY(middle - bounds.height() / 2);
+                shape->setPos(pos);
+            }
+            break;
+        }
+        case Bottom: {
+            qreal bottomEdge = combinedBounds.bottom();
+            for (DrawingShape *shape : m_shapes) {
+                QRectF bounds = shape->boundingRect();
+                QPointF pos = shape->pos();
+                pos.setY(bottomEdge - bounds.height());
+                shape->setPos(pos);
+            }
+            break;
+        }
+    }
+    
     QString alignmentName;
     switch (m_alignment) {
         case Left: alignmentName = "左对齐"; break;
@@ -561,4 +787,148 @@ void PasteCommand::redo()
     
     qDebug() << "PasteCommand::redo created" << m_pastedShapes.count() << "pasted shapes";
     emit m_commandManager->statusMessageChanged(QString("已粘贴 %1 个对象").arg(m_pastedShapes.count()));
+}
+
+// GroupCommand 实现
+GroupCommand::GroupCommand(CommandManager *manager, const QList<DrawingShape*>& shapes, 
+                           QUndoCommand *parent)
+    : SelectionCommand(manager, shapes, "组合对象", parent)
+    , m_group(nullptr)
+{
+    // 保存每个对象的父级和位置信息
+    for (DrawingShape *shape : shapes) {
+        if (shape) {
+            m_parents[shape] = shape->parentItem();
+            m_positions[shape] = shape->pos();
+        }
+    }
+}
+
+void GroupCommand::undo()
+{
+    if (!m_scene || !m_group) return;
+    
+    // 从场景中移除组对象
+    m_scene->removeItem(m_group);
+    
+    // 恢复所有子对象的父级关系和位置
+    for (auto it = m_parents.begin(); it != m_parents.end(); ++it) {
+        DrawingShape *shape = it.key();
+        QGraphicsItem *parent = it.value();
+        QPointF pos = m_positions[shape];
+        
+        if (shape) {
+            // 恢复父级关系
+            shape->setParentItem(parent);
+            // 恢复位置
+            shape->setPos(pos);
+            // 恢复选择能力
+            shape->setFlag(QGraphicsItem::ItemIsSelectable, true);
+            shape->setFlag(QGraphicsItem::ItemIsMovable, true);
+        }
+    }
+    
+    // 删除组对象
+    delete m_group;
+    m_group = nullptr;
+    
+    emit m_commandManager->statusMessageChanged("已取消组合");
+}
+
+void GroupCommand::redo()
+{
+    if (!m_scene) return;
+    
+    // 创建新的组对象
+    m_group = new DrawingGroup();
+    
+    // 将所有形状添加到组中
+    for (DrawingShape *shape : m_shapes) {
+        if (shape) {
+            m_group->addItem(shape);
+        }
+    }
+    
+    // 将组添加到场景中
+    m_scene->addItem(m_group);
+    
+    // 选中组对象
+    m_group->setSelected(true);
+    
+    emit m_commandManager->statusMessageChanged(QString("已组合 %1 个对象").arg(m_shapes.count()));
+}
+
+// UngroupCommand 实现
+UngroupCommand::UngroupCommand(CommandManager *manager, const QList<DrawingGroup*>& groups, 
+                               QUndoCommand *parent)
+    : SelectionCommand(manager, QList<DrawingShape*>(), "取消组合", parent)
+{
+    // 保存组信息
+    m_groups = groups;
+    
+    // 收集所有子对象并保存它们的信息
+    for (DrawingGroup *group : groups) {
+        if (group) {
+            QList<DrawingShape*> items = group->items();
+            for (DrawingShape *item : items) {
+                if (item) {
+                    m_parentGroups[item] = group;
+                    m_positions[item] = item->scenePos();
+                    m_ungroupedShapes.append(item);
+                }
+            }
+        }
+    }
+}
+
+void UngroupCommand::undo()
+{
+    if (!m_scene) return;
+    
+    // 重新创建组并添加子对象
+    for (DrawingGroup *group : m_groups) {
+        if (!group) continue;
+        
+        // 创建新的组对象
+        DrawingGroup *newGroup = new DrawingGroup();
+        
+        // 找到属于这个组的所有子对象
+        for (DrawingShape *item : m_ungroupedShapes) {
+            if (m_parentGroups[item] == group && item) {
+                newGroup->addItem(item);
+            }
+        }
+        
+        // 将组添加到场景中
+        m_scene->addItem(newGroup);
+    }
+    
+    emit m_commandManager->statusMessageChanged("已重新组合");
+}
+
+void UngroupCommand::redo()
+{
+    if (!m_scene) return;
+    
+    // 取消所有组的组合
+    for (DrawingGroup *group : m_groups) {
+        if (!group) continue;
+        
+        // 获取所有子对象
+        QList<DrawingShape*> items = group->ungroup();
+        
+        // 将子对象重新添加到场景中
+        for (DrawingShape *item : items) {
+            if (item) {
+                m_scene->addItem(item);
+                item->setSelected(true);
+            }
+        }
+        
+        // 从场景中移除组对象
+        m_scene->removeItem(group);
+        delete group;
+    }
+    
+    emit m_commandManager->statusMessageChanged(QString("已取消组合 %1 个组").arg(m_groups.count()));
 }

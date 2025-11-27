@@ -9,6 +9,7 @@
 #include "../core/drawing-layer.h"
 #include "../core/layer-manager.h"
 #include "../ui/command-manager.h"
+#include "../ui/snap-manager.h"
 
 // ToolBase
 ToolBase::ToolBase(QObject *parent)
@@ -572,26 +573,10 @@ QPointF ToolBase::smartSnap(const QPointF &scenePos, DrawingShape *excludeShape)
     if (qobject_cast<DrawingScene*>(m_scene)) {
         DrawingScene *drawingScene = qobject_cast<DrawingScene*>(m_scene);
         
-        // 首先尝试对象吸附（优先级更高）
-        DrawingScene::ObjectSnapResult objectSnap = drawingScene->snapToObjects(scenePos, excludeShape);
-        if (objectSnap.snappedToObject) {
-            // 对象吸附成功
-            alignedPos = objectSnap.snappedPos;
-            // qDebug() << "Object snap triggered:" << objectSnap.snapDescription;
-        } else {
-            // 对象吸附失败，尝试网格吸附
-            if (drawingScene->isGridAlignmentEnabled()) {
-                DrawingScene::SnapResult gridSnap = drawingScene->smartAlignToGrid(scenePos);
-                if (gridSnap.snappedX || gridSnap.snappedY) {
-                    alignedPos = gridSnap.snappedPos;
-                    // qDebug() << "Grid snap: X snapped:" << gridSnap.snappedX << "Y snapped:" << gridSnap.snappedY;
-                }
-            }
-        }
-        
-        // 如果没有发生任何吸附，清除指示器
-        if (alignedPos == scenePos) {
-            drawingScene->clearSnapIndicators();
+        // 使用SnapManager进行吸附
+        if (drawingScene->snapManager()) {
+            bool isObjectSnap = false;
+            alignedPos = drawingScene->snapManager()->alignToGrid(scenePos, excludeShape, &isObjectSnap);
         }
     }
     

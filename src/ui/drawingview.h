@@ -5,7 +5,7 @@
 
 class ToolBase;
 class ToolManager;
-class ToolSwitchStateMachine;
+
 
 // 前向声明
 enum class ToolType : int;
@@ -24,7 +24,7 @@ public:
     
     // 设置工具管理器和状态机
     void setToolManager(ToolManager* toolManager);
-    void setToolSwitchStateMachine(ToolSwitchStateMachine* stateMachine);
+    
     
     void zoomIn();
     void zoomOut();
@@ -57,7 +57,7 @@ private:
     double m_zoomLevel;
     ToolBase *m_currentTool;
     ToolManager* m_toolManager;
-    ToolSwitchStateMachine* m_stateMachine;
+    
 };
 
 #endif // DRAWINGVIEW_H

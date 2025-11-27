@@ -277,7 +277,7 @@ bool DrawingToolBrush::mouseReleaseEvent(QMouseEvent *event, const QPointF &scen
                     
                     // 创建并推送撤销命令
                     BrushAddCommand *command = new BrushAddCommand(m_scene, m_currentPath, activeLayer);
-                    m_scene->undoStack()->push(command);
+                    m_scene->executeCommand(command);
                 
                 m_scene->setModified(true);
                 m_currentPath = nullptr; // 不再由工具管理

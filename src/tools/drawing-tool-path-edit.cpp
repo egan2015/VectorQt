@@ -424,7 +424,7 @@ void DrawingToolPathEdit::executePathOperation()
     PathOperationCommand *command = new PathOperationCommand(m_scene, shape1, shape2, newPath, operationText);
     
     // 推送撤销命令，让命令处理场景和图层的同步
-    m_scene->undoStack()->push(command);
+    m_scene->executeCommand(command);
     
     // 清空剩余的选择列表
     m_selectedPaths.clear();
@@ -532,7 +532,7 @@ void DrawingToolPathEdit::showContextMenu(const QPointF &scenePos)
                 PathOperationCommand *command = new PathOperationCommand(m_scene, shape, nullptr, newPath, "简化路径");
                 
                 // 推送撤销命令，让命令处理场景和图层的同步
-                m_scene->undoStack()->push(command);
+                m_scene->executeCommand(command);
                 
                 // 更新选择列表
                 m_selectedPaths.clear();
@@ -564,7 +564,7 @@ void DrawingToolPathEdit::showContextMenu(const QPointF &scenePos)
                 PathOperationCommand *command = new PathOperationCommand(m_scene, shape, nullptr, newPath, "平滑路径");
                 
                 // 推送撤销命令，让命令处理场景和图层的同步
-                m_scene->undoStack()->push(command);
+                m_scene->executeCommand(command);
                 
                 // 更新选择列表
                 m_selectedPaths.clear();
@@ -596,7 +596,7 @@ void DrawingToolPathEdit::showContextMenu(const QPointF &scenePos)
                 PathOperationCommand *command = new PathOperationCommand(m_scene, shape, nullptr, newPath, "转换为曲线");
                 
                 // 推送撤销命令，让命令处理场景和图层的同步
-                m_scene->undoStack()->push(command);
+                m_scene->executeCommand(command);
                 
                 // 更新选择列表
                 m_selectedPaths.clear();
@@ -626,7 +626,7 @@ void DrawingToolPathEdit::showContextMenu(const QPointF &scenePos)
                 PathOperationCommand *command = new PathOperationCommand(m_scene, shape, nullptr, newPath, "偏移路径");
                 
                 // 推送撤销命令，让命令处理场景和图层的同步
-                m_scene->undoStack()->push(command);
+                m_scene->executeCommand(command);
                 
                 // 更新选择列表
                 m_selectedPaths.clear();
@@ -660,7 +660,7 @@ void DrawingToolPathEdit::showContextMenu(const QPointF &scenePos)
                 PathOperationCommand *command = new PathOperationCommand(m_scene, shape, nullptr, newPath, "裁剪路径");
                 
                 // 推送撤销命令，让命令处理场景和图层的同步
-                m_scene->undoStack()->push(command);
+                m_scene->executeCommand(command);
                 
                 // 更新选择列表
                 m_selectedPaths.clear();

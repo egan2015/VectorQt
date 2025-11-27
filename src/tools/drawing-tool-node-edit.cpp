@@ -417,7 +417,7 @@ bool DrawingNodeEditTool::mouseReleaseEvent(QMouseEvent *event, const QPointF &s
                     NodeEditCommand *command = new NodeEditCommand(m_scene, m_selectedShape,
                                                                    handleInfo.nodeIndex, m_originalValue, currentPos,
                                                                    oldCornerRadius, newCornerRadius);
-                    m_scene->undoStack()->push(command);
+                    m_scene->executeCommand(command);
                 }
             }
 

@@ -405,7 +405,7 @@ void DrawingToolPen::createPathShape()
     
     // 创建并推送撤销命令
     PenAddCommand *command = new PenAddCommand(m_scene, pathShape, activeLayer);
-    m_scene->undoStack()->push(command);
+    m_scene->executeCommand(command);
     
     m_scene->setModified(true);
 }
@@ -748,7 +748,7 @@ void DrawingToolPen::endFreeDraw()
     
     // 创建并推送撤销命令
     PenFreeDrawCommand *command = new PenFreeDrawCommand(m_scene, m_currentPath, activeLayer);
-    m_scene->undoStack()->push(command);
+    m_scene->executeCommand(command);
     
     // 标记场景已修改
     m_scene->setModified(true);

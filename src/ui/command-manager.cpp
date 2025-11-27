@@ -212,16 +212,16 @@ void PropertyCommand::redo()
     emit m_commandManager->statusMessageChanged("已应用属性修改");
 }
 
-// DeleteCommand实现
+// DeleteCommand实现 - 简化版本，专注对象生命周期管理
 DeleteCommand::DeleteCommand(CommandManager *manager, const QList<DrawingShape*>& shapes, 
                             QUndoCommand *parent)
     : SelectionCommand(manager, shapes, "删除对象", parent)
 {
-    // 保存父级关系和序列化数据
+    // 只保存需要的信息：父级关系和场景位置
     for (DrawingShape *shape : shapes) {
         if (shape) {
             m_parents[shape] = shape->parentItem();
-            m_serializedData[shape] = shape->serialize();
+            m_positions[shape] = shape->scenePos();
         }
     }
 }
@@ -230,66 +230,20 @@ void DeleteCommand::undo()
 {
     if (!m_scene) return;
     
-    // 恢复删除的对象
-    for (auto it = m_serializedData.begin(); it != m_serializedData.end(); ++it) {
-        DrawingShape *originalShape = it.key();
-        if (!originalShape) continue;
+    // 从场景中恢复被删除的对象
+    for (auto it = m_parents.begin(); it != m_parents.end(); ++it) {
+        DrawingShape *shape = it.key();
+        QGraphicsItem *parent = it.value();
+        QPointF pos = m_positions[shape];
         
-        // 使用序列化数据重新创建对象
-        QByteArray shapeData = it.value();
-        
-        // 读取形状类型
-        QDataStream typeStream(shapeData);
-        int typeValue;
-        typeStream >> typeValue;
-        DrawingShape::ShapeType shapeType = static_cast<DrawingShape::ShapeType>(typeValue);
-        
-        // 创建对应的形状对象
-        DrawingShape *newShape = nullptr;
-        switch (shapeType) {
-            case DrawingShape::Rectangle:
-                newShape = new DrawingRectangle();
-                break;
-            case DrawingShape::Ellipse:
-                newShape = new DrawingEllipse();
-                break;
-            case DrawingShape::Line:
-                newShape = new DrawingLine();
-                break;
-            case DrawingShape::Path:
-                newShape = new DrawingPath();
-                break;
-            case DrawingShape::Polyline:
-                newShape = new DrawingPolyline();
-                break;
-            case DrawingShape::Polygon:
-                newShape = new DrawingPolygon();
-                break;
-            case DrawingShape::Text:
-                newShape = new DrawingText();
-                break;
-            case DrawingShape::Group:
-                newShape = new DrawingGroup();
-                break;
-            default:
-                qDebug() << "Unsupported shape type for restoration:" << typeValue;
-                continue;
-        }
-        
-        if (newShape) {
-            // 反序列化数据
-            newShape->deserialize(shapeData);
-            
-            // 恢复父级关系
-            if (m_parents.contains(originalShape)) {
-                newShape->setParentItem(m_parents[originalShape]);
-            }
-            
+        if (shape) {
+            // 重新设置父级关系
+            shape->setParentItem(parent);
+            // 恢复场景位置
+            shape->setPos(pos);
             // 添加到场景
-            m_scene->addItem(newShape);
-            
-            // 更新映射，将原始形状映射到新创建的形状
-            m_restoredShapes[originalShape] = newShape;
+            m_scene->addItem(shape);
+            shape->setVisible(true);
         }
     }
     
@@ -300,24 +254,12 @@ void DeleteCommand::redo()
 {
     if (!m_scene) return;
     
-    // 如果是第一次执行，删除原始对象
-    if (m_restoredShapes.isEmpty()) {
-        // 删除原始对象
-        for (DrawingShape *shape : m_shapes) {
-            if (shape) {
-                m_scene->removeItem(shape);
-            }
+    // 删除对象（从场景中移除，但不删除对象）
+    for (DrawingShape *shape : m_shapes) {
+        if (shape) {
+            m_scene->removeItem(shape);
+            shape->setVisible(false);
         }
-    } else {
-        // 如果是重做，删除恢复的对象
-        for (auto it = m_restoredShapes.begin(); it != m_restoredShapes.end(); ++it) {
-            DrawingShape *restoredShape = it.value();
-            if (restoredShape) {
-                m_scene->removeItem(restoredShape);
-                delete restoredShape;
-            }
-        }
-        m_restoredShapes.clear();
     }
     
     emit m_commandManager->statusMessageChanged(QString("已删除 %1 个对象").arg(m_shapes.count()));
@@ -339,28 +281,12 @@ DuplicateCommand::DuplicateCommand(CommandManager *manager, const QList<DrawingS
 
 DuplicateCommand::~DuplicateCommand()
 {
-    // 析构时检查复制的对象是否还在场景中，如果不在就删除
-    // 增加更安全的检查，避免访问已释放的scene
+    // 简单的清理：只删除重复对象，不做复杂的检查
+    // 如果对象仍在场景中，说明撤销操作已经发生，不应该删除
+    // 如果对象不在场景中，说明命令正常结束，可以删除
     for (DrawingShape *shape : m_duplicatedShapes) {
-        if (shape) {
-            // 先检查scene指针是否有效
-            bool sceneValid = false;
-            if (m_scene) {
-                try {
-                    sceneValid = true;
-                } catch (...) {
-                    sceneValid = false;
-                }
-            }
-            
-            // 只有在scene无效或者对象不在scene中时才删除
-            if (!sceneValid || (shape->scene() != m_scene)) {
-                try {
-                    delete shape;
-                } catch (...) {
-                    // 如果删除失败，忽略错误，避免程序崩溃
-                }
-            }
+        if (shape && shape->scene() != m_scene) {
+            delete shape;
         }
     }
     m_duplicatedShapes.clear();
@@ -382,11 +308,7 @@ void DuplicateCommand::undo()
 
 void DuplicateCommand::redo()
 {
-    qDebug() << "DuplicateCommand::redo called";
-    if (!m_scene) {
-        qDebug() << "DuplicateCommand::redo: scene is null";
-        return;
-    }
+    if (!m_scene) return;
     
     // 如果复制的对象已存在，只需重新添加到场景
     if (!m_duplicatedShapes.isEmpty()) {
@@ -401,20 +323,19 @@ void DuplicateCommand::redo()
     }
     
     // 第一次执行，创建复制的对象
-    for (auto it = m_serializedData.begin(); it != m_serializedData.end(); ++it) {
-        DrawingShape *original = it.key();
-        if (original) {
-            // 使用序列化数据创建新对象，而不是clone()
-            QByteArray shapeData = it.value();
-            
-            // 读取形状类型
+    for (DrawingShape *original : m_shapes) {
+        if (!original) continue;
+        
+        // 尝试使用clone方法，如果失败则使用序列化
+        DrawingShape *duplicate = original->clone();
+        if (!duplicate) {
+            // 回退到序列化方式
+            QByteArray shapeData = original->serialize();
             QDataStream typeStream(shapeData);
             int typeValue;
             typeStream >> typeValue;
             DrawingShape::ShapeType shapeType = static_cast<DrawingShape::ShapeType>(typeValue);
             
-            // 创建对应的形状对象
-            DrawingShape *duplicate = nullptr;
             switch (shapeType) {
                 case DrawingShape::Rectangle:
                     duplicate = new DrawingRectangle();
@@ -441,26 +362,24 @@ void DuplicateCommand::redo()
                     duplicate = new DrawingGroup();
                     break;
                 default:
-                    qDebug() << "Unsupported shape type for duplication:" << typeValue;
                     continue;
             }
             
             if (duplicate) {
-                // 反序列化数据
                 duplicate->deserialize(shapeData);
-                
-                // 应用偏移
-                QPointF currentPos = duplicate->pos();
-                duplicate->setPos(currentPos + m_offset);
-                
-                m_scene->addItem(duplicate);
-                duplicate->setSelected(true);
-                m_duplicatedShapes.append(duplicate);
             }
+        }
+        
+        if (duplicate) {
+            // 应用偏移
+            duplicate->setPos(duplicate->pos() + m_offset);
+            
+            m_scene->addItem(duplicate);
+            duplicate->setSelected(true);
+            m_duplicatedShapes.append(duplicate);
         }
     }
     
-    qDebug() << "DuplicateCommand::redo created" << m_duplicatedShapes.count() << "duplicated shapes";
     emit m_commandManager->statusMessageChanged(QString("已复制 %1 个对象").arg(m_duplicatedShapes.count()));
 }
 

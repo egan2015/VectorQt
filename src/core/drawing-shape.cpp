@@ -1368,7 +1368,7 @@ void DrawingPath::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
                         scene, this, m_activeControlPoint, 
                         m_originalControlPoints[m_activeControlPoint], 
                         m_controlPoints[m_activeControlPoint]);
-                    scene->undoStack()->push(command);
+                    scene->executeCommand(command);
                 }
             }
         }
@@ -2608,14 +2608,24 @@ QByteArray DrawingShape::serialize() const
     // 写入形状类型
     stream << static_cast<int>(m_type);
     
-    // 写入基本属性
+    // 写入变换属性
     stream << pos();
     stream << scale();
     stream << rotation();
     stream << transform();
     stream << zValue();
+    
+    // 写入视觉属性
     stream << isVisible();
     stream << isEnabled();
+    
+    // 写入样式属性
+    stream << m_fillBrush;
+    stream << m_strokePen;
+    stream << opacity();
+    
+    // 写入对象ID
+    stream << m_id;
     
     return data;
 }
@@ -2628,7 +2638,7 @@ void DrawingShape::deserialize(const QByteArray &data)
     int typeValue;
     stream >> typeValue;
     
-    // 读取基本属性
+    // 读取变换属性
     QPointF position;
     stream >> position;
     setPos(position);
@@ -2649,6 +2659,7 @@ void DrawingShape::deserialize(const QByteArray &data)
     stream >> zValue;
     setZValue(zValue);
     
+    // 读取视觉属性
     bool visible;
     stream >> visible;
     setVisible(visible);
@@ -2656,6 +2667,24 @@ void DrawingShape::deserialize(const QByteArray &data)
     bool enabled;
     stream >> enabled;
     setEnabled(enabled);
+    
+    // 读取样式属性
+    QBrush fillBrush;
+    stream >> fillBrush;
+    setFillBrush(fillBrush);
+    
+    QPen strokePen;
+    stream >> strokePen;
+    setStrokePen(strokePen);
+    
+    qreal opacity;
+    stream >> opacity;
+    setOpacity(opacity);
+    
+    // 读取对象ID
+    QString id;
+    stream >> id;
+    setId(id);
 }
 
 DrawingShape* DrawingShape::clone() const

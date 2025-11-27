@@ -119,8 +119,7 @@ public:
     
 private:
     QMap<DrawingShape*, QGraphicsItem*> m_parents;
-    QMap<DrawingShape*, QByteArray> m_serializedData;
-    QMap<DrawingShape*, DrawingShape*> m_restoredShapes; // 原始形状到恢复形状的映射
+    QMap<DrawingShape*, QPointF> m_positions; // 保存场景位置
 };
 
 // 复制命令

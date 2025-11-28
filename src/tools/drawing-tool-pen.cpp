@@ -665,7 +665,7 @@ void DrawingToolPen::updateFreeDraw(const QPointF &scenePos)
         
         m_currentPath->setPath(path);
         
-        qDebug() << "Pen tool: Updated path with" << m_freeDrawPoints.size() << "points";
+        // qDebug() << "Pen tool: Updated path with" << m_freeDrawPoints.size() << "points";
     }
 }
 

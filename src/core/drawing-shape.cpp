@@ -342,7 +342,7 @@ void DrawingShape::mousePressEvent(QGraphicsSceneMouseEvent *event)
     // 安全检查：确保对象仍在有效的场景中
     if (!scene())
     {
-        qDebug() << "DrawingShape::mousePressEvent - shape not in any scene, ignoring event";
+        // qDebug() << "DrawingShape::mousePressEvent - shape not in any scene, ignoring event";
         return;
     }
 
@@ -361,7 +361,7 @@ void DrawingShape::mouseMoveEvent(QGraphicsSceneMouseEvent *event)
     // 安全检查：确保对象仍在有效的场景中
     if (!scene())
     {
-        qDebug() << "DrawingShape::mouseMoveEvent - shape not in any scene, ignoring event";
+        // qDebug() << "DrawingShape::mouseMoveEvent - shape not in any scene, ignoring event";
         return;
     }
 
@@ -389,7 +389,7 @@ void DrawingShape::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
     // 安全检查：确保对象仍在有效的场景中
     if (!scene())
     {
-        qDebug() << "DrawingShape::mouseReleaseEvent - shape not in any scene, ignoring event";
+        // qDebug() << "DrawingShape::mouseReleaseEvent - shape not in any scene, ignoring event";
         // 重置移动状态以避免内存泄漏
         m_isMoving = false;
         m_transformStarted = false;

@@ -38,7 +38,7 @@ SmartRenderManager::SmartRenderManager(QObject* parent)
 
 void SmartRenderManager::markDirty(const QRectF& rect)
 {
-    QMutexLocker locker(&m_mutex);
+    // QMutexLocker removed - Qt event loop is single-threaded
     
     if (rect.isValid()) {
         m_dirtyRegion += rect.toRect();
@@ -47,13 +47,13 @@ void SmartRenderManager::markDirty(const QRectF& rect)
 
 void SmartRenderManager::markDirty(const QRegion& region)
 {
-    QMutexLocker locker(&m_mutex);
+    // QMutexLocker removed - Qt event loop is single-threaded
     m_dirtyRegion += region;
 }
 
 void SmartRenderManager::markDirtyGlobal()
 {
-    QMutexLocker locker(&m_mutex);
+    // QMutexLocker removed - Qt event loop is single-threaded
     m_dirtyRegion = QRegion();  // 清空，表示整个场景需要更新
 }
 
@@ -69,7 +69,7 @@ void SmartRenderManager::scheduleUpdate(QWidget* widget, const QRectF& rect)
     request.timestamp = currentTime;
     request.immediate = false;
     
-    QMutexLocker locker(&m_mutex);
+    // QMutexLocker removed - Qt event loop is single-threaded
     
     // 检查是否已有相同的更新请求
     auto it = std::find_if(m_pendingUpdates.begin(), m_pendingUpdates.end(),
@@ -102,7 +102,7 @@ void SmartRenderManager::scheduleUpdateDeferred(QWidget* widget, const QRectF& r
     request.timestamp = currentTime;
     request.immediate = false;
     
-    QMutexLocker locker(&m_mutex);
+    // QMutexLocker removed - Qt event loop is single-threaded
     m_pendingUpdates.append(request);
 }
 
@@ -115,7 +115,7 @@ void SmartRenderManager::cancelUpdates(QWidget* widget)
 {
     if (!widget) return;
     
-    QMutexLocker locker(&m_mutex);
+    // QMutexLocker removed - Qt event loop is single-threaded
     
     auto it = m_pendingUpdates.begin();
     while (it != m_pendingUpdates.end()) {
@@ -176,13 +176,13 @@ void SmartRenderManager::enableRenderCache(bool enabled)
 
 void SmartRenderManager::clearRenderCache()
 {
-    QMutexLocker locker(&m_mutex);
+    // QMutexLocker removed - Qt event loop is single-threaded
     m_renderCache.clear();
 }
 
 void SmartRenderManager::processScheduledUpdates()
 {
-    QMutexLocker locker(&m_mutex);
+    // QMutexLocker removed - Qt event loop is single-threaded
     
     if (m_pendingUpdates.isEmpty()) {
         return;

@@ -65,7 +65,7 @@ bool DrawingToolEraser::mousePressEvent(QMouseEvent *event, const QPointF &scene
             }
         }
     } catch (...) {
-        qDebug() << "Error during mouse press erasing";
+        // qDebug() << "Error during mouse press erasing";
         m_isErasing = false;
     }
     

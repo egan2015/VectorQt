@@ -15,15 +15,15 @@ CommandManager::CommandManager(QObject *parent)
     , m_scene(nullptr)
     , m_undoStack(new QUndoStack(this))
 {
-    qDebug() << "CommandManager created";
+    // qDebug() << "CommandManager created";
     
     connect(m_undoStack, &QUndoStack::cleanChanged, this, &CommandManager::undoStackChanged);
     connect(m_undoStack, &QUndoStack::canUndoChanged, this, [this](bool canUndo) { 
-        qDebug() << "CommandManager: canUndoChanged:" << canUndo; 
+        // qDebug() << "CommandManager: canUndoChanged:" << canUndo; 
         emit canUndoChanged(canUndo); 
     });
     connect(m_undoStack, &QUndoStack::canRedoChanged, this, [this](bool canRedo) { 
-        qDebug() << "CommandManager: canRedoChanged:" << canRedo; 
+        // qDebug() << "CommandManager: canRedoChanged:" << canRedo; 
         emit canRedoChanged(canRedo); 
     });
     connect(m_undoStack, &QUndoStack::undoTextChanged, this, &CommandManager::undoStackChanged);
@@ -31,7 +31,7 @@ CommandManager::CommandManager(QObject *parent)
 
 CommandManager::~CommandManager()
 {
-    qDebug() << "CommandManager destroyed";
+    // qDebug() << "CommandManager destroyed";
     clearInstance();
 }
 
@@ -99,19 +99,19 @@ void CommandManager::pushCommand(QUndoCommand *command)
         return;
     }
     
-    qDebug() << "CommandManager::pushCommand called with:" << command->text();
-    qDebug() << "CommandManager::pushCommand - undoStack count before:" << m_undoStack->count();
+    // qDebug() << "CommandManager::pushCommand called with:" << command->text();
+    // qDebug() << "CommandManager::pushCommand - undoStack count before:" << m_undoStack->count();
     m_undoStack->push(command);
-    qDebug() << "CommandManager::pushCommand - undoStack count after:" << m_undoStack->count();
+    // qDebug() << "CommandManager::pushCommand - undoStack count after:" << m_undoStack->count();
     emit commandExecuted(command->text());
     if (m_scene) m_scene->setModified(true);
-    qDebug() << "CommandManager::pushCommand completed";
+    // qDebug() << "CommandManager::pushCommand completed";
 }
 
 void CommandManager::beginMacro(const QString& text)
 {
     if (m_undoStack) {
-        qDebug() << "CommandManager::beginMacro called with:" << text;
+        // qDebug() << "CommandManager::beginMacro called with:" << text;
         m_undoStack->beginMacro(text);
     } else {
         qWarning() << "CommandManager::beginMacro - no undo stack available";
@@ -121,7 +121,7 @@ void CommandManager::beginMacro(const QString& text)
 void CommandManager::endMacro()
 {
     if (m_undoStack) {
-        qDebug() << "CommandManager::endMacro called";
+        // qDebug() << "CommandManager::endMacro called";
         m_undoStack->endMacro();
     } else {
         qWarning() << "CommandManager::endMacro - no undo stack available";

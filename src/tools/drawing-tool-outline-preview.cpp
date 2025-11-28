@@ -191,7 +191,7 @@ void OutlinePreviewTransformTool::deactivate()
 
 bool OutlinePreviewTransformTool::mousePressEvent(QMouseEvent *event, const QPointF &scenePos)
 {
-    qDebug() << "mousePressEvent called, current selected count:" << (m_scene ? m_scene->selectedItems().count() : 0);
+    // qDebug() << "mousePressEvent called, current selected count:" << (m_scene ? m_scene->selectedItems().count() : 0);
     if (!m_scene || event->button() != Qt::LeftButton)
         return false;
 

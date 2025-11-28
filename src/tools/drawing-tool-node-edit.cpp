@@ -11,6 +11,7 @@
 #include "../tools/node-handle-manager.h"
 #include "../tools/handle-item.h"
 #include "../ui/snap-manager.h"
+#include "../ui/command-manager.h"
 
 // NodeEditCommand 实现
 NodeEditCommand::NodeEditCommand(DrawingScene *scene, DrawingShape *shape, int nodeIndex,
@@ -417,7 +418,12 @@ bool DrawingNodeEditTool::mouseReleaseEvent(QMouseEvent *event, const QPointF &s
                     NodeEditCommand *command = new NodeEditCommand(m_scene, m_selectedShape,
                                                                    handleInfo.nodeIndex, m_originalValue, currentPos,
                                                                    oldCornerRadius, newCornerRadius);
-                    m_scene->executeCommand(command);
+                    if (CommandManager::hasInstance()) {
+        CommandManager::instance()->pushCommand(command);
+    } else {
+        command->redo();
+        delete command;
+    }
                 }
             }
 

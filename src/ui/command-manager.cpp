@@ -5,11 +5,16 @@
 #include <QGraphicsItem>
 #include <QDataStream>
 
+// 静态成员初始化
+CommandManager* CommandManager::s_instance = nullptr;
+
 CommandManager::CommandManager(QObject *parent)
     : QObject(parent)
     , m_scene(nullptr)
     , m_undoStack(new QUndoStack(this))
 {
+    qDebug() << "CommandManager created";
+    
     connect(m_undoStack, &QUndoStack::cleanChanged, this, &CommandManager::undoStackChanged);
     connect(m_undoStack, &QUndoStack::canUndoChanged, this, [this](bool canUndo) { 
         qDebug() << "CommandManager: canUndoChanged:" << canUndo; 
@@ -24,11 +29,21 @@ CommandManager::CommandManager(QObject *parent)
 
 CommandManager::~CommandManager()
 {
+    qDebug() << "CommandManager destroyed";
+    clearInstance();
 }
 
 void CommandManager::setScene(DrawingScene *scene)
 {
     m_scene = scene;
+    
+    // 监听 scene 销毁，避免悬空引用
+    if (scene) {
+        connect(scene, &QObject::destroyed, this, [this]() {
+            qDebug() << "Scene destroyed, clearing reference";
+            m_scene = nullptr;
+        });
+    }
 }
 
 DrawingScene *CommandManager::scene() const
@@ -71,16 +86,43 @@ void CommandManager::clear()
 
 void CommandManager::pushCommand(QUndoCommand *command)
 {
-    if (command) {
-        qDebug() << "CommandManager::pushCommand called with:" << command->text();
-        qDebug() << "CommandManager::pushCommand - undoStack count before:" << m_undoStack->count();
-        m_undoStack->push(command);
-        qDebug() << "CommandManager::pushCommand - undoStack count after:" << m_undoStack->count();
-        emit commandExecuted(command->text());
-        if (m_scene) m_scene->setModified(true);
-        qDebug() << "CommandManager::pushCommand completed";
+    if (!command) {
+        qWarning() << "CommandManager::pushCommand called with null command";
+        return;
+    }
+    
+    if (!m_undoStack) {
+        qWarning() << "CommandManager::pushCommand - no undo stack available";
+        delete command;
+        return;
+    }
+    
+    qDebug() << "CommandManager::pushCommand called with:" << command->text();
+    qDebug() << "CommandManager::pushCommand - undoStack count before:" << m_undoStack->count();
+    m_undoStack->push(command);
+    qDebug() << "CommandManager::pushCommand - undoStack count after:" << m_undoStack->count();
+    emit commandExecuted(command->text());
+    if (m_scene) m_scene->setModified(true);
+    qDebug() << "CommandManager::pushCommand completed";
+}
+
+void CommandManager::beginMacro(const QString& text)
+{
+    if (m_undoStack) {
+        qDebug() << "CommandManager::beginMacro called with:" << text;
+        m_undoStack->beginMacro(text);
     } else {
-        qDebug() << "CommandManager::pushCommand called with null command";
+        qWarning() << "CommandManager::beginMacro - no undo stack available";
+    }
+}
+
+void CommandManager::endMacro()
+{
+    if (m_undoStack) {
+        qDebug() << "CommandManager::endMacro called";
+        m_undoStack->endMacro();
+    } else {
+        qWarning() << "CommandManager::endMacro - no undo stack available";
     }
 }
 

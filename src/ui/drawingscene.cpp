@@ -363,7 +363,7 @@ DrawingScene::DrawingScene(QObject *parent)
     , m_guidesEnabled(true)
     , m_scaleHintVisible(false)
     , m_rotateHintVisible(false)
-    , m_commandManager(nullptr)
+    
     , m_currentTool(0) // 默认为选择工具
 {
     // 不在这里创建选择层，只在选择工具激活时创建
@@ -384,37 +384,11 @@ void DrawingScene::setModified(bool modified)
     }
 }
 
-void DrawingScene::setCommandManager(CommandManager *commandManager)
-{
-    m_commandManager = commandManager;
-}
+
 
 void DrawingScene::setSnapManager(SnapManager *snapManager)
 {
     m_snapManager = snapManager;
-}
-
-QUndoStack* DrawingScene::undoStack()
-{
-    return m_commandManager ? m_commandManager->undoStack() : nullptr;
-}
-
-void DrawingScene::pushCommand(QUndoCommand *command)
-{
-    if (m_commandManager) {
-        m_commandManager->pushCommand(command);
-    } else {
-        // 如果没有CommandManager，直接执行命令并删除
-        command->redo();
-        delete command;
-        qDebug() << "Warning: No CommandManager set, command executed without undo support";
-    }
-    setModified(true);
-}
-
-void DrawingScene::executeCommand(QUndoCommand *command)
-{
-    pushCommand(command);
 }
 
 void DrawingScene::clearScene()
@@ -431,11 +405,14 @@ void DrawingScene::clearScene()
         }
     }
     
-    if (m_commandManager) {
-        m_commandManager->clear();
+    // 清理撤销栈（通过CommandManager）
+    if (CommandManager::hasInstance()) {
+        CommandManager::instance()->clear();
     }
     setModified(false);
 }
+
+
 
 // 变换撤销支持
 void DrawingScene::beginTransform(TransformType type)
@@ -501,8 +478,13 @@ void DrawingScene::endTransform()
     qDebug() << "SceneTransformCommand hasChanged:" << hasChanged << "Shapes count:" << m_transformShapes.size();
     
     if (hasChanged) {
-        pushCommand(command);
-        qDebug() << "SceneTransformCommand pushed to command manager. Stack size:" << (m_commandManager ? m_commandManager->undoStack()->count() : 0);
+        if (CommandManager::hasInstance()) {
+            CommandManager::instance()->pushCommand(command);
+            qDebug() << "SceneTransformCommand pushed to command manager. Stack size:" << CommandManager::instance()->undoStack()->count();
+        } else {
+            qDebug() << "No CommandManager instance, deleting command";
+            delete command;
+        }
     } else {
         // 没有实际变化，删除命令
         qDebug() << "SceneTransformCommand deleted (no actual changes)";
@@ -535,8 +517,13 @@ void DrawingScene::endTransformWithStates(const QList<TransformState>& newStates
     SceneTransformCommand *command = new SceneTransformCommand(this, m_transformShapes, m_transformOldStates, newStates, commandType);
     
     // 直接推送到撤销栈，不检查hasChanged（因为我们明确提供了新状态）
-    pushCommand(command);
-    qDebug() << "SceneTransformCommand pushed with provided states. Stack size:" << (m_commandManager ? m_commandManager->undoStack()->count() : 0);
+    if (CommandManager::hasInstance()) {
+        CommandManager::instance()->pushCommand(command);
+        qDebug() << "SceneTransformCommand pushed with provided states. Stack size:" << CommandManager::instance()->undoStack()->count();
+    } else {
+        qDebug() << "No CommandManager instance, deleting command";
+        delete command;
+    }
     
     // 清理临时状态
     m_transformOldStates.clear();
@@ -621,7 +608,11 @@ void DrawingScene::keyPressEvent(QKeyEvent *event)
                 
                 // 执行删除命令（CommandManager会自动调用redo）
                 foreach (RemoveItemCommand *command, deleteCommands) {
-                    pushCommand(command);
+                    if (CommandManager::hasInstance()) {
+                        CommandManager::instance()->pushCommand(command);
+                    } else {
+                        delete command;
+                    }
                 }
                 
                 setModified(true);
@@ -1202,9 +1193,9 @@ void DrawingScene::groupSelectedItems()
     }
     
     // 创建并执行组合命令
-    if (m_commandManager) {
-        GroupCommand *command = new GroupCommand(m_commandManager, shapesToGroup);
-        pushCommand(command);
+    if (CommandManager::hasInstance()) {
+        GroupCommand *command = new GroupCommand(CommandManager::instance(), shapesToGroup);
+        CommandManager::instance()->pushCommand(command);
     }
 }
 
@@ -1229,10 +1220,10 @@ void DrawingScene::ungroupSelectedItems()
     }
     
     // 为每个组合对象创建取消组合命令
-    if (m_commandManager) {
+    if (CommandManager::hasInstance()) {
         for (DrawingGroup *group : groupsToUngroup) {
-            UngroupCommand *command = new UngroupCommand(m_commandManager, {group});
-            pushCommand(command);
+            UngroupCommand *command = new UngroupCommand(CommandManager::instance(), {group});
+            CommandManager::instance()->pushCommand(command);
         }
     }
 }

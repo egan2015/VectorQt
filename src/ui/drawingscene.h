@@ -29,19 +29,10 @@ public:
     
     explicit DrawingScene(QObject *parent = nullptr);
     
-    QUndoStack* undoStack();
-    
     bool isModified() const { return m_isModified; }
     void setModified(bool modified);
     
-    // 公共命令执行方法
-    void executeCommand(QUndoCommand *command);
-    
     void clearScene();
-    
-    // CommandManager 访问
-    void setCommandManager(CommandManager *commandManager);
-    CommandManager* commandManager() const { return m_commandManager; }
     
     // SnapManager 访问
     void setSnapManager(SnapManager *snapManager);
@@ -223,18 +214,11 @@ private:
     QList<DrawingShape*> m_transformShapes;  // 保存变换时的图形引用
     TransformType m_currentTransformType;
     
-    // CommandManager 引用
-    CommandManager *m_commandManager;
-    
     // SnapManager 引用（合并了网格和对象吸附）
     SnapManager *m_snapManager;
     
     // 当前工具类型
     int m_currentTool;
-    
-private:
-    // 辅助方法：推送命令到撤销栈
-    void pushCommand(QUndoCommand *command);
     
     
 };

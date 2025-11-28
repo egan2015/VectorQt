@@ -43,58 +43,58 @@ CommandManager *PathOperationsManager::commandManager() const
 
 void PathOperationsManager::pathUnion()
 {
-    performBooleanOperation(Union, "路径联合");
+    performBooleanOperationMacro(Union, "路径联合");
 }
 
 void PathOperationsManager::pathSubtract()
 {
-    performBooleanOperation(Subtract, "路径减去");
+    performBooleanOperationMacro(Subtract, "路径减去");
 }
 
 void PathOperationsManager::pathIntersect()
 {
-    performBooleanOperation(Intersect, "路径相交");
+    performBooleanOperationMacro(Intersect, "路径相交");
 }
 
 void PathOperationsManager::pathXor()
 {
-    performBooleanOperation(Xor, "路径异或");
+    performBooleanOperationMacro(Xor, "路径异或");
 }
 
 void PathOperationsManager::pathSimplify()
 {
     qDebug() << "PathOperationsManager::pathSimplify() called";
-    performPathOperation(Simplify, "路径简化");
+    performPathOperationMacro(Simplify, "路径简化");
 }
 
 void PathOperationsManager::pathSmooth()
 {
     qDebug() << "PathOperationsManager::pathSmooth() called";
-    performPathOperation(Smooth, "路径平滑");
+    performPathOperationMacro(Smooth, "路径平滑");
 }
 
 void PathOperationsManager::pathReverse()
 {
     qDebug() << "PathOperationsManager::pathReverse() called";
-    performPathOperation(Reverse, "路径反转");
+    performPathOperationMacro(Reverse, "路径反转");
 }
 
 void PathOperationsManager::pathConvertToCurve()
 {
     qDebug() << "PathOperationsManager::pathConvertToCurve() called";
-    performPathOperation(ConvertToCurve, "转换为曲线");
+    performPathOperationMacro(ConvertToCurve, "转换为曲线");
 }
 
 void PathOperationsManager::pathOffsetPath()
 {
     qDebug() << "PathOperationsManager::pathOffsetPath() called";
-    performPathOperation(OffsetPath, "偏移路径");
+    performPathOperationMacro(OffsetPath, "偏移路径");
 }
 
 void PathOperationsManager::pathClipPath()
 {
     qDebug() << "PathOperationsManager::pathClipPath() called";
-    performPathOperation(ClipPath, "裁剪路径");
+    performPathOperationMacro(ClipPath, "裁剪路径");
 }
 
 void PathOperationsManager::convertTextToPath()
@@ -319,6 +319,205 @@ void PathOperationsManager::performBooleanOperation(BooleanOperation op, const Q
     
     emit pathOperationCompleted(opName);
     emit statusMessageChanged(QString("已执行 %1 操作").arg(opName));
+}
+
+void PathOperationsManager::performBooleanOperationMacro(BooleanOperation op, const QString &opName)
+{
+    qDebug() << "PathOperationsManager::performBooleanOperationMacro() called with operation:" << opName;
+    
+    if (!validateSelectionForBoolean()) {
+        qDebug() << "validateSelectionForBoolean() returned false";
+        return;
+    }
+    
+    if (!CommandManager::hasInstance()) {
+        qWarning() << "No CommandManager available for macro operation";
+        return;
+    }
+    
+    // 使用宏命令包装整个布尔运算过程
+    CommandManager::instance()->executeMacro(opName, [this, op]() {
+        executeBooleanOperationSteps(op);
+    });
+    
+    emit pathOperationCompleted(opName);
+    emit statusMessageChanged(QString("已执行 %1 操作").arg(opName));
+}
+
+// 分解式命令：移除原始图形
+class RemoveShapesCommand : public QUndoCommand {
+public:
+    RemoveShapesCommand(DrawingScene* scene, const QList<DrawingShape*>& shapes, QUndoCommand* parent = nullptr)
+        : QUndoCommand("移除原始图形", parent), m_scene(scene), m_shapes(shapes)
+    {
+        // 保存位置和样式信息
+        for (DrawingShape* shape : shapes) {
+            m_savedPositions[shape] = shape->scenePos();
+            m_savedStyles[shape] = {shape->strokePen(), shape->fillBrush()};
+        }
+    }
+    
+    void undo() override {
+        if (!m_scene) return;
+        
+        // 重新添加图形到场景
+        for (DrawingShape* shape : m_shapes) {
+            if (shape) {
+                m_scene->addItem(shape);
+                shape->setPos(m_savedPositions[shape]);
+                shape->setStrokePen(m_savedStyles[shape].first);
+                shape->setFillBrush(m_savedStyles[shape].second);
+                shape->setVisible(true);
+            }
+        }
+    }
+    
+    void redo() override {
+        if (!m_scene) return;
+        
+        // 从场景中移除图形但不删除
+        for (DrawingShape* shape : m_shapes) {
+            if (shape) {
+                m_scene->removeItem(shape);
+                shape->setVisible(false);
+            }
+        }
+    }
+    
+private:
+    DrawingScene* m_scene;
+    QList<DrawingShape*> m_shapes;
+    QMap<DrawingShape*, QPointF> m_savedPositions;
+    QMap<DrawingShape*, QPair<QPen, QBrush>> m_savedStyles;
+};
+
+// 分解式命令：创建新路径
+class CreatePathCommand : public QUndoCommand {
+public:
+    CreatePathCommand(DrawingScene* scene, DrawingPath* path, QUndoCommand* parent = nullptr)
+        : QUndoCommand("创建结果路径", parent), m_scene(scene), m_path(path), m_addedToScene(false)
+    {
+    }
+    
+    ~CreatePathCommand() {
+        // 如果路径不在场景中，删除它
+        if (m_path && m_path->scene() != m_scene) {
+            delete m_path;
+        }
+    }
+    
+    void undo() override {
+        if (!m_scene || !m_path) return;
+        
+        if (m_addedToScene) {
+            m_scene->removeItem(m_path);
+            m_path->setVisible(false);
+            m_addedToScene = false;
+        }
+    }
+    
+    void redo() override {
+        if (!m_scene || !m_path) return;
+        
+        if (!m_addedToScene) {
+            m_scene->addItem(m_path);
+            m_path->setVisible(true);
+            m_path->setSelected(true);
+            m_addedToScene = true;
+        }
+    }
+    
+private:
+    DrawingScene* m_scene;
+    DrawingPath* m_path;
+    bool m_addedToScene;
+};
+
+void PathOperationsManager::executeBooleanOperationSteps(BooleanOperation op)
+{
+    if (!m_scene || !CommandManager::hasInstance()) return;
+    
+    // 第一步：收集原始图形
+    QList<DrawingShape*> originalShapes;
+    QList<QGraphicsItem*> selectedItems = m_scene->selectedItems();
+    
+    for (QGraphicsItem *item : selectedItems) {
+        DrawingShape *shape = dynamic_cast<DrawingShape*>(item);
+        if (shape) {
+            originalShapes.append(shape);
+        }
+    }
+    
+    if (originalShapes.size() < 2) return;
+    
+    // 第一步：使用分解式命令移除原始图形
+    CommandManager::instance()->pushCommand(new RemoveShapesCommand(m_scene, originalShapes));
+    
+    // 第二步：计算布尔运算结果
+    QList<QPainterPath> paths;
+    QPen strokePen;
+    QBrush fillBrush;
+    
+    for (DrawingShape *shape : originalShapes) {
+        if (shape) {
+            QPainterPath shapePath = shape->transformedShape();
+            QTransform transform;
+            transform.translate(shape->pos().x(), shape->pos().y());
+            shapePath = transform.map(shapePath);
+            
+            if (!shapePath.isEmpty()) {
+                paths.append(shapePath);
+            }
+            
+            if (strokePen == QPen()) {
+                strokePen = shape->strokePen();
+                fillBrush = shape->fillBrush();
+            }
+        }
+    }
+    
+    // 第三步：计算布尔运算结果
+    QPainterPath resultPath;
+    switch (op) {
+        case Union:
+            resultPath = paths.first();
+            for (int i = 1; i < paths.size(); ++i) {
+                resultPath = resultPath.united(paths[i]);
+            }
+            break;
+        case Subtract:
+            resultPath = paths.first();
+            for (int i = 1; i < paths.size(); ++i) {
+                resultPath = resultPath.subtracted(paths[i]);
+            }
+            break;
+        case Intersect:
+            resultPath = paths.first();
+            for (int i = 1; i < paths.size(); ++i) {
+                resultPath = resultPath.intersected(paths[i]);
+            }
+            break;
+        case Xor:
+            resultPath = paths.first();
+            for (int i = 1; i < paths.size(); ++i) {
+                // QPainterPath 没有 xored 方法，使用替代实现
+                QPainterPath temp = paths[i];
+                temp.setFillRule(Qt::OddEvenFill);
+                resultPath.setFillRule(Qt::OddEvenFill);
+                resultPath = resultPath.subtracted(temp).united(temp.subtracted(resultPath));
+            }
+            break;
+    }
+    
+    // 第四步：使用分解式命令创建新路径
+    if (!resultPath.isEmpty()) {
+        DrawingPath *newPath = new DrawingPath();
+        newPath->setPath(resultPath);
+        newPath->setStrokePen(strokePen);
+        newPath->setFillBrush(fillBrush);
+        
+        CommandManager::instance()->pushCommand(new CreatePathCommand(m_scene, newPath));
+    }
 }
 
 void PathOperationsManager::performPathOperation(PathOperation op, const QString &opName)
@@ -579,6 +778,143 @@ void PathOperationsManager::performPathOperation(PathOperation op, const QString
     
     emit pathOperationCompleted(opName);
     emit statusMessageChanged(QString("已执行 %1 操作").arg(opName));
+}
+
+void PathOperationsManager::performPathOperationMacro(PathOperation op, const QString &opName)
+{
+    qDebug() << "PathOperationsManager::performPathOperationMacro() called with operation:" << opName;
+    
+    if (!validateSelectionForPathOperation()) {
+        qDebug() << "validateSelectionForPathOperation() returned false";
+        return;
+    }
+    
+    if (!CommandManager::hasInstance()) {
+        qWarning() << "No CommandManager available for macro operation";
+        return;
+    }
+    
+    // 使用宏命令包装整个路径操作过程
+    CommandManager::instance()->executeMacro(opName, [this, op]() {
+        executePathOperationSteps(op);
+    });
+    
+    emit pathOperationCompleted(opName);
+    emit statusMessageChanged(QString("已执行 %1 操作").arg(opName));
+}
+
+// 替换路径命令
+class ReplacePathCommand : public QUndoCommand {
+public:
+    ReplacePathCommand(DrawingScene* scene, DrawingPath* oldPath, DrawingPath* newPath, QUndoCommand* parent = nullptr)
+        : QUndoCommand("替换路径", parent), m_scene(scene), m_oldPath(oldPath), m_newPath(newPath), m_replaced(false)
+    {
+    }
+    
+    ~ReplacePathCommand() {
+        if (!m_replaced && m_newPath) {
+            delete m_newPath;
+        }
+    }
+    
+    void undo() override {
+        if (!m_scene || !m_oldPath || !m_newPath) return;
+        
+        if (m_replaced) {
+            // 恢复旧路径
+            m_scene->removeItem(m_newPath);
+            m_scene->addItem(m_oldPath);
+            m_oldPath->setVisible(true);
+            m_newPath->setVisible(false);
+            m_replaced = false;
+        }
+    }
+    
+    void redo() override {
+        if (!m_scene || !m_oldPath || !m_newPath) return;
+        
+        if (!m_replaced) {
+            // 替换为新路径
+            m_scene->removeItem(m_oldPath);
+            m_scene->addItem(m_newPath);
+            m_oldPath->setVisible(false);
+            m_newPath->setVisible(true);
+            m_newPath->setSelected(true);
+            m_replaced = true;
+        }
+    }
+    
+private:
+    DrawingScene* m_scene;
+    DrawingPath* m_oldPath;
+    DrawingPath* m_newPath;
+    bool m_replaced;
+};
+
+void PathOperationsManager::executePathOperationSteps(PathOperation op)
+{
+    if (!m_scene || !CommandManager::hasInstance()) return;
+    
+    // 收集选中的路径图形
+    QList<DrawingShape*> selectedShapes;
+    QList<QGraphicsItem*> selectedItems = m_scene->selectedItems();
+    
+    for (QGraphicsItem *item : selectedItems) {
+        DrawingShape *shape = dynamic_cast<DrawingShape*>(item);
+        if (shape && shape->shapeType() == DrawingShape::Path) {
+            selectedShapes.append(shape);
+        }
+    }
+    
+    if (selectedShapes.isEmpty()) {
+        qWarning() << "No path shapes selected for operation";
+        return;
+    }
+    
+    // 对每个选中的路径执行操作
+    for (DrawingShape *shape : selectedShapes) {
+        if (!shape) continue;
+        
+        DrawingPath *pathShape = static_cast<DrawingPath*>(shape);
+        QPainterPath originalPath = pathShape->path();
+        
+        // 保存原始路径，用于撤销
+        m_originalPaths[shape] = originalPath;
+        
+        // 执行路径操作
+        QPainterPath newPath;
+        switch (op) {
+            case Simplify:
+                newPath = simplifyPathStatic(originalPath);
+                break;
+            case Smooth:
+                newPath = smoothPathStatic(originalPath);
+                break;
+            case Reverse:
+                newPath = originalPath.toReversed();
+                break;
+            case ConvertToCurve:
+                newPath = convertToCurveStatic(originalPath);
+                break;
+            case OffsetPath:
+                newPath = offsetPathStatic(originalPath, 5.0); // 默认偏移5像素
+                break;
+            case ClipPath:
+                // 裁剪路径实现（简化版）
+                newPath.addRect(originalPath.boundingRect());
+                break;
+        }
+        
+        // 创建新的路径对象替换原来的
+        DrawingPath *newPathShape = new DrawingPath();
+        newPathShape->setPath(newPath);
+        newPathShape->setStrokePen(shape->strokePen());
+        newPathShape->setFillBrush(shape->fillBrush());
+        newPathShape->setPos(shape->pos());
+        
+        // 使用分解式命令替换路径
+        CommandManager::instance()->pushCommand(new ReplacePathCommand(m_scene, pathShape, newPathShape));
+    }
 }
 
 bool PathOperationsManager::validateSelectionForBoolean()

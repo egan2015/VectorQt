@@ -21,11 +21,35 @@ class CommandManager : public QObject
     Q_OBJECT
 
 public:
+    // 禁用拷贝和移动
+    CommandManager(const CommandManager&) = delete;
+    CommandManager& operator=(const CommandManager&) = delete;
+    
+    // 获取当前实例（可能为 nullptr）
+    static CommandManager* instance() { return s_instance; }
+    
+    // 检查实例是否有效
+    static bool hasInstance() { return s_instance != nullptr; }
+    
+    // 设置实例（只能调用一次）
+    static void setInstance(CommandManager* instance) {
+        Q_ASSERT(s_instance == nullptr && "CommandManager instance already set");
+        s_instance = instance;
+    }
+    
+    // 清理实例
+    static void clearInstance() {
+        s_instance = nullptr;
+    }
+
     explicit CommandManager(QObject *parent = nullptr);
     ~CommandManager();
 
     void setScene(DrawingScene *scene);
     DrawingScene *scene() const;
+    
+    // 安全检查方法
+    bool hasValidScene() const { return m_scene != nullptr; }
     
     // 撤销/重做操作
     void undo();
@@ -36,6 +60,24 @@ public:
     
     // 命令执行
     void pushCommand(QUndoCommand *command);
+    
+    // 便捷的命令创建和推送
+    template<typename T, typename... Args>
+    void createAndPush(Args&&... args) {
+        pushCommand(new T(std::forward<Args>(args)...));
+    }
+    
+    // 宏命令支持
+    void beginMacro(const QString& text);
+    void endMacro();
+    
+    // 便捷的宏命令方法
+    template<typename Func>
+    void executeMacro(const QString& text, Func&& func) {
+        beginMacro(text);
+        func();
+        endMacro();
+    }
     
     // 获取撤销栈
     QUndoStack* undoStack() const { return m_undoStack; }
@@ -48,6 +90,7 @@ signals:
     void canRedoChanged(bool canRedo);
 
 private:
+    static CommandManager* s_instance;
     DrawingScene *m_scene;
     QUndoStack *m_undoStack;
 };

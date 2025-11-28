@@ -330,13 +330,13 @@ bool LegacyRectangleTool::mouseReleaseEvent(QMouseEvent *event, const QPointF &s
                     
                     // 创建一个简单的撤销命令
                     // 使用统一的CreateCommand
-                    CreateCommand *command = new CreateCommand(m_scene->commandManager(), m_currentItem, "添加矩形");
-                    if (m_scene->commandManager()) {
-                        m_scene->commandManager()->pushCommand(command);
-                    } else {
-                        // 降级处理：直接使用撤销栈
-                        command->redo();
-                        delete command;
+                    if (CommandManager::hasInstance()) {
+        CreateCommand *command = new CreateCommand(CommandManager::instance(), m_currentItem, "添加矩形");
+        CommandManager::instance()->pushCommand(command);
+    } else {
+                        // 降级处理：直接执行并删除
+                        m_scene->addItem(m_currentItem);
+                        m_scene->setModified(true);
                     }
                 }
                 // 重要：将所有权转移给场景/图层，不再由工具管理
@@ -549,13 +549,13 @@ bool LegacyEllipseTool::mouseReleaseEvent(QMouseEvent *event, const QPointF &sce
                     
                     // 创建一个简单的撤销命令
                     // 使用统一的CreateCommand
-                    CreateCommand *command = new CreateCommand(m_scene->commandManager(), m_currentItem, "添加椭圆");
-                    if (m_scene->commandManager()) {
-                        m_scene->commandManager()->pushCommand(command);
-                    } else {
-                        // 降级处理：直接使用撤销栈
-                        command->redo();
-                        delete command;
+                    if (CommandManager::hasInstance()) {
+        CreateCommand *command = new CreateCommand(CommandManager::instance(), m_currentItem, "添加椭圆");
+        CommandManager::instance()->pushCommand(command);
+    } else {
+                        // 降级处理：直接执行并删除
+                        m_scene->addItem(m_currentItem);
+                        m_scene->setModified(true);
                     }
                 }
                 m_currentItem = nullptr;

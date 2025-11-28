@@ -4,10 +4,12 @@
 #include <QObject>
 #include <QString>
 #include <QPainterPath>
+#include <QMap>
 
 class DrawingScene;
 class QMenu;
 class DrawingShape;
+class DrawingPath;
 class MainWindow;
 class CommandManager;
 
@@ -73,11 +75,17 @@ public slots:
     void createShapeAtPosition(const QString &shapeType, const QPointF &pos);
 
 private:
-    // 执行布尔运算
+    // 执行布尔运算（旧版本，保留兼容性）
     void performBooleanOperation(BooleanOperation op, const QString &opName);
+    
+    // 执行布尔运算（新版本，使用宏命令）
+    void performBooleanOperationMacro(BooleanOperation op, const QString &opName);
     
     // 执行路径操作
     void performPathOperation(PathOperation op, const QString &opName);
+    
+    // 执行路径操作（宏命令版本）
+    void performPathOperationMacro(PathOperation op, const QString &opName);
     
     // 检查选择是否适合操作
     bool validateSelectionForBoolean();
@@ -98,6 +106,20 @@ private:
     MainWindow *m_mainWindow;
     DrawingScene *m_scene;
     CommandManager *m_commandManager;
+    
+    // 宏命令版本的状态保存
+    QMap<DrawingShape*, QPointF> m_savedPositions;
+    QMap<DrawingShape*, QPair<QPen, QBrush>> m_savedStyles;
+    QList<DrawingPath*> m_createdPaths;
+    
+    // 执行布尔运算的具体步骤
+    void executeBooleanOperationSteps(BooleanOperation op);
+    
+    // 执行路径操作的具体步骤
+    void executePathOperationSteps(PathOperation op);
+    
+    // 宏命令版本的状态保存
+    QMap<DrawingShape*, QPainterPath> m_originalPaths;
 };
 
 #endif // PATH_OPERATIONS_MANAGER_H

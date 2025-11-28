@@ -3,6 +3,7 @@
 #include "../tools/drawing-tool-polygon.h"
 #include "../ui/drawingscene.h"
 #include "../ui/drawingview.h"
+#include "../ui/command-manager.h"
 
 DrawingToolPolygon::DrawingToolPolygon(QObject *parent)
     : ToolBase(parent)
@@ -128,7 +129,12 @@ bool DrawingToolPolygon::mouseDoubleClickEvent(QMouseEvent *event, const QPointF
             
             // 创建并推送撤销命令
             AddItemCommand *command = new AddItemCommand(m_scene, m_currentPolygon);
-            m_scene->executeCommand(command);
+            if (CommandManager::hasInstance()) {
+        CommandManager::instance()->pushCommand(command);
+    } else {
+        command->redo();
+        delete command;
+    }
             
             m_currentPolygon = nullptr;
         }

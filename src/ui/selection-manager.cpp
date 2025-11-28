@@ -273,9 +273,8 @@ void SelectionManager::alignLeft()
         QMap<DrawingShape*, QPointF> m_originalPositions;
     };
 
-    if (m_scene->commandManager()) {
-        // 使用本地定义的AlignCommand，它需要DrawingScene作为参数
-        m_scene->commandManager()->pushCommand(new AlignCommand(m_scene, shapes, leftEdge, nullptr));
+    if (CommandManager::hasInstance()) {
+        CommandManager::instance()->pushCommand(new AlignCommand(m_scene, shapes, leftEdge, nullptr));
     }
     emit alignmentCompleted("左对齐");
     emit statusMessageChanged("已左对齐选中的对象");

@@ -6,6 +6,7 @@
 #include "../ui/drawingscene.h"
 #include "../core/drawing-shape.h"
 #include "../ui/snap-manager.h"
+#include "../ui/command-manager.h"
 
 
 DrawingBezierTool::DrawingBezierTool(QObject *parent)
@@ -367,7 +368,12 @@ void DrawingBezierTool::finishDrawing()
             
             // 创建并推送撤销命令
             AddItemCommand *command = new AddItemCommand(m_scene, m_currentItem);
-            m_scene->executeCommand(command);
+            if (CommandManager::hasInstance()) {
+        CommandManager::instance()->pushCommand(command);
+    } else {
+        command->redo();
+        delete command;
+    }
         }
         
         qDebug() << "Finished drawing bezier curve with" << m_controlPoints.size() << "control points";

@@ -14,6 +14,7 @@
 #include "../core/drawing-shape.h"
 #include "../core/drawing-layer.h"
 #include "../core/layer-manager.h"
+#include "../ui/command-manager.h"
 
 DrawingToolBrush::DrawingToolBrush(QObject *parent)
     : ToolBase(parent)
@@ -277,7 +278,12 @@ bool DrawingToolBrush::mouseReleaseEvent(QMouseEvent *event, const QPointF &scen
                     
                     // 创建并推送撤销命令
                     BrushAddCommand *command = new BrushAddCommand(m_scene, m_currentPath, activeLayer);
-                    m_scene->executeCommand(command);
+                    if (CommandManager::hasInstance()) {
+        CommandManager::instance()->pushCommand(command);
+    } else {
+        command->redo();
+        delete command;
+    }
                 
                 m_scene->setModified(true);
                 m_currentPath = nullptr; // 不再由工具管理

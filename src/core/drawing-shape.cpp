@@ -18,6 +18,7 @@
 #include "../core/toolbase.h"
 #include "../ui/drawingscene.h"
 #include "../ui/snap-manager.h"
+#include "../ui/command-manager.h"
 // BezierControlPointCommand 实现
 BezierControlPointCommand::BezierControlPointCommand(DrawingScene *scene, DrawingPath *path, int pointIndex, 
                                                    const QPointF &oldPos, const QPointF &newPos, QUndoCommand *parent)
@@ -1368,7 +1369,12 @@ void DrawingPath::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
                         scene, this, m_activeControlPoint, 
                         m_originalControlPoints[m_activeControlPoint], 
                         m_controlPoints[m_activeControlPoint]);
-                    scene->executeCommand(command);
+                    if (CommandManager::hasInstance()) {
+        CommandManager::instance()->pushCommand(command);
+    } else {
+        command->redo();
+        delete command;
+    }
                 }
             }
         }

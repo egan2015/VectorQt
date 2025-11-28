@@ -384,7 +384,7 @@ void SnapManager::showSnapIndicators(const ObjectSnapResult &snapResult)
     
     m_lastSnapResult = snapResult;
     m_hasActiveSnap = true;
-    m_scene->update(); // 简单的全局刷新
+    //m_scene->update(); // 简单的全局刷新
 }
 
 void SnapManager::clearSnapIndicators()

@@ -123,8 +123,9 @@ MainWindow::MainWindow(QWidget *parent)
         updateUI();
     });
     
-    // 初始化命令管理器
+    // 初始化命令管理器并设置单例
     m_commandManager = new CommandManager(this);
+    CommandManager::setInstance(m_commandManager);
     
     // 设置命令管理器到选择管理器
     m_selectionManager->setCommandManager(m_commandManager);
@@ -133,6 +134,9 @@ MainWindow::MainWindow(QWidget *parent)
     if (m_effectManager) {
         m_effectManager->setCommandManager(m_commandManager);
     }
+    
+    // 设置 CommandManager 的 Scene
+    m_commandManager->setScene(m_scene);
     
     // 连接CommandManager的撤销栈信号到UI
     if (m_commandManager) {
@@ -242,6 +246,9 @@ MainWindow::~MainWindow()
         m_effectManager = nullptr;
     }
     if (m_commandManager) {
+        // 先清理单例引用
+        CommandManager::clearInstance();
+        // 然后删除对象
         delete m_commandManager;
         m_commandManager = nullptr;
     }
@@ -320,7 +327,7 @@ void MainWindow::setupUI()
     if (m_commandManager) {
         m_commandManager->setScene(m_scene);
         // 同时设置场景的CommandManager引用，供工具使用
-        m_scene->setCommandManager(m_commandManager);
+        
     }
 
     // 设置工具管理器的场景和视图

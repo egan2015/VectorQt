@@ -19,6 +19,7 @@
 
 #include "../ui/mainwindow.h"
 #include "../ui/colorpalette.h"
+#include "../ui/command-manager.h"
 
 DrawingToolPen::DrawingToolPen(QObject *parent)
     : ToolBase(parent)
@@ -405,7 +406,12 @@ void DrawingToolPen::createPathShape()
     
     // 创建并推送撤销命令
     PenAddCommand *command = new PenAddCommand(m_scene, pathShape, activeLayer);
-    m_scene->executeCommand(command);
+    if (CommandManager::hasInstance()) {
+        CommandManager::instance()->pushCommand(command);
+    } else {
+        command->redo();
+        delete command;
+    }
     
     m_scene->setModified(true);
 }
@@ -748,7 +754,12 @@ void DrawingToolPen::endFreeDraw()
     
     // 创建并推送撤销命令
     PenFreeDrawCommand *command = new PenFreeDrawCommand(m_scene, m_currentPath, activeLayer);
-    m_scene->executeCommand(command);
+    if (CommandManager::hasInstance()) {
+        CommandManager::instance()->pushCommand(command);
+    } else {
+        command->redo();
+        delete command;
+    }
     
     // 标记场景已修改
     m_scene->setModified(true);

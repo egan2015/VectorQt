@@ -75,14 +75,10 @@ bool DrawingToolLine::mouseReleaseEvent(QMouseEvent *event, const QPointF &scene
                 m_scene->setModified(true);
                 
                 // 使用统一的CreateCommand
-                CreateCommand *command = new CreateCommand(m_scene->commandManager(), m_currentLine, "添加直线");
-                if (m_scene->commandManager()) {
-                    m_scene->commandManager()->pushCommand(command);
-                } else {
-                    // 降级处理：直接执行
-                    command->redo();
-                    delete command;
-                }
+                if (CommandManager::hasInstance()) {
+        CreateCommand *command = new CreateCommand(CommandManager::instance(), m_currentLine, "添加直线");
+        CommandManager::instance()->pushCommand(command);
+    }
             }
             
             m_currentLine = nullptr; // 不删除，让场景管理

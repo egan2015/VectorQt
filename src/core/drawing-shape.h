@@ -26,6 +26,57 @@ class DrawingPath;
 class EditHandle;
 
 /**
+ * 通用节点信息结构 - 适用于所有图形类型
+ */
+struct NodeInfo {
+    enum NodeType {
+        Corner,     // 折线顶点/尖角节点
+        Curve,      // 曲线节点
+        Smooth,     // 平滑节点
+        Symmetric,  // 对称节点
+        Start,      // 起点
+        End,        // 终点
+        SizeControl, // 尺寸控制点
+        AngleControl, // 角度控制点
+        RadiusControl // 半径/圆角控制点
+    };
+    
+    QPointF position;         // 节点位置（本地坐标）
+    NodeType type;            // 节点类型
+    int elementIndex;          // 在路径元素中的索引
+    bool hasControlIn;         // 是否有进入控制点
+    bool hasControlOut;        // 是否有离开控制点
+    QPointF controlIn;         // 进入控制点位置
+    QPointF controlOut;        // 离开控制点位置
+    bool isVisible;            // 是否可见
+    
+    NodeInfo() : type(Corner), elementIndex(-1), hasControlIn(false), hasControlOut(false), isVisible(true) {}
+    
+    // 智能节点类型识别 - 根据当前控制杆状态自动识别节点类型
+    void detectAndUpdateNodeType();
+    
+    // 获取控制杆长度
+    qreal getInControlLength() const;
+    qreal getOutControlLength() const;
+    
+    // 获取控制杆角度（弧度）
+    qreal getInControlAngle() const;
+    qreal getOutControlAngle() const;
+    
+    // 智能转换节点类型
+    void convertToNodeType(NodeType newType);
+    
+    // 对齐控制杆
+    void alignControlArms(bool symmetric = false);
+    
+    // 处理单杆拖拽 - 根据节点类型智能调整另一个控制杆
+    void handleSingleArmDrag(bool isInArm, const QPointF &newControlPos);
+    
+    // 调试信息输出
+    void debugPrint() const;
+};
+
+/**
  * 贝塞尔曲线控制点编辑撤销命令
  */
 class BezierControlPointCommand : public QUndoCommand
@@ -162,6 +213,10 @@ public:
     // 检查图形是否有可编辑的节点
     virtual bool hasEditableNodes() const { return getNodePointCount() > 0; }
     
+    // 节点信息相关 - 获取详细的节点信息（包含类型、控制点等）
+    virtual QVector<NodeInfo> getNodeInfo() const { return QVector<NodeInfo>(); }
+    virtual void updateNodeInfo() {}
+    
     // 通知状态变化
     void notifyObjectStateChanged();
     
@@ -261,6 +316,9 @@ public:
     void endNodeDrag(int index) override;
     int getNodePointCount() const override { return 3; }
     
+    // 节点信息相关 - 矩形的节点信息
+    QVector<NodeInfo> getNodeInfo() const override;
+    
     // 🌟 将变换烘焙到矩形的内部几何结构中
     void bakeTransform(const QTransform &transform) override;
 
@@ -321,6 +379,9 @@ public:
         return (m_spanAngle != 360) ? 4 : 2; 
     }
     
+    // 节点信息相关 - 椭圆的节点信息
+    QVector<NodeInfo> getNodeInfo() const override;
+    
     // 🌟 将变换烘焙到椭圆的内部几何结构中
     void bakeTransform(const QTransform &transform) override;
 
@@ -343,6 +404,8 @@ private:
     qreal m_dragStartSpan = 0;       // 拖动开始时的跨度
     int m_dragMode = 0;              // 拖动模式：0=无，1=起始角度，2=结束角度
 };
+
+
 
 /**
  * 路径形状 - 支持复杂路径和变换
@@ -373,6 +436,13 @@ public:
     // 控制点连线显示
     void setShowControlPolygon(bool show);
     bool showControlPolygon() const;
+    
+    // 节点信息相关 - 重写基类方法
+    QVector<NodeInfo> getNodeInfo() const override;
+    void updateNodeInfo() override; // 从路径元素更新节点信息
+    
+    // 智能节点类型检测 - 用于调试和验证
+    void performSmartNodeTypeDetection();
     
     // 编辑点相关 - 路径的控制点
     QVector<QPointF> getNodePoints() const override;
@@ -418,6 +488,7 @@ private:
     QVector<QPainterPath::Element> m_pathElements; // 原始路径元素，保存曲线信息
     QVector<QPointF> m_controlPoints;  // 控制点，用于编辑
     QVector<QPainterPath::ElementType> m_controlPointTypes; // 控制点类型
+    QVector<NodeInfo> m_nodeInfo; // 节点信息，用于手柄系统
     
     // Marker相关
     QString m_markerId;
@@ -462,6 +533,9 @@ public:
     void beginNodeDrag(int index) override;
     void endNodeDrag(int index) override;
     int getNodePointCount() const override { return 2; }
+    
+    // 节点信息相关 - 文本的节点信息
+    QVector<NodeInfo> getNodeInfo() const override;
 
 protected:
     void paintShape(QPainter *painter) override;
@@ -507,6 +581,9 @@ public:
     void beginNodeDrag(int index) override;
     void endNodeDrag(int index) override;
     int getNodePointCount() const override { return 2; }
+    
+    // 节点信息相关 - 直线的节点信息
+    QVector<NodeInfo> getNodeInfo() const override;
 
 protected:
     void paintShape(QPainter *painter) override;
@@ -563,6 +640,9 @@ public:
     void endNodeDrag(int index) override;
     int getNodePointCount() const override { return m_points.size(); }
     void updateFromNodePoints() override;
+    
+    // 节点信息相关 - 折线的节点信息
+    QVector<NodeInfo> getNodeInfo() const override;
 
 protected:
     void paintShape(QPainter *painter) override;
@@ -619,6 +699,9 @@ public:
     void endNodeDrag(int index) override;
     int getNodePointCount() const override { return m_points.size(); }
     void updateFromNodePoints() override;
+    
+    // 节点信息相关 - 多边形的节点信息
+    QVector<NodeInfo> getNodeInfo() const override;
 
 protected:
     void paintShape(QPainter *painter) override;

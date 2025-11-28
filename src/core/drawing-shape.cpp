@@ -645,6 +645,37 @@ void DrawingRectangle::bakeTransform(const QTransform &transform)
     update();
 }
 
+// DrawingRectangle 节点信息实现
+QVector<NodeInfo> DrawingRectangle::getNodeInfo() const
+{
+    QVector<NodeInfo> nodeInfos;
+    
+    // 获取矩形的3个控制点：左上角、右下角、圆角控制
+    QVector<QPointF> points = getNodePoints();
+    
+    for (int i = 0; i < points.size(); ++i) {
+        NodeInfo node;
+        node.position = points[i];
+        node.elementIndex = i;
+        node.isVisible = true;
+        node.hasControlIn = false;
+        node.hasControlOut = false;
+        
+        // 根据索引设置节点类型
+        if (i == 0 || i == 1) {
+            // 左上角和右下角 - 尺寸控制点
+            node.type = NodeInfo::SizeControl;
+        } else if (i == 2) {
+            // 圆角控制点
+            node.type = NodeInfo::RadiusControl;
+        }
+        
+        nodeInfos.append(node);
+    }
+    
+    return nodeInfos;
+}
+
 // DrawingRectangle 序列化方法
 QByteArray DrawingRectangle::serialize() const
 {
@@ -1002,6 +1033,37 @@ void DrawingEllipse::bakeTransform(const QTransform &transform)
     update();
 }
 
+// DrawingEllipse 节点信息实现
+QVector<NodeInfo> DrawingEllipse::getNodeInfo() const
+{
+    QVector<NodeInfo> nodeInfos;
+    
+    // 获取椭圆的控制点
+    QVector<QPointF> points = getNodePoints();
+    
+    for (int i = 0; i < points.size(); ++i) {
+        NodeInfo node;
+        node.position = points[i];
+        node.elementIndex = i;
+        node.isVisible = true;
+        node.hasControlIn = false;
+        node.hasControlOut = false;
+        
+        // 根据索引设置节点类型
+        if (i == 0 || i == 1) {
+            // 右边中点和下边中点 - 尺寸控制点
+            node.type = NodeInfo::SizeControl;
+        } else if (i == 2 || i == 3) {
+            // 左边中点和上边中点 - 角度控制点（如果不是完整椭圆）
+            node.type = NodeInfo::AngleControl;
+        }
+        
+        nodeInfos.append(node);
+    }
+    
+    return nodeInfos;
+}
+
 // DrawingEllipse 序列化方法
 QByteArray DrawingEllipse::serialize() const
 {
@@ -1176,6 +1238,9 @@ void DrawingPath::setPath(const QPainterPath &path)
             m_controlPointTypes.append(elem.type);
         }
         
+        // 更新节点信息
+        updateNodeInfo();
+        
         update();
     }
 }
@@ -1207,27 +1272,110 @@ QPainterPath DrawingPath::transformedShape() const
 
 QVector<QPointF> DrawingPath::getNodePoints() const
 {
-    return m_controlPoints; // 返回路径的控制点作为节点编辑点
+    return m_controlPoints; // 返回路径的控制点作为节点编辑点（保持兼容性）
+}
+
+QVector<NodeInfo> DrawingPath::getNodeInfo() const
+{
+    // 如果节点信息为空或路径已更新，重新计算
+    if (m_nodeInfo.isEmpty() || m_nodeInfo.size() != m_pathElements.size()) {
+        // const_cast是因为这是一个缓存优化方法
+        const_cast<DrawingPath*>(this)->updateNodeInfo();
+    }
+    return m_nodeInfo;
+}
+
+void DrawingPath::updateNodeInfo()
+{
+    m_nodeInfo.clear();
+    m_nodeInfo.reserve(m_pathElements.size());
+    
+    for (int i = 0; i < m_pathElements.size(); ++i) {
+        const QPainterPath::Element &element = m_pathElements[i];
+        
+        NodeInfo node;
+        node.position = QPointF(element.x, element.y);
+        node.elementIndex = i;
+        node.isVisible = true;
+        node.hasControlIn = false;
+        node.hasControlOut = false;
+        
+        switch (element.type) {
+            case QPainterPath::MoveToElement:
+                node.type = NodeInfo::Start;
+                break;
+            case QPainterPath::LineToElement:
+                node.type = NodeInfo::Corner;
+                break;
+            case QPainterPath::CurveToElement:
+                node.type = NodeInfo::Curve;
+                // 查找对应的控制点
+                // 曲线元素后面跟着两个控制点元素
+                if (i + 2 < m_pathElements.size()) {
+                    const QPainterPath::Element &cp1 = m_pathElements[i + 1];
+                    const QPainterPath::Element &cp2 = m_pathElements[i + 2];
+                    
+                    if (cp1.type == QPainterPath::CurveToDataElement && 
+                        cp2.type == QPainterPath::CurveToDataElement) {
+                        node.controlIn = QPointF(cp1.x, cp1.y);
+                        node.controlOut = QPointF(cp2.x, cp2.y);
+                        node.hasControlIn = true;
+                        node.hasControlOut = true;
+                    }
+                }
+                break;
+            case QPainterPath::CurveToDataElement:
+                // 跳过控制点数据元素，它们由曲线元素处理
+                continue;
+        }
+        
+        m_nodeInfo.append(node);
+    }
+    
+    // 处理最后一个节点
+    if (!m_nodeInfo.isEmpty()) {
+        if (m_nodeInfo.last().type == NodeInfo::Start && m_nodeInfo.size() > 1) {
+            // 如果只有一个MoveTo，则它也是结束节点
+            m_nodeInfo.last().type = NodeInfo::End;
+        } else if (m_nodeInfo.last().type != NodeInfo::End) {
+            // 最后一个非End节点标记为End
+            m_nodeInfo.last().type = NodeInfo::End;
+        }
+    }
+    
+    // TODO: 智能节点类型检测暂时禁用，避免过度调用
+    // 需要在合适的时机（如用户操作后）调用，而不是每次更新都调用
+}
+
+void DrawingPath::performSmartNodeTypeDetection()
+{
+    qDebug() << "=== Starting smart node type detection (manual) ===";
+    for (NodeInfo &node : m_nodeInfo) {
+        if (node.type == NodeInfo::Curve) {
+            // 只对曲线节点进行智能检测
+            node.detectAndUpdateNodeType();
+            qDebug() << "Node" << &node - &m_nodeInfo[0] << "detected as type:" << node.type;
+        }
+    }
+    qDebug() << "=== Node type detection completed (manual) ===";
 }
 
 void DrawingPath::setNodePoint(int index, const QPointF &pos)
 {
     if (index >= 0 && index < m_controlPoints.size()) {
-        // 如果传入的是场景坐标，需要转换为本地坐标
-        // 检查坐标是否需要转换（通过判断是否在合理范围内）
-        QPointF localPos = pos;
+        // setNodePoint接收场景坐标，需要转换为本地坐标
+        QPointF localPos = mapFromScene(pos);
+        // 应用DrawingTransform的逆变换来获取真正的本地坐标
+        localPos = m_transform.inverted().map(localPos);
         
-        // 如果坐标看起来像是场景坐标（超出路径边界很多），进行转换
-        QRectF bounds = boundingRect();
-        if (pos.x() < bounds.left() - 100 || pos.x() > bounds.right() + 100 ||
-            pos.y() < bounds.top() - 100 || pos.y() > bounds.bottom() + 100) {
-            // 可能是场景坐标，转换为本地坐标
-            localPos = mapFromScene(pos);
-            // 应用DrawingTransform的逆变换来获取真正的本地坐标
-            localPos = m_transform.inverted().map(localPos);
+        // 更新控制点
+        m_controlPoints[index] = localPos;
+        
+        // 如果有节点信息，同步更新节点信息中的位置
+        if (index < m_nodeInfo.size()) {
+            m_nodeInfo[index].position = localPos;
         }
         
-        m_controlPoints[index] = localPos;
         updatePathFromControlPoints(); // 更新路径
     }
 }
@@ -1437,6 +1585,17 @@ void DrawingPath::updatePathFromControlPoints()
     // 直接更新内部路径，不调用setPath避免无限循环
     prepareGeometryChange();
     m_path = newPath;
+    
+    // 路径改变后，需要重新提取元素信息并更新节点信息
+    m_pathElements.clear();
+    for (int i = 0; i < newPath.elementCount(); ++i) {
+        const QPainterPath::Element &elem = newPath.elementAt(i);
+        m_pathElements.append(elem);
+    }
+    
+    // 更新节点信息以保持同步
+    updateNodeInfo();
+    
     update();
 }
 
@@ -1610,14 +1769,25 @@ QByteArray DrawingPath::serialize() const
         stream << element.y;
     }
     
-    stream << m_controlPoints;
-    stream << m_controlPointTypes;
     stream << m_markerId;
     stream << m_markerPixmap;
     stream << m_markerTransform;
     stream << m_showControlPolygon;
     stream << strokePen();
     stream << fillBrush();
+    
+    // 序列化节点信息
+    stream << static_cast<int>(m_nodeInfo.size());
+    for (const NodeInfo &node : m_nodeInfo) {
+        stream << static_cast<int>(node.type);
+        stream << node.position;
+        stream << node.elementIndex;
+        stream << node.hasControlIn;
+        stream << node.hasControlOut;
+        stream << node.controlIn;
+        stream << node.controlOut;
+        stream << node.isVisible;
+    }
     
     return data;
 }
@@ -1653,6 +1823,49 @@ void DrawingPath::deserialize(const QByteArray &data)
         element.x = x;
         element.y = y;
         m_pathElements.append(element);
+    }
+    
+    // 读取控制点相关数据（控制点是动态的，不需要序列化）
+    // 路径设置后会重新生成控制点
+    stream >> m_markerId;
+    stream >> m_markerPixmap;
+    stream >> m_markerTransform;
+    stream >> m_showControlPolygon;
+    
+    // 读取画笔和画刷（在基类之后读取）
+    QPen newPen;
+    stream >> newPen;
+    setStrokePen(newPen);
+    
+    QBrush newBrush;
+    stream >> newBrush;
+    setFillBrush(newBrush);
+    
+    // 读取节点信息
+    int nodeInfoCount;
+    stream >> nodeInfoCount;
+    m_nodeInfo.clear();
+    for (int i = 0; i < nodeInfoCount; ++i) {
+        NodeInfo node;
+        int typeValue;
+        stream >> typeValue;
+        node.type = static_cast<NodeInfo::NodeType>(typeValue);
+        stream >> node.position;
+        stream >> node.elementIndex;
+        stream >> node.hasControlIn;
+        stream >> node.hasControlOut;
+        stream >> node.controlIn;
+        stream >> node.controlOut;
+        stream >> node.isVisible;
+        m_nodeInfo.append(node);
+    }
+    
+    // 路径设置后，重新生成控制点和类型信息
+    m_controlPoints.clear();
+    m_controlPointTypes.clear();
+    for (const QPainterPath::Element &element : m_pathElements) {
+        m_controlPoints.append(QPointF(element.x, element.y));
+        m_controlPointTypes.append(element.type);
     }
     
     update();
@@ -1890,6 +2103,37 @@ void DrawingText::mouseDoubleClickEvent(QGraphicsSceneMouseEvent *event)
     QGraphicsItem::mouseDoubleClickEvent(event);
 }
 
+// DrawingText 节点信息实现
+QVector<NodeInfo> DrawingText::getNodeInfo() const
+{
+    QVector<NodeInfo> nodeInfos;
+    
+    // 获取文本的控制点（位置和大小）
+    QVector<QPointF> points = getNodePoints();
+    
+    for (int i = 0; i < points.size(); ++i) {
+        NodeInfo node;
+        node.position = points[i];
+        node.elementIndex = i;
+        node.isVisible = true;
+        node.hasControlIn = false;
+        node.hasControlOut = false;
+        
+        // 根据索引设置节点类型
+        if (i == 0) {
+            // 第一个点 - 位置控制
+            node.type = NodeInfo::Start;
+        } else if (i == 1) {
+            // 第二个点 - 大小控制
+            node.type = NodeInfo::SizeControl;
+        }
+        
+        nodeInfos.append(node);
+    }
+    
+    return nodeInfos;
+}
+
 // DrawingText 序列化方法
 QByteArray DrawingText::serialize() const
 {
@@ -2042,6 +2286,38 @@ void DrawingLine::paintShape(QPainter *painter)
     pen.setWidthF(m_lineWidth);
     painter->setPen(pen);
     painter->drawLine(m_line);
+}
+
+// DrawingLine 节点信息实现
+QVector<NodeInfo> DrawingLine::getNodeInfo() const
+{
+    QVector<NodeInfo> nodeInfos;
+    
+    // 获取直线的两个端点
+    QVector<QPointF> points = getNodePoints();
+    
+    for (int i = 0; i < points.size(); ++i) {
+        NodeInfo node;
+        node.position = points[i];
+        node.elementIndex = i;
+        node.isVisible = true;
+        node.hasControlIn = false;
+        node.hasControlOut = false;
+        
+        // 直线的两个端点都设置为Corner类型
+        node.type = NodeInfo::Corner;
+        
+        // 第一个点标记为Start，最后一个点标记为End
+        if (i == 0) {
+            node.type = NodeInfo::Start;
+        } else if (i == points.size() - 1) {
+            node.type = NodeInfo::End;
+        }
+        
+        nodeInfos.append(node);
+    }
+    
+    return nodeInfos;
 }
 
 // DrawingLine 序列化方法
@@ -2334,6 +2610,38 @@ void DrawingPolyline::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
     DrawingShape::mouseReleaseEvent(event);
 }
 
+// DrawingPolyline 节点信息实现
+QVector<NodeInfo> DrawingPolyline::getNodeInfo() const
+{
+    QVector<NodeInfo> nodeInfos;
+    
+    // 获取折线的所有顶点
+    QVector<QPointF> points = getNodePoints();
+    
+    for (int i = 0; i < points.size(); ++i) {
+        NodeInfo node;
+        node.position = points[i];
+        node.elementIndex = i;
+        node.isVisible = true;
+        node.hasControlIn = false;
+        node.hasControlOut = false;
+        
+        // 折线的顶点都是Corner类型（折线顶点）
+        node.type = NodeInfo::Corner;
+        
+        // 第一个点标记为Start，最后一个点标记为End
+        if (i == 0) {
+            node.type = NodeInfo::Start;
+        } else if (i == points.size() - 1) {
+            node.type = NodeInfo::End;
+        }
+        
+        nodeInfos.append(node);
+    }
+    
+    return nodeInfos;
+}
+
 // DrawingPolyline 序列化方法
 QByteArray DrawingPolyline::serialize() const
 {
@@ -2620,6 +2928,38 @@ void DrawingPolygon::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
     DrawingShape::mouseReleaseEvent(event);
 }
 
+// DrawingPolygon 节点信息实现
+QVector<NodeInfo> DrawingPolygon::getNodeInfo() const
+{
+    QVector<NodeInfo> nodeInfos;
+    
+    // 获取多边形的所有顶点
+    QVector<QPointF> points = getNodePoints();
+    
+    for (int i = 0; i < points.size(); ++i) {
+        NodeInfo node;
+        node.position = points[i];
+        node.elementIndex = i;
+        node.isVisible = true;
+        node.hasControlIn = false;
+        node.hasControlOut = false;
+        
+        // 多边形的顶点都是Corner类型（折线顶点）
+        node.type = NodeInfo::Corner;
+        
+        // 第一个点标记为Start，最后一个点标记为End
+        if (i == 0) {
+            node.type = NodeInfo::Start;
+        } else if (i == points.size() - 1) {
+            node.type = NodeInfo::End;
+        }
+        
+        nodeInfos.append(node);
+    }
+    
+    return nodeInfos;
+}
+
 // DrawingPolygon 序列化方法
 QByteArray DrawingPolygon::serialize() const
 {
@@ -2797,6 +3137,238 @@ QGraphicsBlurEffect* DrawingShape::blurEffect() const
 QGraphicsDropShadowEffect* DrawingShape::dropShadowEffect() const
 {
     return qobject_cast<QGraphicsDropShadowEffect*>(graphicsEffect());
+}
+
+// NodeInfo 智能节点类型识别方法实现
+void NodeInfo::detectAndUpdateNodeType()
+{
+    // 如果没有控制杆，则为尖角节点
+    if (!hasControlIn && !hasControlOut) {
+        type = Corner;
+        return;
+    }
+    
+    // 计算控制杆长度
+    qreal inLength = getInControlLength();
+    qreal outLength = getOutControlLength();
+    
+    // 计算控制杆角度
+    qreal inAngle = getInControlAngle();
+    qreal outAngle = getOutControlAngle();
+    
+    // 计算角度差异
+    qreal angleDiff = qAbs(inAngle - outAngle);
+    
+    // 标准化角度差（考虑180度对称）
+    qreal normalizedDiff = (angleDiff > M_PI) ? (2*M_PI - angleDiff) : angleDiff;
+    
+    qDebug() << "Node type detection - inLength:" << inLength << "outLength:" << outLength 
+             << "angleDiff:" << angleDiff << "normalizedDiff:" << normalizedDiff;
+    
+    // 智能判断节点类型
+    if (normalizedDiff > 60 * M_PI/180) {
+        // 角度差异大于60度，认为是尖角节点
+        type = Corner;
+        qDebug() << "Detected: Corner node (angle diff > 60°)";
+    } else if (qAbs(inLength - outLength) < 2.0 && 
+               qAbs(normalizedDiff - M_PI) < 10 * M_PI/180) {
+        // 控制杆长度基本相等，且角度基本对称，认为是对称节点
+        type = Symmetric;
+        qDebug() << "Detected: Symmetric node (equal length, symmetric angle)";
+    } else if (normalizedDiff < 5 * M_PI/180) {
+        // 角度差异小于5度，认为是平滑节点
+        type = Smooth;
+        qDebug() << "Detected: Smooth node (angle diff < 5°)";
+    } else {
+        // 默认根据角度差异判断
+        type = (normalizedDiff > 20 * M_PI/180) ? Corner : Smooth;
+        qDebug() << "Detected: Default classification -" << (type == Corner ? "Corner" : "Smooth");
+    }
+}
+
+qreal NodeInfo::getInControlLength() const
+{
+    if (!hasControlIn) return 0.0;
+    QPointF diff = controlIn - position;
+    return qSqrt(diff.x() * diff.x() + diff.y() * diff.y());
+}
+
+qreal NodeInfo::getOutControlLength() const
+{
+    if (!hasControlOut) return 0.0;
+    QPointF diff = controlOut - position;
+    return qSqrt(diff.x() * diff.x() + diff.y() * diff.y());
+}
+
+qreal NodeInfo::getInControlAngle() const
+{
+    if (!hasControlIn) return 0.0;
+    QPointF diff = controlIn - position;
+    return qAtan2(diff.y(), diff.x());
+}
+
+qreal NodeInfo::getOutControlAngle() const
+{
+    if (!hasControlOut) return 0.0;
+    QPointF diff = controlOut - position;
+    return qAtan2(diff.y(), diff.x());
+}
+
+void NodeInfo::convertToNodeType(NodeType newType)
+{
+    qDebug() << "Converting node from" << type << "to" << newType;
+    type = newType;
+    
+    // 智能调整控制杆
+    switch (newType) {
+    case Corner:
+        // 尖角节点：保持当前控制杆独立状态
+        qDebug() << "Converted to Corner node - control arms remain independent";
+        break;
+        
+    case Smooth:
+        // 平滑节点：保持长度，调整角度使其在同一直线上
+        alignControlArms(false);
+        qDebug() << "Converted to Smooth node - control arms aligned";
+        break;
+        
+    case Symmetric:
+        // 对称节点：统一长度和角度
+        alignControlArms(true);
+        qDebug() << "Converted to Symmetric node - control arms symmetric";
+        break;
+        
+    default:
+        // 其他类型暂不处理
+        break;
+    }
+}
+
+void NodeInfo::alignControlArms(bool symmetric)
+{
+    if (!hasControlIn && !hasControlOut) return;
+    
+    if (hasControlIn && hasControlOut) {
+        // 两个控制杆都存在
+        qreal inAngle = getInControlAngle();
+        qreal outAngle = getOutControlAngle();
+        qreal inLength = getInControlLength();
+        qreal outLength = getOutControlLength();
+        
+        if (symmetric) {
+            // 对称模式：使用平均长度，角度相反
+            qreal avgLength = (inLength + outLength) / 2.0;
+            qreal targetAngle = (inAngle + outAngle) / 2.0;
+            
+            controlIn = position + QPointF(avgLength * qCos(targetAngle + M_PI),
+                                          avgLength * qSin(targetAngle + M_PI));
+            controlOut = position + QPointF(avgLength * qCos(targetAngle),
+                                           avgLength * qSin(targetAngle));
+            qDebug() << "Aligned to symmetric - avgLength:" << avgLength << "targetAngle:" << targetAngle;
+        } else {
+            // 平滑模式：保持各自长度，调整到同一直线
+            qreal targetAngle = (inAngle + outAngle) / 2.0;
+            
+            controlIn = position + QPointF(inLength * qCos(targetAngle + M_PI),
+                                          inLength * qSin(targetAngle + M_PI));
+            controlOut = position + QPointF(outLength * qCos(targetAngle),
+                                           outLength * qSin(targetAngle));
+            qDebug() << "Aligned to smooth - targetAngle:" << targetAngle;
+        }
+    } else if (hasControlIn) {
+        // 只有进入控制杆
+        if (symmetric) {
+            // 创建对称的离开控制杆
+            qreal inLength = getInControlLength();
+            qreal inAngle = getInControlAngle();
+            controlOut = position + QPointF(inLength * qCos(inAngle + M_PI),
+                                           inLength * qSin(inAngle + M_PI));
+            hasControlOut = true;
+            qDebug() << "Created symmetric out control arm";
+        }
+    } else if (hasControlOut) {
+        // 只有离开控制杆
+        if (symmetric) {
+            // 创建对称的进入控制杆
+            qreal outLength = getOutControlLength();
+            qreal outAngle = getOutControlAngle();
+            controlIn = position + QPointF(outLength * qCos(outAngle + M_PI),
+                                          outLength * qSin(outAngle + M_PI));
+            hasControlIn = true;
+            qDebug() << "Created symmetric in control arm";
+        }
+    }
+}
+
+void NodeInfo::handleSingleArmDrag(bool isInArm, const QPointF &newControlPos)
+{
+    qDebug() << "Handling single arm drag - isInArm:" << isInArm << "newPos:" << newControlPos;
+    
+    switch (type) {
+    case Corner:
+        // 尖角节点：只有拖拽的控制杆移动
+        if (isInArm) {
+            controlIn = newControlPos;
+            qDebug() << "Corner node: moved in control arm";
+        } else {
+            controlOut = newControlPos;
+            qDebug() << "Corner node: moved out control arm";
+        }
+        break;
+        
+    case Smooth:
+        // 平滑节点：移动拖拽的杆，另一个杆保持同线但不同长度
+        if (isInArm) {
+            controlIn = newControlPos;
+            // 调整out控制杆到同一直线
+            alignControlArms(false);
+            qDebug() << "Smooth node: moved in arm, aligned out arm";
+        } else {
+            controlOut = newControlPos;
+            // 调整in控制杆到同一直线
+            alignControlArms(false);
+            qDebug() << "Smooth node: moved out arm, aligned in arm";
+        }
+        break;
+        
+    case Symmetric:
+        // 对称节点：另一个控制杆同步移动但方向相反
+        if (isInArm) {
+            controlIn = newControlPos;
+            // 计算对称位置
+            QPointF diff = newControlPos - position;
+            controlOut = position - diff;
+            qDebug() << "Symmetric node: moved in arm, mirrored out arm";
+        } else {
+            controlOut = newControlPos;
+            // 计算对称位置
+            QPointF diff = newControlPos - position;
+            controlIn = position - diff;
+            qDebug() << "Symmetric node: moved out arm, mirrored in arm";
+        }
+        break;
+        
+    default:
+        // 其他类型：简单移动
+        if (isInArm) {
+            controlIn = newControlPos;
+        } else {
+            controlOut = newControlPos;
+        }
+        break;
+    }
+}
+
+void NodeInfo::debugPrint() const
+{
+    qDebug() << "=== NodeInfo Debug ===";
+    qDebug() << "Position:" << position;
+    qDebug() << "Type:" << type;
+    qDebug() << "HasControlIn:" << hasControlIn << "ControlIn:" << controlIn;
+    qDebug() << "HasControlOut:" << hasControlOut << "ControlOut:" << controlOut;
+    qDebug() << "InLength:" << getInControlLength() << "OutLength:" << getOutControlLength();
+    qDebug() << "InAngle:" << getInControlAngle() << "OutAngle:" << getOutControlAngle();
+    qDebug() << "===================";
 }
 
 

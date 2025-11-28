@@ -5,7 +5,7 @@
 #include <QPen>
 #include <QPainterPath>
 #include <QtMath>
-#include "../ui/cursor-manager.h"
+#include "cursor-manager.h"
 
 CursorManager& CursorManager::instance()
 {

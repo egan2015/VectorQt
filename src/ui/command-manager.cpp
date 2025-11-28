@@ -1,11 +1,11 @@
+#include <QGraphicsItem>
+#include <QDataStream>
 #include "command-manager.h"
 #include "drawingscene.h"
 #include "../core/drawing-shape.h"
 #include "../core/drawing-group.h"
 #include "../core/layer-manager.h"
 #include "../core/drawing-layer.h"
-#include <QGraphicsItem>
-#include <QDataStream>
 
 // 静态成员初始化
 CommandManager* CommandManager::s_instance = nullptr;
@@ -288,6 +288,9 @@ void DeleteCommand::undo()
             // 添加到场景
             m_scene->addItem(shape);
             shape->setVisible(true);
+            
+            // 通知工具对象状态已变化
+            emit m_scene->objectStateChanged(shape);
         }
     }
     
@@ -668,6 +671,10 @@ void CreateCommand::undo()
         m_scene->removeItem(m_shape);
         m_shape->setVisible(false);
         m_addedToScene = false;
+        
+        // 通知所有工具对象已被删除，传递被删除的图形对象
+        // 工具可以通过检查shape->scene()来判断对象是否已被删除
+        emit m_scene->objectStateChanged(m_shape);
     }
     
     emit m_commandManager->statusMessageChanged(QString("已撤销创建: %1").arg(text()));

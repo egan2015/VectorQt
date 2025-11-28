@@ -10,14 +10,14 @@
 #include <QPointer>
 #include <algorithm>
 #include <limits>
-#include "../ui/drawingscene.h"
+#include "drawingscene.h"
+#include "command-manager.h"
+#include "snap-manager.h"
 #include "../core/drawing-shape.h"
 #include "../core/drawing-group.h"
 #include "../core/drawing-layer.h"
 #include "../core/layer-manager.h"
 #include "../core/performance-monitor.h"
-#include "../ui/command-manager.h"
-#include "../ui/snap-manager.h"
 
 class AddItemCommand : public QUndoCommand
 {

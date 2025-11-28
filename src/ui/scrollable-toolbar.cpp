@@ -11,7 +11,7 @@
 #include <QApplication>
 #include <QFrame>
 #include <QScrollBar>
-#include "../ui/scrollable-toolbar.h"
+#include "scrollable-toolbar.h"
 
 ScrollableToolBar::ScrollableToolBar(const QString &title, QWidget *parent)
     : QToolBar(title, parent), m_scrollingEnabled(true)

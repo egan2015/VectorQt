@@ -1,8 +1,8 @@
 #include <QDebug>
-#include "../core/layer-manager.h"
+#include "layer-manager.h"
+#include "drawing-layer.h"
+#include "drawing-shape.h"
 #include "../ui/drawingscene.h"
-#include "../core/drawing-layer.h"
-#include "../core/drawing-shape.h"
 #include "../ui/layer-panel.h"
 
 // 静态成员变量初始化

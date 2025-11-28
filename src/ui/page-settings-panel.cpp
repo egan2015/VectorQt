@@ -13,9 +13,9 @@
 #include <QButtonGroup>
 #include <QColorDialog>
 #include <QApplication>
-#include "../ui/page-settings-panel.h"
-#include "../ui/drawingscene.h"
-#include "../ui/drawingview.h"
+#include "page-settings-panel.h"
+#include "drawingscene.h"
+#include "drawingview.h"
 
 PageSettingsPanel::PageSettingsPanel(QWidget *parent)
     : QWidget(parent)

@@ -1,7 +1,7 @@
 #include <QGraphicsScene>
 #include <QBrush>
 #include <QPen>
-#include "../tools/transform-handle.h"
+#include "transform-handle.h"
 #include "../ui/drawingscene.h"
 
 // 静态颜色定义 - 现代化配色方案

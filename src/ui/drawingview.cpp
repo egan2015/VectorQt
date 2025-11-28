@@ -3,10 +3,10 @@
 #include <QResizeEvent>
 #include <QKeyEvent>
 #include <QPainter>
-#include "../ui/drawingview.h"
+#include "drawingview.h"
+#include "drawingscene.h"
+#include "snap-manager.h"
 #include "../core/toolbase.h"
-#include "../ui/drawingscene.h"
-#include "../ui/snap-manager.h"
 #include "../tools/tool-manager.h"
 
 DrawingView::DrawingView(QGraphicsScene *scene, QWidget *parent)

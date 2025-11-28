@@ -1,9 +1,9 @@
 #ifndef DRAWING_TOOL_BEZIER_H
 #define DRAWING_TOOL_BEZIER_H
 
-#include "../core/toolbase.h"
 #include <QVector>
 #include <QPointF>
+#include "../core/toolbase.h"
 
 class DrawingScene;
 class QPainterPath;

@@ -10,7 +10,7 @@
 #include <QElapsedTimer>
 #include <QtMath>
 #include <QDebug>
-#include "../tools/drawing-tool-pen.h"
+#include "drawing-tool-pen.h"
 #include "../ui/drawingscene.h"
 #include "../ui/drawingview.h"
 #include "../core/drawing-shape.h"

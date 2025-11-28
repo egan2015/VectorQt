@@ -8,8 +8,8 @@
 #include <QGraphicsEllipseItem>
 #include <QGraphicsPixmapItem>
 #include <QList>
-#include "../tools/handle-item.h"
-#include "../tools/handle-types.h"
+#include "handle-item.h"
+#include "handle-types.h"
 
 class DrawingScene;
 

@@ -7,10 +7,9 @@
 #include <QDataStream>
 #include <QIODevice>
 #include <limits>
-#include "../core/drawing-group.h"
-#include "../core/drawing-shape.h"
+#include "drawing-group.h"
+#include "drawing-shape.h"
 #include "../ui/drawingscene.h"
-// #include "selection-layer.h" // 已移除 - 老的选择层系统
 
 DrawingGroup::DrawingGroup(QGraphicsItem *parent)
     : DrawingShape(DrawingShape::Group, parent)
@@ -44,13 +43,16 @@ void DrawingGroup::addItem(DrawingShape *item)
 
     // 检查是否在SVG导入中，如果是，需要特殊处理坐标
     bool isSvgImport = (item->scene() == nullptr);
-    if (isSvgImport) {
+    if (isSvgImport)
+    {
         // SVG导入时，子元素的位置是相对于SVG坐标系的
         // 需要将其转换为相对于组的本地坐标
         // 由于组还没有变换，子元素应该保持其原始位置
         // 但需要确保坐标系一致
         item->setPos(item->pos()); // 保持原始位置
-    } else {
+    }
+    else
+    {
         // 在设置父子关系之前，将子项的位置转换为相对于组的本地坐标
         // 获取子项在场景中的当前位置
         QPointF scenePos = item->scenePos();
@@ -289,10 +291,10 @@ QByteArray DrawingGroup::serialize() const
 {
     QByteArray data;
     QDataStream stream(&data, QIODevice::WriteOnly);
-    
+
     // 写入类型标识
     stream << static_cast<int>(DrawingShape::Group);
-    
+
     // 写入位置信息
     stream << pos();
     stream << scale();
@@ -305,160 +307,165 @@ QByteArray DrawingGroup::serialize() const
     stream << strokePen();
     stream << opacity();
     stream << id();
-    
+
     // 写入子对象数量
     stream << m_items.count();
     qDebug() << "DrawingGroup::serialize: serializing group with" << m_items.count() << "children";
-    
+
     // 序列化每个子对象
-    for (DrawingShape *item : m_items) {
-        if (item) {
+    for (DrawingShape *item : m_items)
+    {
+        if (item)
+        {
             qDebug() << "DrawingGroup::serialize: serializing child item type:" << item->shapeType() << "pos:" << item->pos();
             // 子对象的位置已经是相对于组合对象的本地坐标
             QByteArray itemData = item->serialize();
             stream << itemData;
         }
     }
-    
+
     return data;
 }
 
 void DrawingGroup::deserialize(const QByteArray &data)
 {
     QDataStream stream(data);
-    
+
     // 读取类型标识
     int typeValue;
     stream >> typeValue;
-    
+
     // 读取位置信息
     QPointF position;
     stream >> position;
     setPos(position);
-    
+
     qreal scaleValue;
     stream >> scaleValue;
     setScale(scaleValue);
-    
+
     qreal rotationValue;
     stream >> rotationValue;
     setRotation(rotationValue);
-    
+
     QTransform transform;
     stream >> transform;
     setTransform(transform);
-    
+
     qreal zValue;
     stream >> zValue;
     setZValue(zValue);
-    
+
     bool visible;
     stream >> visible;
     setVisible(visible);
-    
+
     bool enabled;
     stream >> enabled;
     setEnabled(enabled);
-    
+
     QBrush fillBrush;
     stream >> fillBrush;
     setFillBrush(fillBrush);
-    
+
     QPen strokePen;
     stream >> strokePen;
     setStrokePen(strokePen);
-    
+
     qreal opacity;
     stream >> opacity;
     setOpacity(opacity);
-    
+
     QString id;
     stream >> id;
     setId(id);
-    
+
     // 读取子对象数量
     int itemCount;
     stream >> itemCount;
     qDebug() << "DrawingGroup::deserialize: reading group with" << itemCount << "children";
-    
+
     // 清空现有子对象
     m_items.clear();
-    
+
     // 反序列化每个子对象
-    for (int i = 0; i < itemCount; ++i) {
+    for (int i = 0; i < itemCount; ++i)
+    {
         QByteArray itemData;
         stream >> itemData;
-        
+
         // 读取形状类型
         QDataStream typeStream(itemData);
         int typeValue;
         typeStream >> typeValue;
         DrawingShape::ShapeType shapeType = static_cast<DrawingShape::ShapeType>(typeValue);
-        
+
         // 创建对应的形状对象
         DrawingShape *item = nullptr;
-        switch (shapeType) {
-            case DrawingShape::Rectangle:
-                item = new DrawingRectangle();
-                break;
-            case DrawingShape::Ellipse:
-                item = new DrawingEllipse();
-                break;
-            case DrawingShape::Line:
-                item = new DrawingLine();
-                break;
-            case DrawingShape::Path:
-                item = new DrawingPath();
-                break;
-            case DrawingShape::Polyline:
-                item = new DrawingPolyline();
-                break;
-            case DrawingShape::Polygon:
-                item = new DrawingPolygon();
-                break;
-            case DrawingShape::Text:
-                item = new DrawingText();
-                break;
-            case DrawingShape::Group:
-                item = new DrawingGroup();
-                break;
-            default:
-                continue;
+        switch (shapeType)
+        {
+        case DrawingShape::Rectangle:
+            item = new DrawingRectangle();
+            break;
+        case DrawingShape::Ellipse:
+            item = new DrawingEllipse();
+            break;
+        case DrawingShape::Line:
+            item = new DrawingLine();
+            break;
+        case DrawingShape::Path:
+            item = new DrawingPath();
+            break;
+        case DrawingShape::Polyline:
+            item = new DrawingPolyline();
+            break;
+        case DrawingShape::Polygon:
+            item = new DrawingPolygon();
+            break;
+        case DrawingShape::Text:
+            item = new DrawingText();
+            break;
+        case DrawingShape::Group:
+            item = new DrawingGroup();
+            break;
+        default:
+            continue;
         }
-        
-        if (item) {
+
+        if (item)
+        {
             item->deserialize(itemData);
             qDebug() << "DrawingGroup::deserialize: deserialized child item type:" << shapeType << "pos:" << item->pos() << "visible:" << item->isVisible();
-            
+
             // 直接设置父子关系，不调用addItem以避免坐标转换
             item->setParentItem(this);
             m_items.append(item);
-            
+
             // 确保子对象可见
             item->setVisible(true);
-            
+
             // 禁用子项的鼠标事件，让组合对象处理所有事件
             item->setFlag(QGraphicsItem::ItemIsMovable, false);
             item->setFlag(QGraphicsItem::ItemIsSelectable, false);
-            
+
             qDebug() << "DrawingGroup::deserialize: child item parent set, visible:" << item->isVisible();
         }
     }
-    
+
     update();
 }
 
-DrawingShape* DrawingGroup::clone() const
+DrawingShape *DrawingGroup::clone() const
 {
     qDebug() << "DrawingGroup::clone() called";
-    
+
     // 先序列化当前对象的数据
     QByteArray data = serialize();
     qDebug() << "DrawingGroup::clone: serialized data size:" << data.size();
-    
+
     // 创建新的组合对象
     DrawingGroup *copy = new DrawingGroup();
-    
+
     // 反序列化数据到新对象
     copy->deserialize(data);
     qDebug() << "DrawingGroup::clone() completed, child count:" << copy->items().count();

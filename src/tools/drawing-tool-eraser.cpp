@@ -5,7 +5,7 @@
 #include <QPen>
 #include <QBrush>
 #include <QDebug>
-#include "../tools/drawing-tool-eraser.h"
+#include "drawing-tool-eraser.h"
 #include "../ui/drawingscene.h"
 #include "../ui/drawingview.h"
 #include "../core/drawing-shape.h"

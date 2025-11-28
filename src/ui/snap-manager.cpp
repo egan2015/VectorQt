@@ -1,7 +1,7 @@
+#include <QtMath>
 #include "snap-manager.h"
 #include "drawingscene.h"
 #include "../core/drawing-shape.h"
-#include <QtMath>
 
 SnapManager::SnapManager(DrawingScene *scene, QObject *parent)
     : QObject(parent)

@@ -1,15 +1,15 @@
-#include "object-tree-view.h"
-#include "../core/object-tree-model.h"
-#include "../core/object-tree-item.h"
-#include "drawingscene.h"
-#include "../core/drawing-layer.h"
-#include "../core/drawing-shape.h"
-#include "../core/layer-manager.h"
 #include <QContextMenuEvent>
 #include <QMenu>
 #include <QAction>
 #include <QInputDialog>
 #include <QMessageBox>
+#include "object-tree-view.h"
+#include "drawingscene.h"
+#include "../core/object-tree-model.h"
+#include "../core/object-tree-item.h"
+#include "../core/drawing-layer.h"
+#include "../core/drawing-shape.h"
+#include "../core/layer-manager.h"
 
 ObjectTreeView::ObjectTreeView(QWidget *parent)
     : QTreeView(parent)

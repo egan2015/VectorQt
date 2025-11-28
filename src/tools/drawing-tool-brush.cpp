@@ -3,7 +3,7 @@
 #include <QPainterPath>
 #include <QPen>
 #include <QDebug>
-#include "../tools/drawing-tool-brush.h"
+#include "drawing-tool-brush.h"
 #include "../core/drawing-throttle.h"
 #include "../core/brush-engine.h"
 

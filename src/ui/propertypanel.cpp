@@ -3,8 +3,8 @@
 #include <QFrame>
 #include <QScrollArea>
 #include <QtMath>
-#include "../ui/propertypanel.h"
-#include "../ui/drawingscene.h"
+#include "propertypanel.h"
+#include "drawingscene.h"
 #include "../core/drawing-shape.h"
 #include "../tools/transform-components.h"
 

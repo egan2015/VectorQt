@@ -1,4 +1,4 @@
-#include "../tools/handle-icons.h"
+#include "handle-icons.h"
 
 // XPM图标定义 - 专业设计风格
 static const char* scale_handle_xpm[] = {

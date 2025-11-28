@@ -1,5 +1,5 @@
-#include "memory-manager.h"
 #include <iostream>
+#include "memory-manager.h"
 
 MemoryManager::MemoryManager()
 {

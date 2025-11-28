@@ -1,13 +1,13 @@
-#include "path-operations-manager.h"
-#include "mainwindow.h"
-#include "drawingscene.h"
-#include "../core/drawing-shape.h"
-#include "../core/patheditor.h"
-#include "command-manager.h"
 #include <QGraphicsTextItem>
 #include <QMenu>
 #include <QDataStream>
 #include <cmath>
+#include "path-operations-manager.h"
+#include "mainwindow.h"
+#include "drawingscene.h"
+#include "command-manager.h"
+#include "../core/drawing-shape.h"
+#include "../core/patheditor.h"
 
 PathOperationsManager::PathOperationsManager(MainWindow *parent)
     : QObject(parent)

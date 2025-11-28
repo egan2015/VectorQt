@@ -1,11 +1,11 @@
 #ifndef DRAWING_TOOL_GRADIENT_FILL_H
 #define DRAWING_TOOL_GRADIENT_FILL_H
 
-#include "../core/toolbase.h"
 #include <QLinearGradient>
 #include <QRadialGradient>
 #include <QConicalGradient>
 #include <QGradientStop>
+#include "../core/toolbase.h"
 
 class DrawingScene;
 class DrawingView;

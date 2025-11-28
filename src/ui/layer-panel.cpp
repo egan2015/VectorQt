@@ -16,8 +16,8 @@
 #include <QInputDialog>
 #include <QMessageBox>
 #include <QIcon>
-#include "../ui/layer-panel.h"
-#include "../ui/drawingscene.h"
+#include "layer-panel.h"
+#include "drawingscene.h"
 #include "../core/drawing-layer.h"
 #include "../core/layer-manager.h"
 #include "../core/object-tree-model.h"

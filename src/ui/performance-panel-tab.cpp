@@ -1,7 +1,3 @@
-#include "performance-panel-tab.h"
-#include "../core/performance-monitor.h"
-#include "../core/smart-render-manager.h"
-#include "../ui/drawingscene.h"
 #include <QVBoxLayout>
 #include <QGridLayout>
 #include <QLabel>
@@ -11,6 +7,10 @@
 #include <QApplication>
 #include <QGraphicsItem>
 #include <QDateTime>
+#include "performance-panel-tab.h"
+#include "../core/performance-monitor.h"
+#include "../core/smart-render-manager.h"
+#include "drawingscene.h"
 
 PerformancePanelTab::PerformancePanelTab(QWidget *parent)
     : QWidget(parent)

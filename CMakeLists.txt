@@ -63,7 +63,6 @@ set(SOURCES
     src/ui/shortcut-manager.cpp
     
     # 绘图工具模块
-    src/tools/drawing-tool.cpp
     src/tools/drawing-tool-bezier.cpp
     src/tools/drawing-tool-brush.cpp
     src/tools/drawing-tool-eraser.cpp
@@ -131,7 +130,6 @@ set(HEADERS
     src/ui/shortcut-manager.h
     
     # 绘图工具模块
-    src/tools/drawing-tool.h
     src/tools/drawing-tool-bezier.h
     src/tools/drawing-tool-brush.h
     src/tools/drawing-tool-eraser.h

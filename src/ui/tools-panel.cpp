@@ -8,9 +8,9 @@
 #include <QPushButton>
 #include <QComboBox>
 #include <QCheckBox>
-#include "../ui/tools-panel.h"
+#include "tools-panel.h"
+#include "drawingscene.h"
 #include "../core/toolbase.h"
-#include "../ui/drawingscene.h"
 #include "../tools/drawing-tool-brush.h"
 #include "../tools/drawing-tool-pen.h"
 #include "../tools/drawing-tool-eraser.h"

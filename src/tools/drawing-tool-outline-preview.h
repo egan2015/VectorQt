@@ -1,17 +1,11 @@
 #ifndef DRAWING_TOOL_OUTLINE_PREVIEW_H
 #define DRAWING_TOOL_OUTLINE_PREVIEW_H
 
-#include "../core/toolbase.h"
-#include "../tools/handle-item.h"
-#include "../tools/transform-components.h"
 #include <QGraphicsScene>
 #include <QGraphicsItem>
 #include <QGraphicsSceneMouseEvent>
 #include <QGraphicsSceneHoverEvent>
 #include <QTimer>
-#include "../core/drawing-shape.h"
-#include "../ui/drawingscene.h"
-#include "../tools/handle-types.h"
 #include <QPointF>
 #include <QRectF>
 #include <QTransform>
@@ -19,6 +13,12 @@
 #include <QGraphicsPathItem>
 #include <QKeyEvent>
 #include <QString>
+#include "handle-item.h"
+#include "handle-types.h"
+#include "transform-components.h"
+#include "../core/drawing-shape.h"
+#include "../core/toolbase.h"
+#include "../ui/drawingscene.h"
 
 class DrawingView;
 class DrawingShape;
@@ -38,12 +38,12 @@ public:
 
     void activate(DrawingScene *scene, DrawingView *view) override;
     void deactivate() override;
-    
+
     bool mousePressEvent(QMouseEvent *event, const QPointF &scenePos) override;
     bool mouseMoveEvent(QMouseEvent *event, const QPointF &scenePos) override;
     bool mouseReleaseEvent(QMouseEvent *event, const QPointF &scenePos) override;
     bool keyPressEvent(QKeyEvent *event) override; // 支持ESC取消
-    
+
     CursorManager::CursorType getCursorType() const override { return CursorManager::SelectCursor; }
 
 signals:
@@ -51,7 +51,7 @@ signals:
 
 private slots:
     void onSelectionChanged();
-    void onObjectStateChanged(DrawingShape* shape);
+    void onObjectStateChanged(DrawingShape *shape);
     void updateDashOffset();
 
 private:
@@ -59,14 +59,13 @@ private:
 
 private:
     // 状态机：仿 Inkscape grab()/transform()/ungrab()
-    enum State {
+    enum State
+    {
         STATE_IDLE,
-        STATE_GRABBED,      // 变换中
-        STATE_DRAG_CENTER   // 拖动旋转中心
+        STATE_GRABBED,    // 变换中
+        STATE_DRAG_CENTER // 拖动旋转中心
     };
 
-    
-    
     // 核心流程
     void grab(TransformHandle::HandleType handleType, const QPointF &mousePos, Qt::KeyboardModifiers modifiers);
     void transform(const QPointF &mousePos, Qt::KeyboardModifiers modifiers);
@@ -74,7 +73,7 @@ private:
 
     // 计算逻辑
     QPointF calculateOpposite(const QRectF &bounds, TransformHandle::HandleType type) const;
-    QPointF calculateOrigin(const QRectF &bounds, const QPointF &opposite, 
+    QPointF calculateOrigin(const QRectF &bounds, const QPointF &opposite,
                             Qt::KeyboardModifiers modifiers) const;
     QRectF calculateInitialSelectionBounds() const;
     void updateHandlePositions();
@@ -85,7 +84,7 @@ private:
     void destroyVisualHelpers();
     void updateVisualHelpers(const QPointF &mousePos);
     void updateOutlinePreview();
-    
+
     void createShapeOutlines();  // 为每个选中图形创建轮廓预览
     void destroyShapeOutlines(); // 清理所有图形轮廓预览
     void updateShapeOutlines();  // 更新所有图形轮廓预览
@@ -94,7 +93,7 @@ private:
     void setRotationCenter(const QPointF &center);
     void resetRotationCenter();
     bool hasCustomRotationCenter() const;
-    
+
     // 模式管理
     void toggleMode();
     void setMode(HandleMode::Mode mode);
@@ -103,40 +102,36 @@ private:
     // 状态
     State m_state = STATE_IDLE;
     TransformHandle::HandleType m_activeHandle = TransformHandle::None;
-    
+
     // 变换基准数据（grab 时保存，全程不变）
-    QPointF m_grabMousePos;           // 鼠标按下位置
-    QRectF m_initialBounds;           // 选择框初始边界（场景坐标）
-    QPointF m_oppositeHandle;         // 手柄对角点（用于计算比例）
-    QPointF m_transformOrigin;        // 变换矩阵原点（受修饰键影响）
-    QPointF m_scaleAnchor;            // 固定的缩放锚点（场景坐标）
-    
+    QPointF m_grabMousePos;    // 鼠标按下位置
+    QRectF m_initialBounds;    // 选择框初始边界（场景坐标）
+    QPointF m_oppositeHandle;  // 手柄对角点（用于计算比例）
+    QPointF m_transformOrigin; // 变换矩阵原点（受修饰键影响）
+    QPointF m_scaleAnchor;     // 固定的缩放锚点（场景坐标）
 
     // 旋转中心
-    bool m_useCustomRotationCenter = false;  // 是否使用自定义旋转中心
-    QPointF m_customRotationCenter;          // 自定义旋转中心（场景坐标）
-    
+    bool m_useCustomRotationCenter = false; // 是否使用自定义旋转中心
+    QPointF m_customRotationCenter;         // 自定义旋转中心（场景坐标）
+
     // 模式管理
-    HandleMode::Mode m_currentMode = HandleMode::Scale;  // 当前模式（默认为缩放模式）
+    HandleMode::Mode m_currentMode = HandleMode::Scale; // 当前模式（默认为缩放模式）
 
-    
-    
     // 选中图形管理
-    QList<DrawingShape*> m_selectedShapes;
-    QHash<DrawingShape*, QTransform> m_originalTransforms; // 保存每个图形的初始变换
+    QList<DrawingShape *> m_selectedShapes;
+    QHash<DrawingShape *, QTransform> m_originalTransforms; // 保存每个图形的初始变换
 
-    
     // 手柄管理
     HandleManager *m_handleManager = nullptr;
     QRectF m_handleBounds; // 手柄始终基于这个边界（初始边界）
-    
+
     // 视觉辅助元素
-    CustomHandleItem *m_anchorPoint = nullptr;            // 锚点（红色十字）
-    CustomHandleItem *m_dragPoint = nullptr;              // 拖动点（绿色十字）
-    CustomHandleItem *m_rotationCenter = nullptr;           // 旋转中心（浅蓝色）
-    QGraphicsPathItem *m_outlinePreview = nullptr;      // 整体轮廓预览（类似Inkscape）
-    QHash<DrawingShape*, QGraphicsPathItem*> m_shapeOutlines; // 每个图形的独立轮廓预览
-    QTimer *m_dashTimer = nullptr;                      // 蚂蚁线动画定时器
+    CustomHandleItem *m_anchorPoint = nullptr;                  // 锚点（红色十字）
+    CustomHandleItem *m_dragPoint = nullptr;                    // 拖动点（绿色十字）
+    CustomHandleItem *m_rotationCenter = nullptr;               // 旋转中心（浅蓝色）
+    QGraphicsPathItem *m_outlinePreview = nullptr;              // 整体轮廓预览（类似Inkscape）
+    QHash<DrawingShape *, QGraphicsPathItem *> m_shapeOutlines; // 每个图形的独立轮廓预览
+    QTimer *m_dashTimer = nullptr;                              // 蚂蚁线动画定时器
 };
 
 #endif // DRAWING_TOOL_OUTLINE_PREVIEW_H

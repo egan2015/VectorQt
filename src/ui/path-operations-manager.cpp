@@ -97,6 +97,8 @@ void PathOperationsManager::pathClipPath()
     performPathOperationMacro(ClipPath, "裁剪路径");
 }
 
+
+
 void PathOperationsManager::convertTextToPath()
 {
     // TODO: 实现文本转路径功能
@@ -432,6 +434,183 @@ private:
     DrawingPath* m_path;
     bool m_addedToScene;
 };
+
+// 创建任意图形的命令
+class CreateShapeCommand : public QUndoCommand {
+public:
+    CreateShapeCommand(DrawingScene* scene, DrawingShape* shape, QUndoCommand* parent = nullptr)
+        : QUndoCommand("创建图形", parent), m_scene(scene), m_shape(shape), m_addedToScene(false)
+    {
+    }
+    
+    ~CreateShapeCommand() {
+        // 如果图形不在场景中，删除它
+        if (m_shape && m_shape->scene() != m_scene) {
+            delete m_shape;
+        }
+    }
+    
+    void undo() override {
+        if (!m_scene || !m_shape) return;
+        
+        if (m_addedToScene) {
+            m_scene->removeItem(m_shape);
+            m_shape->setVisible(false);
+            m_addedToScene = false;
+        }
+    }
+    
+    void redo() override {
+        if (!m_scene || !m_shape) return;
+        
+        if (!m_addedToScene) {
+            m_scene->addItem(m_shape);
+            m_shape->setVisible(true);
+            m_shape->setSelected(true);
+            m_addedToScene = true;
+            
+            // 手动触发场景选择变化信号，确保选择工具更新手柄
+            m_scene->emitSelectionChanged();
+        }
+    }
+    
+private:
+    DrawingScene* m_scene;
+    DrawingShape* m_shape;
+    bool m_addedToScene;
+};
+
+void PathOperationsManager::generateShape()
+{
+    // 默认生成星形
+    generateStar();
+}
+
+void PathOperationsManager::generateStar()
+{
+    qDebug() << "PathOperationsManager::generateStar() called";
+    
+    if (!m_scene) {
+        emit statusMessageChanged("场景未初始化");
+        return;
+    }
+    
+    if (!CommandManager::hasInstance()) {
+        qWarning() << "No CommandManager available for generate star operation";
+        return;
+    }
+    
+    CommandManager::instance()->executeMacro("生成星形", [this]() {
+        // 使用默认大小和样式，不依赖选中对象
+        QPointF center(0, 0); // 相对于原点
+        qreal radius = 50; // 默认半径50像素
+        
+        // 创建星形路径
+        QPainterPath starPath = createStarPath(center, radius, 5);
+        
+        DrawingPath *starShape = new DrawingPath();
+        starShape->setPath(starPath);
+        starShape->setStrokePen(QPen(Qt::black, 2)); // 默认黑色描边
+        starShape->setFillBrush(QBrush(Qt::yellow)); // 默认黄色填充
+        starShape->setZValue(1); // 设置Z值确保显示在上层
+        
+        // 添加到场景中心位置
+        if (m_scene) {
+            QRectF sceneRect = m_scene->sceneRect();
+            QPointF sceneCenter = sceneRect.center();
+            starShape->setPos(sceneCenter);
+        }
+        
+        // 添加新图形
+        CommandManager::instance()->pushCommand(new CreatePathCommand(m_scene, starShape));
+    });
+    
+    emit statusMessageChanged("已生成星形");
+}
+
+void PathOperationsManager::generateArrow()
+{
+    qDebug() << "PathOperationsManager::generateArrow() called";
+    
+    if (!m_scene) {
+        emit statusMessageChanged("场景未初始化");
+        return;
+    }
+    
+    if (!CommandManager::hasInstance()) {
+        qWarning() << "No CommandManager available for generate arrow operation";
+        return;
+    }
+    
+    CommandManager::instance()->executeMacro("生成箭头", [this]() {
+        // 使用默认大小和样式，不依赖选中对象
+        QPointF center(0, 0); // 相对于原点
+        qreal size = 100; // 默认大小100像素
+        
+        // 创建箭头路径
+        QPainterPath arrowPath = createArrowPath(center, size);
+        
+        DrawingPath *arrowShape = new DrawingPath();
+        arrowShape->setPath(arrowPath);
+        arrowShape->setStrokePen(QPen(Qt::black, 2)); // 默认黑色描边
+        arrowShape->setFillBrush(QBrush(Qt::blue)); // 默认蓝色填充
+        arrowShape->setZValue(1); // 设置Z值确保显示在上层
+        
+        // 添加到场景中心位置
+        if (m_scene) {
+            QRectF sceneRect = m_scene->sceneRect();
+            QPointF sceneCenter = sceneRect.center();
+            arrowShape->setPos(sceneCenter);
+        }
+        
+        // 添加新图形
+        CommandManager::instance()->pushCommand(new CreatePathCommand(m_scene, arrowShape));
+    });
+    
+    emit statusMessageChanged("已生成箭头");
+}
+
+void PathOperationsManager::generateGear()
+{
+    qDebug() << "PathOperationsManager::generateGear() called";
+    
+    if (!m_scene) {
+        emit statusMessageChanged("场景未初始化");
+        return;
+    }
+    
+    if (!CommandManager::hasInstance()) {
+        qWarning() << "No CommandManager available for generate gear operation";
+        return;
+    }
+    
+    CommandManager::instance()->executeMacro("生成齿轮", [this]() {
+        // 使用默认大小和样式，不依赖选中对象
+        QPointF center(0, 0); // 相对于原点
+        qreal radius = 50; // 默认半径50像素
+        
+        // 创建齿轮路径
+        QPainterPath gearPath = createGearPath(center, radius, 12);
+        
+        DrawingPath *gearShape = new DrawingPath();
+        gearShape->setPath(gearPath);
+        gearShape->setStrokePen(QPen(Qt::black, 2)); // 默认黑色描边
+        gearShape->setFillBrush(QBrush(Qt::gray)); // 默认灰色填充
+        gearShape->setZValue(1); // 设置Z值确保显示在上层
+        
+        // 添加到场景中心位置
+        if (m_scene) {
+            QRectF sceneRect = m_scene->sceneRect();
+            QPointF sceneCenter = sceneRect.center();
+            gearShape->setPos(sceneCenter);
+        }
+        
+        // 添加新图形
+        CommandManager::instance()->pushCommand(new CreatePathCommand(m_scene, gearShape));
+    });
+    
+    emit statusMessageChanged("已生成齿轮");
+}
 
 void PathOperationsManager::executeBooleanOperationSteps(BooleanOperation op)
 {
@@ -855,31 +1034,45 @@ void PathOperationsManager::executePathOperationSteps(PathOperation op)
 {
     if (!m_scene || !CommandManager::hasInstance()) return;
     
-    // 收集选中的路径图形
+    // 收集选中的图形
     QList<DrawingShape*> selectedShapes;
     QList<QGraphicsItem*> selectedItems = m_scene->selectedItems();
     
     for (QGraphicsItem *item : selectedItems) {
         DrawingShape *shape = dynamic_cast<DrawingShape*>(item);
-        if (shape && shape->shapeType() == DrawingShape::Path) {
+        if (shape && (shape->shapeType() == DrawingShape::Path ||
+                      shape->shapeType() == DrawingShape::Rectangle ||
+                      shape->shapeType() == DrawingShape::Ellipse ||
+                      shape->shapeType() == DrawingShape::Polygon ||
+                      shape->shapeType() == DrawingShape::Polyline)) {
             selectedShapes.append(shape);
         }
     }
     
     if (selectedShapes.isEmpty()) {
-        qWarning() << "No path shapes selected for operation";
+        qWarning() << "No supported shapes selected for operation";
         return;
     }
     
-    // 对每个选中的路径执行操作
+    // 第一步：移除原始图形（但不删除）
+    CommandManager::instance()->pushCommand(new RemoveShapesCommand(m_scene, selectedShapes));
+    
+    // 第二步：为每个原图形创建新的路径对象
     for (DrawingShape *shape : selectedShapes) {
         if (!shape) continue;
         
-        DrawingPath *pathShape = static_cast<DrawingPath*>(shape);
-        QPainterPath originalPath = pathShape->path();
-        
-        // 保存原始路径，用于撤销
-        m_originalPaths[shape] = originalPath;
+        // 获取图形的路径
+        QPainterPath originalPath;
+        if (shape->shapeType() == DrawingShape::Path) {
+            DrawingPath *pathShape = static_cast<DrawingPath*>(shape);
+            originalPath = pathShape->path();
+        } else {
+            // 对于其他图形类型，获取其变换后的路径
+            originalPath = shape->transformedShape();
+            QTransform transform;
+            transform.translate(shape->pos().x(), shape->pos().y());
+            originalPath = transform.map(originalPath);
+        }
         
         // 执行路径操作
         QPainterPath newPath;
@@ -905,15 +1098,24 @@ void PathOperationsManager::executePathOperationSteps(PathOperation op)
                 break;
         }
         
-        // 创建新的路径对象替换原来的
-        DrawingPath *newPathShape = new DrawingPath();
-        newPathShape->setPath(newPath);
-        newPathShape->setStrokePen(shape->strokePen());
-        newPathShape->setFillBrush(shape->fillBrush());
-        newPathShape->setPos(shape->pos());
-        
-        // 使用分解式命令替换路径
-        CommandManager::instance()->pushCommand(new ReplacePathCommand(m_scene, pathShape, newPathShape));
+        if (!newPath.isEmpty()) {
+            // 创建新的路径对象
+            DrawingPath *newPathShape = new DrawingPath();
+            
+            // 调整路径为相对于原点的路径
+            QRectF bounds = newPath.boundingRect();
+            QTransform offsetTransform;
+            offsetTransform.translate(-bounds.left(), -bounds.top());
+            QPainterPath adjustedPath = offsetTransform.map(newPath);
+            
+            newPathShape->setPath(adjustedPath);
+            newPathShape->setStrokePen(shape->strokePen());
+            newPathShape->setFillBrush(shape->fillBrush());
+            newPathShape->setPos(bounds.topLeft());
+            
+            // 使用分解式命令创建新路径
+            CommandManager::instance()->pushCommand(new CreatePathCommand(m_scene, newPathShape));
+        }
     }
 }
 
@@ -1280,6 +1482,95 @@ QPainterPath PathOperationsManager::clipPathStatic(const QPainterPath &path)
     
     // 返回裁剪后的路径
     return path.intersected(clipPath);
+}
+
+QPainterPath PathOperationsManager::createStarPath(const QPointF &center, qreal radius, int points)
+{
+    QPainterPath starPath;
+    
+    if (points < 3) return starPath;
+    
+    qreal outerRadius = radius;
+    qreal innerRadius = radius * 0.4; // 内半径是外半径的40%
+    qreal angleStep = M_PI * 2 / (points * 2); // 每个角的角度步长
+    
+    starPath.moveTo(center.x() + outerRadius * cos(0), center.y() + outerRadius * sin(0));
+    
+    for (int i = 1; i < points * 2; ++i) {
+        qreal currentRadius = (i % 2 == 0) ? outerRadius : innerRadius;
+        qreal angle = i * angleStep;
+        starPath.lineTo(center.x() + currentRadius * cos(angle), 
+                       center.y() + currentRadius * sin(angle));
+    }
+    
+    starPath.closeSubpath();
+    return starPath;
+}
+
+QPainterPath PathOperationsManager::createArrowPath(const QPointF &center, qreal size)
+{
+    QPainterPath arrowPath;
+    
+    // 更美观的箭头形状
+    qreal halfSize = size / 2;
+    qreal shaftWidth = halfSize * 0.3; // 箭杆宽度
+    
+    // 箭头顶点
+    arrowPath.moveTo(center.x(), center.y() - halfSize);
+    // 箭头左翼
+    arrowPath.lineTo(center.x() - halfSize * 0.7, center.y() + halfSize * 0.2);
+    // 箭杆左上角
+    arrowPath.lineTo(center.x() - shaftWidth, center.y() + halfSize * 0.2);
+    // 箭杆左下角
+    arrowPath.lineTo(center.x() - shaftWidth, center.y() + halfSize * 0.5);
+    // 箭头底部左角
+    arrowPath.lineTo(center.x() - halfSize * 0.4, center.y() + halfSize * 0.5);
+    // 箭头底部中心
+    arrowPath.lineTo(center.x(), center.y() + halfSize * 0.7);
+    // 箭头底部右角
+    arrowPath.lineTo(center.x() + halfSize * 0.4, center.y() + halfSize * 0.5);
+    // 箭杆右下角
+    arrowPath.lineTo(center.x() + shaftWidth, center.y() + halfSize * 0.5);
+    // 箭杆右上角
+    arrowPath.lineTo(center.x() + shaftWidth, center.y() + halfSize * 0.2);
+    // 箭头右翼
+    arrowPath.lineTo(center.x() + halfSize * 0.7, center.y() + halfSize * 0.2);
+    
+    arrowPath.closeSubpath();
+    return arrowPath;
+}
+
+QPainterPath PathOperationsManager::createGearPath(const QPointF &center, qreal radius, int teeth)
+{
+    QPainterPath gearPath;
+    
+    if (teeth < 6) return gearPath;
+    
+    qreal outerRadius = radius;
+    qreal innerRadius = radius * 0.8; // 齿根半径
+    qreal holeRadius = radius * 0.3; // 中心孔半径
+    qreal toothWidth = M_PI * 2 / (teeth * 2); // 齿宽角度
+    
+    // 绘制外圈齿轮
+    for (int i = 0; i < teeth * 2; ++i) {
+        qreal angle = i * toothWidth;
+        qreal currentRadius = (i % 2 == 0) ? outerRadius : innerRadius;
+        qreal x = center.x() + currentRadius * cos(angle);
+        qreal y = center.y() + currentRadius * sin(angle);
+        
+        if (i == 0) {
+            gearPath.moveTo(x, y);
+        } else {
+            gearPath.lineTo(x, y);
+        }
+    }
+    
+    gearPath.closeSubpath();
+    
+    // 添加中心孔
+    gearPath.addEllipse(center, holeRadius, holeRadius);
+    
+    return gearPath;
 }
 
 void PathOperationsManager::createShapeAtPosition(const QString &shapeType, const QPointF &pos)

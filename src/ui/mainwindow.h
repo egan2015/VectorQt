@@ -61,6 +61,7 @@ protected:
     void resizeEvent(QResizeEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
     void keyReleaseEvent(QKeyEvent *event) override;
+    bool event(QEvent *event) override;
 
 private slots:
     // 文件操作槽函数（委托给FileManager）
@@ -73,6 +74,7 @@ private slots:
     
     void onStatusMessageChanged(const QString &message);
     void onWindowTitleChanged(const QString &title);
+    void initializeTools();
     
     // EffectManager信号处理
     void onEffectApplied(const QString &effectName);
@@ -214,7 +216,13 @@ private:
     QAction *m_togglePerformancePanelAction;
     QAction *m_pathSmoothAction;
     QAction *m_pathReverseAction;
+    QAction *m_pathConvertToCurveAction;
+    QAction *m_pathOffsetPathAction;
+    QAction *m_pathClipPathAction;
     QAction *m_generateShapeAction;
+    QAction *m_generateStarAction;
+    QAction *m_generateArrowAction;
+    QAction *m_generateGearAction;
     QAction *m_deleteAction;
     QAction *m_copyAction;
     QAction *m_pasteAction;

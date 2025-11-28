@@ -609,19 +609,7 @@ void MainWindow::setupUI()
                                           ShortcutContext::HasSelection);
     }
     
-    // 设置默认工具为选择工具（在所有工具创建完成后）
-    if (m_toolManager) {
-        // 先设置当前工具指针
-        m_currentTool = m_toolManager->getTool(ToolType::Select);
-        // 然后切换到选择工具
-        if (m_currentTool) {
-            m_toolManager->switchTool(ToolType::Select);
-            // 确保选择工具的动作被选中
-            if (m_outlinePreviewToolAction) {
-                m_outlinePreviewToolAction->setChecked(true);
-            }
-        }
-    }
+    // 工具初始化移到了 QEvent::Polish 事件中，确保所有组件都准备好
     
     // 初始化UI更新定时器
 }
@@ -743,11 +731,38 @@ void MainWindow::setupMenus()
     m_pathReverseAction->setStatusTip(tr("反转选中路径的方向"));
     pathMenu->addAction(m_pathReverseAction);
     
+    m_pathConvertToCurveAction = new QAction("转换为曲线(&C)", this);
+    m_pathConvertToCurveAction->setStatusTip(tr("将直线段转换为贝塞尔曲线"));
+    pathMenu->addAction(m_pathConvertToCurveAction);
+    
+    m_pathOffsetPathAction = new QAction("偏移路径(&O)", this);
+    m_pathOffsetPathAction->setStatusTip(tr("创建路径的偏移轮廓"));
+    pathMenu->addAction(m_pathOffsetPathAction);
+    
+    m_pathClipPathAction = new QAction("裁剪路径(&L)", this);
+    m_pathClipPathAction->setStatusTip(tr("使用边界框裁剪路径"));
+    pathMenu->addAction(m_pathClipPathAction);
+    
     pathMenu->addSeparator();
     
     m_generateShapeAction = new QAction("生成图形(&G)", this);
     m_generateShapeAction->setStatusTip(tr("从选中路径生成标准图形"));
     pathMenu->addAction(m_generateShapeAction);
+    
+    // 生成图形子菜单
+    QMenu *generateMenu = pathMenu->addMenu("生成特殊图形");
+    
+    m_generateStarAction = new QAction("星形(&S)", this);
+    m_generateStarAction->setStatusTip(tr("生成星形"));
+    generateMenu->addAction(m_generateStarAction);
+    
+    m_generateArrowAction = new QAction("箭头(&A)", this);
+    m_generateArrowAction->setStatusTip(tr("生成箭头"));
+    generateMenu->addAction(m_generateArrowAction);
+    
+    m_generateGearAction = new QAction("齿轮(&G)", this);
+    m_generateGearAction->setStatusTip(tr("生成齿轮"));
+    generateMenu->addAction(m_generateGearAction);
 
     // Help menu
     QMenu *helpMenu = menuBar()->addMenu("&帮助");
@@ -1544,9 +1559,41 @@ void MainWindow::connectActions()
             m_pathOperationsManager->pathReverse();
         }
     });
+    connect(m_pathConvertToCurveAction, &QAction::triggered, this, [this]() {
+        if (m_pathOperationsManager) {
+            m_pathOperationsManager->pathConvertToCurve();
+        }
+    });
+    connect(m_pathOffsetPathAction, &QAction::triggered, this, [this]() {
+        if (m_pathOperationsManager) {
+            m_pathOperationsManager->pathOffsetPath();
+        }
+    });
+    connect(m_pathClipPathAction, &QAction::triggered, this, [this]() {
+        if (m_pathOperationsManager) {
+            m_pathOperationsManager->pathClipPath();
+        }
+    });
     connect(m_generateShapeAction, &QAction::triggered, this, [this]() {
-            // m_pathOperationsManager->generateShape(); // 方法暂时不存在
-        });
+        if (m_pathOperationsManager) {
+            m_pathOperationsManager->generateShape();
+        }
+    });
+    connect(m_generateStarAction, &QAction::triggered, this, [this]() {
+        if (m_pathOperationsManager) {
+            m_pathOperationsManager->generateStar();
+        }
+    });
+    connect(m_generateArrowAction, &QAction::triggered, this, [this]() {
+        if (m_pathOperationsManager) {
+            m_pathOperationsManager->generateArrow();
+        }
+    });
+    connect(m_generateGearAction, &QAction::triggered, this, [this]() {
+        if (m_pathOperationsManager) {
+            m_pathOperationsManager->generateGear();
+        }
+    });
 
     // Help connections
     connect(m_aboutAction, &QAction::triggered, this, &MainWindow::about);
@@ -2588,23 +2635,34 @@ void MainWindow::showContextMenu(const QPointF &pos)
             }
         }
         
+        // 路径操作菜单始终显示
+        QMenu *pathMenu = contextMenu.addMenu("路径操作");
+        
+        // 布尔运算只在多个路径时显示
+        if (hasPathSelection && hasMultiplePaths) {
+            pathMenu->addAction(m_pathUnionAction);
+            pathMenu->addAction(m_pathSubtractAction);
+            pathMenu->addAction(m_pathIntersectAction);
+            pathMenu->addAction(m_pathXorAction);
+            pathMenu->addSeparator();
+        }
+        
+        // 路径编辑操作只在有路径选择时显示
         if (hasPathSelection) {
-            QMenu *pathMenu = contextMenu.addMenu("路径操作");
-            
-            // 布尔运算只在多个路径时显示
-            if (hasMultiplePaths) {
-                pathMenu->addAction(m_pathUnionAction);
-                pathMenu->addAction(m_pathSubtractAction);
-                pathMenu->addAction(m_pathIntersectAction);
-                pathMenu->addAction(m_pathXorAction);
-                pathMenu->addSeparator();
-            }
-            
-            // 路径编辑操作对单个和多个路径都显示
             pathMenu->addAction(m_pathSimplifyAction);
             pathMenu->addAction(m_pathSmoothAction);
             pathMenu->addAction(m_pathReverseAction);
+            pathMenu->addAction(m_pathConvertToCurveAction);
+            pathMenu->addAction(m_pathOffsetPathAction);
+            pathMenu->addAction(m_pathClipPathAction);
+            pathMenu->addSeparator();
         }
+        
+        // 生成图形子菜单始终显示
+        QMenu *generateMenu = pathMenu->addMenu("生成特殊图形");
+        generateMenu->addAction(m_generateStarAction);
+        generateMenu->addAction(m_generateArrowAction);
+        generateMenu->addAction(m_generateGearAction);
         
         // 添加滤镜操作
         QMenu *filterMenu = contextMenu.addMenu("滤镜");
@@ -2642,6 +2700,12 @@ void MainWindow::showContextMenu(const QPointF &pos)
         }
     } else {
         contextMenu.addAction(m_pasteAction);
+        
+        // 即使没有选中对象，也显示创建图形选项
+        QMenu *createMenu = contextMenu.addMenu("创建图形");
+        createMenu->addAction(m_generateStarAction);
+        createMenu->addAction(m_generateArrowAction);
+        createMenu->addAction(m_generateGearAction);
     }
     
     contextMenu.exec(m_canvas->view()->mapToGlobal(m_canvas->view()->mapFromScene(pos)));
@@ -2780,5 +2844,40 @@ void MainWindow::setupUndoView()
         qDebug() << "QUndoView set to CommandManager undoStack";
     } else {
         qDebug() << "Failed to set QUndoView - m_undoView:" << m_undoView << "m_commandManager:" << m_commandManager;
+    }
+}
+
+bool MainWindow::event(QEvent *event)
+{
+    if (event->type() == QEvent::Polish) {
+        // 在窗口完全初始化后初始化工具
+        initializeTools();
+    }
+    return QMainWindow::event(event);
+}
+
+void MainWindow::initializeTools()
+{
+    static bool toolsInitialized = false;
+    if (toolsInitialized) return;
+    toolsInitialized = true;
+    
+    // 初始化 SnapManager 的指示器（依赖场景）
+    if (m_snapManager) {
+        m_snapManager->initializeIndicator();
+    }
+    
+    // 设置默认工具为选择工具（在所有组件准备好之后）
+    if (m_toolManager) {
+        // 先设置当前工具指针
+        m_currentTool = m_toolManager->getTool(ToolType::Select);
+        // 然后切换到选择工具
+        if (m_currentTool) {
+            m_toolManager->switchTool(ToolType::Select);
+            // 确保选择工具的动作被选中
+            if (m_outlinePreviewToolAction) {
+                m_outlinePreviewToolAction->setChecked(true);
+            }
+        }
     }
 }

@@ -50,7 +50,13 @@ protected:
     void mousePressEvent(QGraphicsSceneMouseEvent *event) override;
     void mouseMoveEvent(QGraphicsSceneMouseEvent *event) override;
     void mouseReleaseEvent(QGraphicsSceneMouseEvent *event) override;
-
+    
+public:
+    // 序列化方法
+    QByteArray serialize() const override;
+    void deserialize(const QByteArray &data) override;
+    DrawingShape* clone() const override;
+    
 private:
     QList<DrawingShape *> m_items;
     QHash<DrawingShape *, QTransform> m_initialTransforms; // 保存初始变换

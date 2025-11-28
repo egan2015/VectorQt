@@ -378,9 +378,13 @@ void DuplicateCommand::redo()
         if (!original) continue;
         
         // 尝试使用clone方法，如果失败则使用序列化
+        qDebug() << "DuplicateCommand: attempting clone for shape type:" << original->shapeType();
         DrawingShape *duplicate = original->clone();
+        qDebug() << "DuplicateCommand: clone() result:" << (duplicate != nullptr);
+        
         if (!duplicate) {
             // 回退到序列化方式
+            qDebug() << "DuplicateCommand: clone failed, using serialization";
             QByteArray shapeData = original->serialize();
             QDataStream typeStream(shapeData);
             int typeValue;
@@ -417,7 +421,12 @@ void DuplicateCommand::redo()
             }
             
             if (duplicate) {
+                qDebug() << "DuplicateCommand: deserializing shape type" << shapeType << "data size:" << shapeData.size();
                 duplicate->deserialize(shapeData);
+                qDebug() << "DuplicateCommand: deserialized pos:" << duplicate->pos();
+                qDebug() << "DuplicateCommand: rect bounds:" << duplicate->boundingRect();
+                qDebug() << "DuplicateCommand: stroke pen:" << duplicate->strokePen().color();
+                qDebug() << "DuplicateCommand: fill brush:" << duplicate->fillBrush().color();
             }
         }
         
@@ -426,16 +435,19 @@ void DuplicateCommand::redo()
             // 应用偏移
             QPointF currentPos = duplicate->pos();
             QPointF newPos = currentPos + m_offset;
+            qDebug() << "DuplicateCommand: currentPos:" << currentPos << "newPos:" << newPos;
             duplicate->setPos(newPos);
             
             m_scene->addItem(duplicate);
             duplicate->setSelected(true);
+            qDebug() << "DuplicateCommand: shape added to scene, visible:" << duplicate->isVisible();
             
             // 添加到活动图层
             LayerManager *layerManager = LayerManager::instance();
             if (layerManager) {
                 DrawingLayer *activeLayer = layerManager->activeLayer();
                 if (activeLayer) {
+                    qDebug() << "DuplicateCommand: adding shape to layer, already in scene:" << (duplicate->scene() != nullptr);
                     activeLayer->addShape(duplicate);
                 }
             }
@@ -758,13 +770,17 @@ void PasteCommand::redo()
         }
         
         if (shape) {
+            qDebug() << "PasteCommand: deserializing shape type" << shapeType << "data size:" << shapeData.size();
             shape->deserialize(shapeData);
+            qDebug() << "PasteCommand: deserialized shape pos:" << shape->pos();
             // 应用偏移
             shape->setPos(shape->pos() + m_offset);
+            qDebug() << "PasteCommand: final pos after offset:" << shape->pos();
             
             m_scene->addItem(shape);
             shape->setSelected(true);
             m_pastedShapes.append(shape);
+            qDebug() << "PasteCommand: shape added to scene, visible:" << shape->isVisible();
         }
     }
     

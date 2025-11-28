@@ -68,6 +68,12 @@ public slots:
     void convertTextToPath();
     void convertSelectedTextToPath();
     
+    // 图形生成
+    void generateShape();
+    void generateStar();
+    void generateArrow();
+    void generateGear();
+    
     // 上下文菜单支持
     void addPathOperationsToMenu(QMenu *menu, const QPointF &pos);
     
@@ -101,6 +107,11 @@ private:
     static QPainterPath convertToCurveStatic(const QPainterPath &path);
     static QPainterPath offsetPathStatic(const QPainterPath &path, qreal offset);
     static QPainterPath clipPathStatic(const QPainterPath &path);
+    
+    // 图形生成辅助方法
+    static QPainterPath createStarPath(const QPointF &center, qreal radius, int points);
+    static QPainterPath createArrowPath(const QPointF &center, qreal size);
+    static QPainterPath createGearPath(const QPointF &center, qreal radius, int teeth);
 
 private:
     MainWindow *m_mainWindow;

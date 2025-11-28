@@ -5,6 +5,7 @@
 #include <QPointF>
 #include <QColor>
 #include <QGraphicsItem>
+#include <QGraphicsLineItem>
 #include <QRectF>
 
 class DrawingScene;
@@ -107,6 +108,9 @@ public:
     
     // 获取当前吸附结果
     ObjectSnapResult getLastSnapResult() const;
+    
+    // 初始化吸附指示器（在场景准备好后调用）
+    void initializeIndicator();
 
 signals:
     void gridAlignmentChanged(bool enabled);
@@ -131,6 +135,7 @@ private:
     // 吸附指示器相关
     bool m_hasActiveSnap;
     ObjectSnapResult m_lastSnapResult;
+    QGraphicsLineItem *m_snapIndicator;
 };
 
 #endif // SNAP_MANAGER_H

@@ -24,6 +24,7 @@ void HandleManager::createHandles()
 {
     if (!m_scene)
     {
+        qDebug() << "HandleManager::createHandles(): scene is null";
         return;
     }
 
@@ -137,6 +138,7 @@ void HandleManager::createHandles()
     m_selectionBorder->setZValue(1999); // 在手柄下方
     m_selectionBorder->setVisible(false);
     m_scene->addItem(m_selectionBorder);
+    qDebug() << "HandleManager::createHandles(): create handles successfully";
 }
 
 // 🌟 检查并确保手柄被添加到场景中

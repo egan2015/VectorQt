@@ -469,7 +469,13 @@ protected:
     // 重写鼠标事件以支持文本编辑
     void mousePressEvent(QGraphicsSceneMouseEvent *event) override;
     void mouseDoubleClickEvent(QGraphicsSceneMouseEvent *event) override;
-
+    
+public:
+    // 序列化方法
+    QByteArray serialize() const override;
+    void deserialize(const QByteArray &data) override;
+    DrawingShape* clone() const override;
+    
 private:
     QString m_text;
     QFont m_font;
@@ -504,6 +510,12 @@ public:
 
 protected:
     void paintShape(QPainter *painter) override;
+    
+public:
+    // 序列化方法
+    QByteArray serialize() const override;
+    void deserialize(const QByteArray &data) override;
+    DrawingShape* clone() const override;
     
 private:
     QLineF m_line;
@@ -560,6 +572,12 @@ protected:
     void mouseMoveEvent(QGraphicsSceneMouseEvent *event) override;
     void mouseReleaseEvent(QGraphicsSceneMouseEvent *event) override;
     
+public:
+    // 序列化方法
+    QByteArray serialize() const override;
+    void deserialize(const QByteArray &data) override;
+    DrawingShape* clone() const override;
+    
 private:
     QVector<QPointF> m_points;
     qreal m_lineWidth = 1.0;
@@ -609,6 +627,12 @@ protected:
     void mousePressEvent(QGraphicsSceneMouseEvent *event) override;
     void mouseMoveEvent(QGraphicsSceneMouseEvent *event) override;
     void mouseReleaseEvent(QGraphicsSceneMouseEvent *event) override;
+    
+public:
+    // 序列化方法
+    QByteArray serialize() const override;
+    void deserialize(const QByteArray &data) override;
+    DrawingShape* clone() const override;
     
 private:
     QVector<QPointF> m_points;

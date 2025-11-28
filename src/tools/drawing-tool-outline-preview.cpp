@@ -103,7 +103,6 @@ void OutlinePreviewTransformTool::activate(DrawingScene *scene, DrawingView *vie
         view->setFocusPolicy(Qt::StrongFocus);
         view->setFocus();
     }
-
     // 每次激活时都重新创建 HandleManager，确保场景指针正确
     if (m_handleManager)
     {
@@ -948,7 +947,8 @@ void OutlinePreviewTransformTool::onSelectionChanged()
     // 清理无效的图形引用（已被删除的对象）
     cleanupInvalidShapes();
 
-    // 选择工具只处理基本选择，不管理节点显示
+    // 更新m_selectedShapes列表
+    m_selectedShapes.clear();
     if (m_scene)
     {
         QList<QGraphicsItem *> selectedItems = m_scene->selectedItems();
@@ -959,8 +959,17 @@ void OutlinePreviewTransformTool::onSelectionChanged()
             {
                 DrawingShape *shape = static_cast<DrawingShape *>(item);
                 shape->clearHighlights();
+                m_selectedShapes.append(shape);
             }
         }
+    }
+    
+    // 如果工具已经激活但m_selectedShapes为空，而场景中有选中项，
+    // 可能是初始化顺序问题，强制更新一次手柄
+    if (m_selectedShapes.isEmpty() && m_scene && !m_scene->selectedItems().isEmpty()) {
+        QTimer::singleShot(10, this, [this]() {
+            updateHandlePositions();
+        });
     }
 
     // 更新UI
@@ -1004,6 +1013,7 @@ void OutlinePreviewTransformTool::updateHandlePositions()
 
     QRectF bounds = calculateInitialSelectionBounds();
 
+    //qDebug() << "Updating handle positions "<< bounds ;
     // 如果有选中的图形，就更新手柄位置
     if (bounds.isEmpty())
     {

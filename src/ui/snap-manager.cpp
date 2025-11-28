@@ -15,11 +15,49 @@ SnapManager::SnapManager(DrawingScene *scene, QObject *parent)
     , m_guidesEnabled(true)
     , m_guideSnapEnabled(true)
     , m_hasActiveSnap(false)
+    , m_snapIndicator(nullptr)
 {
 }
 
 SnapManager::~SnapManager()
 {
+    if (m_snapIndicator) {
+        if (m_scene) {
+            m_scene->removeItem(m_snapIndicator);
+        }
+        delete m_snapIndicator;
+        m_snapIndicator = nullptr;
+    }
+}
+
+void SnapManager::initializeIndicator()
+{
+    // 暂时不使用吸附指示器
+    return;
+    
+    if (!m_scene || m_snapIndicator) {
+        return; // 已经初始化或场景不可用
+    }
+    
+    // 创建吸附指示器
+    m_snapIndicator = new QGraphicsLineItem();
+    if (m_snapIndicator) {
+        // 设置虚线样式
+        QPen pen(QColor(0, 150, 255, 200)); // 鲜蓝色，稍微透明
+        pen.setStyle(Qt::DashLine);
+        pen.setWidth(1);
+        m_snapIndicator->setPen(pen);
+        
+        // 设置Z值，确保在所有图形上方
+        m_snapIndicator->setZValue(10000);
+        
+        // 初始时隐藏
+        m_snapIndicator->setVisible(false);
+        
+        // 添加到场景
+        m_scene->addItem(m_snapIndicator);
+        qDebug() << "Snap indicator initialized and added to scene";
+    }
 }
 
 void SnapManager::setScene(DrawingScene *scene)
@@ -378,23 +416,76 @@ QList<ObjectSnapPoint> SnapManager::getObjectSnapPoints(DrawingShape *excludeSha
 // 吸附指示器显示方法实现
 void SnapManager::showSnapIndicators(const ObjectSnapResult &snapResult)
 {
-    if (!m_snapIndicatorsVisible || !m_scene) {
+    // 暂时不显示吸附指示器
+    return;
+    
+    qDebug() << "showSnapIndicators called, visible:" << m_snapIndicatorsVisible 
+             << "scene:" << m_scene << "indicator:" << m_snapIndicator
+             << "snapped:" << snapResult.snappedToObject;
+    
+    if (!m_snapIndicatorsVisible || !m_scene || !m_snapIndicator) {
         return;
     }
     
     m_lastSnapResult = snapResult;
     m_hasActiveSnap = true;
-    //m_scene->update(); // 简单的全局刷新
+    
+    // 根据吸附类型设置线条
+    QLineF line;
+    qreal lineLength = 60; // 线条长度
+    
+    switch (snapResult.snapType) {
+        case SnapToLeft:
+        case SnapToRight:
+            // 水平吸附，显示垂直线
+            line = QLineF(snapResult.snappedPos.x(), snapResult.snappedPos.y() - lineLength/2,
+                          snapResult.snappedPos.x(), snapResult.snappedPos.y() + lineLength/2);
+            break;
+            
+        case SnapToTop:
+        case SnapToBottom:
+            // 垂直吸附，显示水平线
+            line = QLineF(snapResult.snappedPos.x() - lineLength/2, snapResult.snappedPos.y(),
+                          snapResult.snappedPos.x() + lineLength/2, snapResult.snappedPos.y());
+            break;
+            
+        case SnapToCenterX:
+            // 中心X吸附，显示垂直线
+            line = QLineF(snapResult.snappedPos.x(), snapResult.snappedPos.y() - lineLength/2,
+                          snapResult.snappedPos.x(), snapResult.snappedPos.y() + lineLength/2);
+            break;
+            
+        case SnapToCenterY:
+            // 中心Y吸附，显示水平线
+            line = QLineF(snapResult.snappedPos.x() - lineLength/2, snapResult.snappedPos.y(),
+                          snapResult.snappedPos.x() + lineLength/2, snapResult.snappedPos.y());
+            break;
+            
+        case SnapToCenter:
+        case SnapToCorner:
+            // 角落吸附，显示45度斜线
+            qreal halfLength = lineLength / 2 * 0.707; // 45度角的投影
+            line = QLineF(snapResult.snappedPos.x() - halfLength, snapResult.snappedPos.y() - halfLength,
+                          snapResult.snappedPos.x() + halfLength, snapResult.snappedPos.y() + halfLength);
+            break;
+    }
+    
+    // 设置线条并显示
+    m_snapIndicator->setLine(line);
+    m_snapIndicator->setVisible(true);
+    
+    qDebug() << "Snap indicator set to visible at line:" << line;
+    qDebug() << "Indicator scene:" << m_snapIndicator->scene() << "visible:" << m_snapIndicator->isVisible();
+    qDebug() << "Indicator position:" << line.p1() << "to" << line.p2();
 }
 
 void SnapManager::clearSnapIndicators()
 {
-    if (m_hasActiveSnap) {
+    if (m_hasActiveSnap && m_snapIndicator) {
+        qDebug() << "Clearing snap indicators";
         m_lastSnapResult = ObjectSnapResult();
         m_hasActiveSnap = false;
-        if (m_scene) {
-            //m_scene->update(); // 简单的全局刷新
-        }
+        m_snapIndicator->setVisible(false);
     }
 }
 

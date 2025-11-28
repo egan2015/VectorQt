@@ -1021,39 +1021,15 @@ QByteArray DrawingEllipse::serialize() const
 
 void DrawingEllipse::deserialize(const QByteArray &data)
 {
+    // 先调用基类的deserialize来处理基类数据
+    DrawingShape::deserialize(data);
+    
+    // 然后读取椭圆特定属性
     QDataStream stream(data);
     
-    // 读取基类数据
-    int typeValue;
-    stream >> typeValue;
-    
-    QPointF position;
-    stream >> position;
-    setPos(position);
-    
-    qreal scaleValue;
-    stream >> scaleValue;
-    setScale(scaleValue);
-    
-    qreal rotationValue;
-    stream >> rotationValue;
-    setRotation(rotationValue);
-    
-    QTransform transform;
-    stream >> transform;
-    setTransform(transform);
-    
-    qreal zValue;
-    stream >> zValue;
-    setZValue(zValue);
-    
-    bool visible;
-    stream >> visible;
-    setVisible(visible);
-    
-    bool enabled;
-    stream >> enabled;
-    setEnabled(enabled);
+    // 跳过基类已读取的数据
+    // 基类读取了：type, position, scale, rotation, transform, zValue, visible, enabled, fillBrush, strokePen, opacity, id
+    stream.device()->seek(DrawingShape::serialize().size());
     
     // 读取椭圆特定属性
     stream >> m_rect;
@@ -1648,39 +1624,15 @@ QByteArray DrawingPath::serialize() const
 
 void DrawingPath::deserialize(const QByteArray &data)
 {
+    // 先调用基类的deserialize来处理基类数据
+    DrawingShape::deserialize(data);
+    
+    // 然后读取路径特定属性
     QDataStream stream(data);
     
-    // 读取基类数据
-    int typeValue;
-    stream >> typeValue;
-    
-    QPointF position;
-    stream >> position;
-    setPos(position);
-    
-    qreal scaleValue;
-    stream >> scaleValue;
-    setScale(scaleValue);
-    
-    qreal rotationValue;
-    stream >> rotationValue;
-    setRotation(rotationValue);
-    
-    QTransform transform;
-    stream >> transform;
-    setTransform(transform);
-    
-    qreal zValue;
-    stream >> zValue;
-    setZValue(zValue);
-    
-    bool visible;
-    stream >> visible;
-    setVisible(visible);
-    
-    bool enabled;
-    stream >> enabled;
-    setEnabled(enabled);
+    // 跳过基类已读取的数据
+    // 基类读取了：type, position, scale, rotation, transform, zValue, visible, enabled, fillBrush, strokePen, opacity, id
+    stream.device()->seek(DrawingShape::serialize().size());
     
     // 读取路径特定属性
     stream >> m_path;
@@ -1702,21 +1654,6 @@ void DrawingPath::deserialize(const QByteArray &data)
         element.y = y;
         m_pathElements.append(element);
     }
-    
-    stream >> m_controlPoints;
-    stream >> m_controlPointTypes;
-    stream >> m_markerId;
-    stream >> m_markerPixmap;
-    stream >> m_markerTransform;
-    stream >> m_showControlPolygon;
-    
-    QPen newPen;
-    stream >> newPen;
-    setStrokePen(newPen);
-    
-    QBrush newBrush;
-    stream >> newBrush;
-    setFillBrush(newBrush);
     
     update();
 }
@@ -1953,6 +1890,53 @@ void DrawingText::mouseDoubleClickEvent(QGraphicsSceneMouseEvent *event)
     QGraphicsItem::mouseDoubleClickEvent(event);
 }
 
+// DrawingText 序列化方法
+QByteArray DrawingText::serialize() const
+{
+    QByteArray data = DrawingShape::serialize();
+    QDataStream stream(&data, QIODevice::WriteOnly);
+    
+    // 跳过基类已写入的数据
+    stream.device()->seek(stream.device()->size());
+    
+    // 写入文本特定属性
+    stream << m_text;
+    stream << m_font;
+    stream << m_position;
+    stream << m_fontSize;
+    stream << m_editing;
+    
+    return data;
+}
+
+void DrawingText::deserialize(const QByteArray &data)
+{
+    // 先调用基类的deserialize来处理基类数据
+    DrawingShape::deserialize(data);
+    
+    // 然后读取文本特定属性
+    QDataStream stream(data);
+    
+    // 跳过基类已读取的数据
+    stream.device()->seek(DrawingShape::serialize().size());
+    
+    // 读取文本特定属性
+    stream >> m_text;
+    stream >> m_font;
+    stream >> m_position;
+    stream >> m_fontSize;
+    stream >> m_editing;
+    
+    update();
+}
+
+DrawingShape* DrawingText::clone() const
+{
+    DrawingText *copy = new DrawingText();
+    copy->deserialize(serialize());
+    return copy;
+}
+
 DrawingPath* DrawingText::convertToPath() const
 {
     // 创建新的路径对象
@@ -2058,6 +2042,47 @@ void DrawingLine::paintShape(QPainter *painter)
     pen.setWidthF(m_lineWidth);
     painter->setPen(pen);
     painter->drawLine(m_line);
+}
+
+// DrawingLine 序列化方法
+QByteArray DrawingLine::serialize() const
+{
+    QByteArray data = DrawingShape::serialize();
+    QDataStream stream(&data, QIODevice::WriteOnly);
+    
+    // 跳过基类已写入的数据
+    stream.device()->seek(stream.device()->size());
+    
+    // 写入直线特定属性
+    stream << m_line;
+    stream << m_lineWidth;
+    
+    return data;
+}
+
+void DrawingLine::deserialize(const QByteArray &data)
+{
+    // 先调用基类的deserialize来处理基类数据
+    DrawingShape::deserialize(data);
+    
+    // 然后读取直线特定属性
+    QDataStream stream(data);
+    
+    // 跳过基类已读取的数据
+    stream.device()->seek(DrawingShape::serialize().size());
+    
+    // 读取直线特定属性
+    stream >> m_line;
+    stream >> m_lineWidth;
+    
+    update();
+}
+
+DrawingShape* DrawingLine::clone() const
+{
+    DrawingLine *copy = new DrawingLine();
+    copy->deserialize(serialize());
+    return copy;
 }
 
 // DrawingPolyline implementation
@@ -2309,6 +2334,49 @@ void DrawingPolyline::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
     DrawingShape::mouseReleaseEvent(event);
 }
 
+// DrawingPolyline 序列化方法
+QByteArray DrawingPolyline::serialize() const
+{
+    QByteArray data = DrawingShape::serialize();
+    QDataStream stream(&data, QIODevice::WriteOnly);
+    
+    // 跳过基类已写入的数据
+    stream.device()->seek(stream.device()->size());
+    
+    // 写入折线特定属性
+    stream << m_points;
+    stream << m_lineWidth;
+    stream << m_closed;
+    
+    return data;
+}
+
+void DrawingPolyline::deserialize(const QByteArray &data)
+{
+    // 先调用基类的deserialize来处理基类数据
+    DrawingShape::deserialize(data);
+    
+    // 然后读取折线特定属性
+    QDataStream stream(data);
+    
+    // 跳过基类已读取的数据
+    stream.device()->seek(DrawingShape::serialize().size());
+    
+    // 读取折线特定属性
+    stream >> m_points;
+    stream >> m_lineWidth;
+    stream >> m_closed;
+    
+    update();
+}
+
+DrawingShape* DrawingPolyline::clone() const
+{
+    DrawingPolyline *copy = new DrawingPolyline();
+    copy->deserialize(serialize());
+    return copy;
+}
+
 // DrawingPolygon implementation
 DrawingPolygon::DrawingPolygon(QGraphicsItem *parent)
     : DrawingShape(Polygon, parent)
@@ -2550,6 +2618,47 @@ void DrawingPolygon::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
     }
     
     DrawingShape::mouseReleaseEvent(event);
+}
+
+// DrawingPolygon 序列化方法
+QByteArray DrawingPolygon::serialize() const
+{
+    QByteArray data = DrawingShape::serialize();
+    QDataStream stream(&data, QIODevice::WriteOnly);
+    
+    // 跳过基类已写入的数据
+    stream.device()->seek(stream.device()->size());
+    
+    // 写入多边形特定属性
+    stream << m_points;
+    stream << m_fillRule;
+    
+    return data;
+}
+
+void DrawingPolygon::deserialize(const QByteArray &data)
+{
+    // 先调用基类的deserialize来处理基类数据
+    DrawingShape::deserialize(data);
+    
+    // 然后读取多边形特定属性
+    QDataStream stream(data);
+    
+    // 跳过基类已读取的数据
+    stream.device()->seek(DrawingShape::serialize().size());
+    
+    // 读取多边形特定属性
+    stream >> m_points;
+    stream >> m_fillRule;
+    
+    update();
+}
+
+DrawingShape* DrawingPolygon::clone() const
+{
+    DrawingPolygon *copy = new DrawingPolygon();
+    copy->deserialize(serialize());
+    return copy;
 }
 
 // 滤镜效果管理实现

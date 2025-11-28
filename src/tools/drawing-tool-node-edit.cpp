@@ -51,8 +51,29 @@ void NodeEditCommand::undo()
 
 void NodeEditCommand::redo()
 {
-    // 什么都不做！状态已经在拖动过程中设置好了
-    // 避免双重设置导致的位置跳跃
+    if (m_shape && m_shape->scene() == m_scene)
+    {
+        // 设置到新位置
+        m_shape->setNodePoint(m_nodeIndex, m_newPos);
+
+        // 如果是矩形且编辑的是圆角，设置圆角半径（在setNodePoint之后）
+        if (m_newCornerRadius >= 0.0 && m_shape->shapeType() == DrawingShape::Rectangle && m_nodeIndex == 0)
+        {
+            DrawingRectangle *rect = static_cast<DrawingRectangle *>(m_shape);
+            if (rect)
+            {
+                rect->setCornerRadius(m_newCornerRadius);
+            }
+        }
+
+        // 更新场景
+        if (m_scene)
+        {
+            m_scene->update();
+            // 通知所有工具对象状态已变化
+            emit m_scene->objectStateChanged(m_shape);
+        }
+    }
 }
 
 DrawingNodeEditTool::DrawingNodeEditTool(QObject *parent)
@@ -414,16 +435,25 @@ bool DrawingNodeEditTool::mouseReleaseEvent(QMouseEvent *event, const QPointF &s
                         }
                     }
 
-                    // 简单方案：redo什么都不做，直接传递场景坐标
+                    // 首先将节点恢复到原始位置，然后让命令的redo()应用新位置
+                    // 这样可以避免双重设置，同时确保撤销/重做都能正常工作
+                    m_selectedShape->setNodePoint(handleInfo.nodeIndex, m_originalValue);
+                    if (oldCornerRadius >= 0.0 && m_selectedShape->shapeType() == DrawingShape::Rectangle && handleInfo.nodeIndex == 0) {
+                        DrawingRectangle *rect = static_cast<DrawingRectangle *>(m_selectedShape);
+                        if (rect) {
+                            rect->setCornerRadius(oldCornerRadius);
+                        }
+                    }
+                    
                     NodeEditCommand *command = new NodeEditCommand(m_scene, m_selectedShape,
                                                                    handleInfo.nodeIndex, m_originalValue, currentPos,
                                                                    oldCornerRadius, newCornerRadius);
                     if (CommandManager::hasInstance()) {
-        CommandManager::instance()->pushCommand(command);
-    } else {
-        command->redo();
-        delete command;
-    }
+                        CommandManager::instance()->pushCommand(command);
+                    } else {
+                        command->redo();
+                        delete command;
+                    }
                 }
             }
 

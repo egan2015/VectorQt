@@ -1956,7 +1956,7 @@ void MainWindow::updateStatusBar(const QString &message)
 
 void MainWindow::about()
 {
-    QMessageBox::about(this, "关于 QDrawPro",
+    QMessageBox::about(this, "关于 VectorQt",
                        "VectorQt - 矢量绘图应用\n\n"
                        "一个基于Qt的矢量绘图应用程序，灵感来自Inkscape。\\n\\n"
                        "功能：\\n"
@@ -2577,13 +2577,40 @@ void MainWindow::showContextMenu(const QPointF &pos)
         alignMenu->addAction(m_alignBottomAction);
         
         // 添加路径操作
-        if (m_scene->selectedItems().count() > 1) {
+        bool hasPathSelection = false;
+        bool hasMultiplePaths = false;
+        int pathCount = 0;
+        
+        // 检查是否有路径对象被选中
+        for (QGraphicsItem *item : m_scene->selectedItems()) {
+            DrawingShape *shape = qgraphicsitem_cast<DrawingShape*>(item);
+            if (shape && (shape->shapeType() == DrawingShape::Path || 
+                         shape->shapeType() == DrawingShape::Rectangle ||
+                         shape->shapeType() == DrawingShape::Ellipse ||
+                         shape->shapeType() == DrawingShape::Polygon ||
+                         shape->shapeType() == DrawingShape::Polyline)) {
+                hasPathSelection = true;
+                pathCount++;
+                if (pathCount > 1) {
+                    hasMultiplePaths = true;
+                    break;
+                }
+            }
+        }
+        
+        if (hasPathSelection) {
             QMenu *pathMenu = contextMenu.addMenu("路径操作");
-            pathMenu->addAction(m_pathUnionAction);
-            pathMenu->addAction(m_pathSubtractAction);
-            pathMenu->addAction(m_pathIntersectAction);
-            pathMenu->addAction(m_pathXorAction);
-            pathMenu->addSeparator();
+            
+            // 布尔运算只在多个路径时显示
+            if (hasMultiplePaths) {
+                pathMenu->addAction(m_pathUnionAction);
+                pathMenu->addAction(m_pathSubtractAction);
+                pathMenu->addAction(m_pathIntersectAction);
+                pathMenu->addAction(m_pathXorAction);
+                pathMenu->addSeparator();
+            }
+            
+            // 路径编辑操作对单个和多个路径都显示
             pathMenu->addAction(m_pathSimplifyAction);
             pathMenu->addAction(m_pathSmoothAction);
             pathMenu->addAction(m_pathReverseAction);

@@ -2,6 +2,8 @@
 #include "drawingscene.h"
 #include "../core/drawing-shape.h"
 #include "../core/drawing-group.h"
+#include "../core/layer-manager.h"
+#include "../core/drawing-layer.h"
 #include <QGraphicsItem>
 #include <QDataStream>
 
@@ -365,6 +367,13 @@ void DuplicateCommand::redo()
     }
     
     // 第一次执行，创建复制的对象
+    // 先清除原始对象的选择状态
+    for (DrawingShape *original : m_shapes) {
+        if (original) {
+            original->setSelected(false);
+        }
+    }
+    
     for (DrawingShape *original : m_shapes) {
         if (!original) continue;
         
@@ -412,12 +421,25 @@ void DuplicateCommand::redo()
             }
         }
         
+        // 无论使用哪种方式，都添加到场景
         if (duplicate) {
             // 应用偏移
-            duplicate->setPos(duplicate->pos() + m_offset);
+            QPointF currentPos = duplicate->pos();
+            QPointF newPos = currentPos + m_offset;
+            duplicate->setPos(newPos);
             
             m_scene->addItem(duplicate);
             duplicate->setSelected(true);
+            
+            // 添加到活动图层
+            LayerManager *layerManager = LayerManager::instance();
+            if (layerManager) {
+                DrawingLayer *activeLayer = layerManager->activeLayer();
+                if (activeLayer) {
+                    activeLayer->addShape(duplicate);
+                }
+            }
+            
             m_duplicatedShapes.append(duplicate);
         }
     }

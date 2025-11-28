@@ -659,47 +659,21 @@ QByteArray DrawingRectangle::serialize() const
     stream << m_cornerRadius;
     stream << m_fRatioX;
     stream << m_fRatioY;
-    stream << strokePen();
-    stream << fillBrush();
     
     return data;
 }
 
 void DrawingRectangle::deserialize(const QByteArray &data)
 {
+    // 先调用基类的deserialize来处理基类数据
+    DrawingShape::deserialize(data);
+    
+    // 然后读取矩形特定属性
     QDataStream stream(data);
     
-    // 读取基类数据
-    int typeValue;
-    stream >> typeValue;
-    
-    QPointF position;
-    stream >> position;
-    setPos(position);
-    
-    qreal scaleValue;
-    stream >> scaleValue;
-    setScale(scaleValue);
-    
-    qreal rotationValue;
-    stream >> rotationValue;
-    setRotation(rotationValue);
-    
-    QTransform transform;
-    stream >> transform;
-    setTransform(transform);
-    
-    qreal zValue;
-    stream >> zValue;
-    setZValue(zValue);
-    
-    bool visible;
-    stream >> visible;
-    setVisible(visible);
-    
-    bool enabled;
-    stream >> enabled;
-    setEnabled(enabled);
+    // 跳过基类已读取的数据
+    // 基类读取了：type, position, scale, rotation, transform, zValue, visible, enabled, fillBrush, strokePen, opacity, id
+    stream.device()->seek(DrawingShape::serialize().size());
     
     // 读取矩形特定属性
     stream >> m_rect;
@@ -707,13 +681,7 @@ void DrawingRectangle::deserialize(const QByteArray &data)
     stream >> m_fRatioX;
     stream >> m_fRatioY;
     
-    QPen newPen;
-    stream >> newPen;
-    setStrokePen(newPen);
     
-    QBrush newBrush;
-    stream >> newBrush;
-    setFillBrush(newBrush);
     
     update();
 }

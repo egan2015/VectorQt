@@ -216,8 +216,8 @@ void SelectionManager::duplicate()
     }
 
     if (m_commandManager) {
-        // 使用统一的DuplicateCommand，偏移量为(10, 10)
-        m_commandManager->pushCommand(new DuplicateCommand(m_commandManager, shapes, QPointF(10, 10)));
+        // 使用合理的偏移量
+        m_commandManager->pushCommand(new DuplicateCommand(m_commandManager, shapes, QPointF(15, 15)));
     } else {
         emit statusMessageChanged("命令管理器未初始化");
     }
@@ -290,13 +290,47 @@ void SelectionManager::alignCenter()
 
     qreal center = getHorizontalCenter();
     
-    for (DrawingShape *shape : shapes) {
-        QRectF bounds = shape->boundingRect();
-        QPointF pos = shape->pos();
-        pos.setX(center - bounds.width() / 2);
-        shape->setPos(pos);
+    // 创建撤销命令
+    class AlignCenterCommand : public QUndoCommand {
+    public:
+        AlignCenterCommand(DrawingScene *scene, const QList<DrawingShape*>& shapes, qreal targetCenter, QUndoCommand *parent = nullptr)
+            : QUndoCommand("水平居中对齐", parent), m_scene(scene), m_shapes(shapes), m_targetCenter(targetCenter)
+        {
+            // 保存原始位置
+            for (DrawingShape *shape : shapes) {
+                m_originalPositions[shape] = shape->pos();
+            }
+        }
+
+        void undo() override {
+            for (DrawingShape *shape : m_shapes) {
+                if (m_originalPositions.contains(shape)) {
+                    shape->setPos(m_originalPositions[shape]);
+                }
+            }
+            if (m_scene) m_scene->setModified(true);
+        }
+
+        void redo() override {
+            for (DrawingShape *shape : m_shapes) {
+                QRectF bounds = shape->boundingRect();
+                QPointF pos = shape->pos();
+                pos.setX(m_targetCenter - bounds.width() / 2);
+                shape->setPos(pos);
+            }
+            if (m_scene) m_scene->setModified(true);
+        }
+
+    private:
+        DrawingScene *m_scene;
+        QList<DrawingShape*> m_shapes;
+        qreal m_targetCenter;
+        QMap<DrawingShape*, QPointF> m_originalPositions;
+    };
+
+    if (CommandManager::hasInstance()) {
+        CommandManager::instance()->pushCommand(new AlignCenterCommand(m_scene, shapes, center));
     }
-    
     emit alignmentCompleted("水平居中对齐");
     emit statusMessageChanged("已水平居中对齐选中的对象");
 }
@@ -311,13 +345,47 @@ void SelectionManager::alignRight()
 
     qreal rightEdge = getRightmostEdge();
     
-    for (DrawingShape *shape : shapes) {
-        QRectF bounds = shape->boundingRect();
-        QPointF pos = shape->pos();
-        pos.setX(rightEdge - bounds.width());
-        shape->setPos(pos);
+    // 创建撤销命令
+    class AlignRightCommand : public QUndoCommand {
+    public:
+        AlignRightCommand(DrawingScene *scene, const QList<DrawingShape*>& shapes, qreal targetRight, QUndoCommand *parent = nullptr)
+            : QUndoCommand("右对齐", parent), m_scene(scene), m_shapes(shapes), m_targetRight(targetRight)
+        {
+            // 保存原始位置
+            for (DrawingShape *shape : shapes) {
+                m_originalPositions[shape] = shape->pos();
+            }
+        }
+
+        void undo() override {
+            for (DrawingShape *shape : m_shapes) {
+                if (m_originalPositions.contains(shape)) {
+                    shape->setPos(m_originalPositions[shape]);
+                }
+            }
+            if (m_scene) m_scene->setModified(true);
+        }
+
+        void redo() override {
+            for (DrawingShape *shape : m_shapes) {
+                QRectF bounds = shape->boundingRect();
+                QPointF pos = shape->pos();
+                pos.setX(m_targetRight - bounds.width());
+                shape->setPos(pos);
+            }
+            if (m_scene) m_scene->setModified(true);
+        }
+
+    private:
+        DrawingScene *m_scene;
+        QList<DrawingShape*> m_shapes;
+        qreal m_targetRight;
+        QMap<DrawingShape*, QPointF> m_originalPositions;
+    };
+
+    if (CommandManager::hasInstance()) {
+        CommandManager::instance()->pushCommand(new AlignRightCommand(m_scene, shapes, rightEdge));
     }
-    
     emit alignmentCompleted("右对齐");
     emit statusMessageChanged("已右对齐选中的对象");
 }
@@ -332,12 +400,46 @@ void SelectionManager::alignTop()
 
     qreal topEdge = getTopmostEdge();
     
-    for (DrawingShape *shape : shapes) {
-        QPointF pos = shape->pos();
-        pos.setY(topEdge);
-        shape->setPos(pos);
+    // 创建撤销命令
+    class AlignTopCommand : public QUndoCommand {
+    public:
+        AlignTopCommand(DrawingScene *scene, const QList<DrawingShape*>& shapes, qreal targetTop, QUndoCommand *parent = nullptr)
+            : QUndoCommand("顶对齐", parent), m_scene(scene), m_shapes(shapes), m_targetTop(targetTop)
+        {
+            // 保存原始位置
+            for (DrawingShape *shape : shapes) {
+                m_originalPositions[shape] = shape->pos();
+            }
+        }
+
+        void undo() override {
+            for (DrawingShape *shape : m_shapes) {
+                if (m_originalPositions.contains(shape)) {
+                    shape->setPos(m_originalPositions[shape]);
+                }
+            }
+            if (m_scene) m_scene->setModified(true);
+        }
+
+        void redo() override {
+            for (DrawingShape *shape : m_shapes) {
+                QPointF pos = shape->pos();
+                pos.setY(m_targetTop);
+                shape->setPos(pos);
+            }
+            if (m_scene) m_scene->setModified(true);
+        }
+
+    private:
+        DrawingScene *m_scene;
+        QList<DrawingShape*> m_shapes;
+        qreal m_targetTop;
+        QMap<DrawingShape*, QPointF> m_originalPositions;
+    };
+
+    if (CommandManager::hasInstance()) {
+        CommandManager::instance()->pushCommand(new AlignTopCommand(m_scene, shapes, topEdge));
     }
-    
     emit alignmentCompleted("顶对齐");
     emit statusMessageChanged("已顶对齐选中的对象");
 }
@@ -352,13 +454,47 @@ void SelectionManager::alignMiddle()
 
     qreal middle = getVerticalCenter();
     
-    for (DrawingShape *shape : shapes) {
-        QRectF bounds = shape->boundingRect();
-        QPointF pos = shape->pos();
-        pos.setY(middle - bounds.height() / 2);
-        shape->setPos(pos);
+    // 创建撤销命令
+    class AlignMiddleCommand : public QUndoCommand {
+    public:
+        AlignMiddleCommand(DrawingScene *scene, const QList<DrawingShape*>& shapes, qreal targetMiddle, QUndoCommand *parent = nullptr)
+            : QUndoCommand("垂直居中对齐", parent), m_scene(scene), m_shapes(shapes), m_targetMiddle(targetMiddle)
+        {
+            // 保存原始位置
+            for (DrawingShape *shape : shapes) {
+                m_originalPositions[shape] = shape->pos();
+            }
+        }
+
+        void undo() override {
+            for (DrawingShape *shape : m_shapes) {
+                if (m_originalPositions.contains(shape)) {
+                    shape->setPos(m_originalPositions[shape]);
+                }
+            }
+            if (m_scene) m_scene->setModified(true);
+        }
+
+        void redo() override {
+            for (DrawingShape *shape : m_shapes) {
+                QRectF bounds = shape->boundingRect();
+                QPointF pos = shape->pos();
+                pos.setY(m_targetMiddle - bounds.height() / 2);
+                shape->setPos(pos);
+            }
+            if (m_scene) m_scene->setModified(true);
+        }
+
+    private:
+        DrawingScene *m_scene;
+        QList<DrawingShape*> m_shapes;
+        qreal m_targetMiddle;
+        QMap<DrawingShape*, QPointF> m_originalPositions;
+    };
+
+    if (CommandManager::hasInstance()) {
+        CommandManager::instance()->pushCommand(new AlignMiddleCommand(m_scene, shapes, middle));
     }
-    
     emit alignmentCompleted("垂直居中对齐");
     emit statusMessageChanged("已垂直居中对齐选中的对象");
 }
@@ -373,13 +509,47 @@ void SelectionManager::alignBottom()
 
     qreal bottomEdge = getBottommostEdge();
     
-    for (DrawingShape *shape : shapes) {
-        QRectF bounds = shape->boundingRect();
-        QPointF pos = shape->pos();
-        pos.setY(bottomEdge - bounds.height());
-        shape->setPos(pos);
+    // 创建撤销命令
+    class AlignBottomCommand : public QUndoCommand {
+    public:
+        AlignBottomCommand(DrawingScene *scene, const QList<DrawingShape*>& shapes, qreal targetBottom, QUndoCommand *parent = nullptr)
+            : QUndoCommand("底对齐", parent), m_scene(scene), m_shapes(shapes), m_targetBottom(targetBottom)
+        {
+            // 保存原始位置
+            for (DrawingShape *shape : shapes) {
+                m_originalPositions[shape] = shape->pos();
+            }
+        }
+
+        void undo() override {
+            for (DrawingShape *shape : m_shapes) {
+                if (m_originalPositions.contains(shape)) {
+                    shape->setPos(m_originalPositions[shape]);
+                }
+            }
+            if (m_scene) m_scene->setModified(true);
+        }
+
+        void redo() override {
+            for (DrawingShape *shape : m_shapes) {
+                QRectF bounds = shape->boundingRect();
+                QPointF pos = shape->pos();
+                pos.setY(m_targetBottom - bounds.height());
+                shape->setPos(pos);
+            }
+            if (m_scene) m_scene->setModified(true);
+        }
+
+    private:
+        DrawingScene *m_scene;
+        QList<DrawingShape*> m_shapes;
+        qreal m_targetBottom;
+        QMap<DrawingShape*, QPointF> m_originalPositions;
+    };
+
+    if (CommandManager::hasInstance()) {
+        CommandManager::instance()->pushCommand(new AlignBottomCommand(m_scene, shapes, bottomEdge));
     }
-    
     emit alignmentCompleted("底对齐");
     emit statusMessageChanged("已底对齐选中的对象");
 }
@@ -504,8 +674,41 @@ void SelectionManager::groupSelected()
         return;
     }
 
-    // TODO: 实现分组功能
-    emit statusMessageChanged("分组功能尚未实现");
+    if (!CommandManager::hasInstance()) {
+        emit statusMessageChanged("命令管理器未初始化");
+        return;
+    }
+
+    // 使用宏命令包装整个分组过程
+    CommandManager::instance()->executeMacro("组合对象", [this, shapes]() {
+        // 第一步：从场景中移除所有要组合的对象
+        for (DrawingShape* shape : shapes) {
+            if (shape && shape->scene()) {
+                m_scene->removeItem(shape);
+            }
+        }
+
+        // 第二步：创建组合对象
+        DrawingGroup* group = new DrawingGroup();
+        
+        // 第三步：将所有对象添加到组合中
+        for (DrawingShape* shape : shapes) {
+            if (shape) {
+                group->addItem(shape);
+            }
+        }
+
+        // 第四步：将组合对象添加到场景中
+        if (m_scene) {
+            m_scene->addItem(group);
+            group->setSelected(true);
+            
+            // 添加到活动图层
+            // TODO: 需要获取LayerManager并添加到活动图层
+        }
+
+        emit statusMessageChanged(QString("已将 %1 个对象组合").arg(shapes.count()));
+    });
 }
 
 void SelectionManager::ungroupSelected()
@@ -516,8 +719,60 @@ void SelectionManager::ungroupSelected()
         return;
     }
 
-    // TODO: 实现取消分组功能
-    emit statusMessageChanged("取消分组功能尚未实现");
+    if (!CommandManager::hasInstance()) {
+        emit statusMessageChanged("命令管理器未初始化");
+        return;
+    }
+
+    // 查找选中的组合对象
+    QList<DrawingGroup*> groupsToUngroup;
+    for (DrawingShape* shape : shapes) {
+        DrawingGroup* group = dynamic_cast<DrawingGroup*>(shape);
+        if (group) {
+            groupsToUngroup.append(group);
+        }
+    }
+
+    if (groupsToUngroup.isEmpty()) {
+        emit statusMessageChanged("没有选中的组合对象");
+        return;
+    }
+
+    // 使用宏命令包装整个取消组合过程
+    CommandManager::instance()->executeMacro("取消组合", [this, groupsToUngroup]() {
+        int totalItems = 0;
+        
+        for (DrawingGroup* group : groupsToUngroup) {
+            if (!group) continue;
+            
+            // 从组合中获取所有子项
+            QList<DrawingShape*> childItems = group->items();
+            totalItems += childItems.count();
+            
+            // 第一步：从场景中移除组合对象
+            if (group->scene()) {
+                m_scene->removeItem(group);
+            }
+            
+            // 第二步：取消组合
+            QList<DrawingShape*> ungroupedItems = group->ungroup();
+            
+            // 第三步：将所有子项重新添加到场景中
+            for (DrawingShape* item : ungroupedItems) {
+                if (item && m_scene) {
+                    m_scene->addItem(item);
+                    item->setSelected(true);
+                    
+                    // TODO: 需要添加到原来的图层
+                }
+            }
+            
+            // 删除空的组合对象
+            delete group;
+        }
+
+        emit statusMessageChanged(QString("已取消组合，释放 %1 个对象").arg(totalItems));
+    });
 }
 
 // 私有辅助函数实现

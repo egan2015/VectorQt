@@ -16,8 +16,7 @@ const QHash<ToolType, QString> ToolManager::s_toolNames = {
     {ToolType::GradientFill, "渐变填充"},
     {ToolType::Pen, "钢笔"},
     {ToolType::Eraser, "橡皮擦"},
-    {ToolType::Line, "直线"},
-    {ToolType::PathEdit, "路径编辑"},
+    {ToolType::Line, "直线工具"},
     {ToolType::Text, "文本"},
     {ToolType::Unknown, "未知"}
 };
@@ -124,6 +123,11 @@ bool ToolManager::switchTool(ToolBase* tool)
     
     // 激活新工具
     updateCurrentTool(tool, newType);
+    
+    // 更新DrawingScene中的当前工具类型
+    if (m_scene) {
+        m_scene->setCurrentTool(static_cast<int>(newType));
+    }
     
     if (m_currentTool) {
         // 恢复工具状态

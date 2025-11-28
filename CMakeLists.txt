@@ -22,7 +22,16 @@ set(SOURCES
     src/ui/mainwindow.cpp
     src/ui/drawingscene.cpp
     src/ui/drawingview.cpp
-    src/ui/control-frame.cpp
+    
+    src/ui/effect-manager.cpp
+    src/ui/selection-manager.cpp
+    src/ui/path-operations-manager.cpp
+    
+    src/ui/command-manager.cpp
+    
+    
+    src/ui/snap-manager.cpp
+    
     
     # 核心模块
     src/core/toolbase.cpp
@@ -34,11 +43,13 @@ set(SOURCES
     src/core/drawing-layer.cpp
     src/core/drawing-throttle.cpp
     src/core/brush-engine.cpp
-    src/core/object-pool.cpp
+    src/core/memory-manager.cpp
+    
     src/core/smart-render-manager.cpp
     src/core/performance-monitor.cpp
     src/ui/colorpalette.cpp
     src/ui/cursor-manager.cpp
+    
     src/core/layer-manager.cpp
     src/core/patheditor.cpp
     src/core/object-tree-item.cpp
@@ -47,7 +58,6 @@ set(SOURCES
     src/ui/ruler.cpp
     src/ui/scrollable-toolbar.cpp
     src/core/svghandler.cpp
-    src/core/graphics-adapter.h
     src/tools/tool-state-manager.cpp
     src/tools/tool-manager.cpp
     src/ui/shortcut-manager.cpp
@@ -63,7 +73,6 @@ set(SOURCES
     src/tools/drawing-tool-line.cpp
     src/tools/drawing-tool-polyline.cpp
     src/tools/drawing-tool-polygon.cpp
-    src/tools/drawing-tool-path-edit.cpp
     src/tools/drawing-tool-node-edit.cpp
     src/tools/drawing-tool-outline-preview.cpp
     
@@ -90,7 +99,7 @@ set(HEADERS
     src/ui/mainwindow.h
     src/ui/drawingscene.h
     src/ui/drawingview.h
-    src/ui/control-frame.h
+    
     
     # 核心模块
     src/core/toolbase.h
@@ -102,11 +111,13 @@ set(HEADERS
     src/core/drawing-layer.h
     src/core/drawing-throttle.h
     src/core/brush-engine.h
-    src/core/object-pool.h
+    src/core/memory-manager.h
+    
     src/core/smart-render-manager.h
     src/core/performance-monitor.h
     src/ui/colorpalette.h
     src/ui/cursor-manager.h
+    
     src/core/layer-manager.h
     src/core/patheditor.h
     src/core/object-tree-item.h
@@ -115,7 +126,6 @@ set(HEADERS
     src/ui/ruler.h
     src/ui/scrollable-toolbar.h
     src/core/svghandler.h
-    src/core/graphics-adapter.h
     src/tools/tool-state-manager.h
     src/tools/tool-manager.h
     src/ui/shortcut-manager.h
@@ -131,7 +141,6 @@ set(HEADERS
     src/tools/drawing-tool-line.h
     src/tools/drawing-tool-polyline.h
     src/tools/drawing-tool-polygon.h
-    src/tools/drawing-tool-path-edit.h
     src/tools/drawing-tool-node-edit.h
     src/tools/drawing-tool-outline-preview.h
     
@@ -181,6 +190,8 @@ endif()
 # 调试信息
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     target_compile_definitions(VectorQt PRIVATE DEBUG)
+    # 禁用内存管理器以避免死锁
+    # target_compile_definitions(VectorQt PRIVATE DEBUG_MEMORY)
 endif()
 
 # 国际化支持

@@ -10,6 +10,8 @@
 #include "../core/drawing-shape.h"
 #include "../tools/node-handle-manager.h"
 #include "../tools/handle-item.h"
+#include "../ui/snap-manager.h"
+#include "../ui/command-manager.h"
 
 // NodeEditCommand 实现
 NodeEditCommand::NodeEditCommand(DrawingScene *scene, DrawingShape *shape, int nodeIndex,
@@ -249,11 +251,11 @@ bool DrawingNodeEditTool::mouseMoveEvent(QMouseEvent *event, const QPointF &scen
             if (drawingScene && drawingScene->isGridAlignmentEnabled())
             {
                 // 使用智能网格吸附
-                DrawingScene::SnapResult gridSnap = drawingScene->smartAlignToGrid(scenePos);
+                SnapResult gridSnap = drawingScene->snapManager()->smartAlignToGrid(scenePos);
                 alignedScenePos = gridSnap.snappedPos;
 
                 // 尝试对象吸附
-                DrawingScene::ObjectSnapResult objectSnap = drawingScene->snapToObjects(scenePos, m_selectedShape);
+                ObjectSnapResult objectSnap = drawingScene->snapManager()->snapToObjects(scenePos, m_selectedShape);
                 if (objectSnap.snappedToObject)
                 {
                     // 对象吸附优先级更高
@@ -416,7 +418,12 @@ bool DrawingNodeEditTool::mouseReleaseEvent(QMouseEvent *event, const QPointF &s
                     NodeEditCommand *command = new NodeEditCommand(m_scene, m_selectedShape,
                                                                    handleInfo.nodeIndex, m_originalValue, currentPos,
                                                                    oldCornerRadius, newCornerRadius);
-                    m_scene->undoStack()->push(command);
+                    if (CommandManager::hasInstance()) {
+        CommandManager::instance()->pushCommand(command);
+    } else {
+        command->redo();
+        delete command;
+    }
                 }
             }
 

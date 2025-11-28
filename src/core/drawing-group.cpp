@@ -4,6 +4,8 @@
 #include <QGraphicsSceneMouseEvent>
 #include <QGraphicsScene>
 #include <QWidget>
+#include <QDataStream>
+#include <QIODevice>
 #include <limits>
 #include "../core/drawing-group.h"
 #include "../core/drawing-shape.h"
@@ -281,8 +283,189 @@ void DrawingGroup::applyTransform(const QTransform &transform, const QPointF &an
     // 同时也对组对象本身应用变换以保持一致性
     DrawingShape::applyTransform(transform, anchor);
 }
+
+// DrawingGroup 序列化方法
+QByteArray DrawingGroup::serialize() const
+{
+    QByteArray data;
+    QDataStream stream(&data, QIODevice::WriteOnly);
+    
+    // 写入类型标识
+    stream << static_cast<int>(DrawingShape::Group);
+    
+    // 写入位置信息
+    stream << pos();
+    stream << scale();
+    stream << rotation();
+    stream << transform();
+    stream << zValue();
+    stream << isVisible();
+    stream << isEnabled();
+    stream << fillBrush();
+    stream << strokePen();
+    stream << opacity();
+    stream << id();
+    
+    // 写入子对象数量
+    stream << m_items.count();
+    qDebug() << "DrawingGroup::serialize: serializing group with" << m_items.count() << "children";
+    
+    // 序列化每个子对象
+    for (DrawingShape *item : m_items) {
+        if (item) {
+            qDebug() << "DrawingGroup::serialize: serializing child item type:" << item->shapeType() << "pos:" << item->pos();
+            // 子对象的位置已经是相对于组合对象的本地坐标
+            QByteArray itemData = item->serialize();
+            stream << itemData;
+        }
+    }
+    
+    return data;
+}
+
+void DrawingGroup::deserialize(const QByteArray &data)
+{
+    QDataStream stream(data);
+    
+    // 读取类型标识
+    int typeValue;
+    stream >> typeValue;
+    
+    // 读取位置信息
+    QPointF position;
+    stream >> position;
+    setPos(position);
+    
+    qreal scaleValue;
+    stream >> scaleValue;
+    setScale(scaleValue);
+    
+    qreal rotationValue;
+    stream >> rotationValue;
+    setRotation(rotationValue);
+    
+    QTransform transform;
+    stream >> transform;
+    setTransform(transform);
+    
+    qreal zValue;
+    stream >> zValue;
+    setZValue(zValue);
+    
+    bool visible;
+    stream >> visible;
+    setVisible(visible);
+    
+    bool enabled;
+    stream >> enabled;
+    setEnabled(enabled);
+    
+    QBrush fillBrush;
+    stream >> fillBrush;
+    setFillBrush(fillBrush);
+    
+    QPen strokePen;
+    stream >> strokePen;
+    setStrokePen(strokePen);
+    
+    qreal opacity;
+    stream >> opacity;
+    setOpacity(opacity);
+    
+    QString id;
+    stream >> id;
+    setId(id);
+    
+    // 读取子对象数量
+    int itemCount;
+    stream >> itemCount;
+    qDebug() << "DrawingGroup::deserialize: reading group with" << itemCount << "children";
+    
+    // 清空现有子对象
+    m_items.clear();
+    
+    // 反序列化每个子对象
+    for (int i = 0; i < itemCount; ++i) {
+        QByteArray itemData;
+        stream >> itemData;
+        
+        // 读取形状类型
+        QDataStream typeStream(itemData);
+        int typeValue;
+        typeStream >> typeValue;
+        DrawingShape::ShapeType shapeType = static_cast<DrawingShape::ShapeType>(typeValue);
+        
+        // 创建对应的形状对象
+        DrawingShape *item = nullptr;
+        switch (shapeType) {
+            case DrawingShape::Rectangle:
+                item = new DrawingRectangle();
+                break;
+            case DrawingShape::Ellipse:
+                item = new DrawingEllipse();
+                break;
+            case DrawingShape::Line:
+                item = new DrawingLine();
+                break;
+            case DrawingShape::Path:
+                item = new DrawingPath();
+                break;
+            case DrawingShape::Polyline:
+                item = new DrawingPolyline();
+                break;
+            case DrawingShape::Polygon:
+                item = new DrawingPolygon();
+                break;
+            case DrawingShape::Text:
+                item = new DrawingText();
+                break;
+            case DrawingShape::Group:
+                item = new DrawingGroup();
+                break;
+            default:
+                continue;
+        }
+        
+        if (item) {
+            item->deserialize(itemData);
+            qDebug() << "DrawingGroup::deserialize: deserialized child item type:" << shapeType << "pos:" << item->pos() << "visible:" << item->isVisible();
+            
+            // 直接设置父子关系，不调用addItem以避免坐标转换
+            item->setParentItem(this);
+            m_items.append(item);
+            
+            // 确保子对象可见
+            item->setVisible(true);
+            
+            // 禁用子项的鼠标事件，让组合对象处理所有事件
+            item->setFlag(QGraphicsItem::ItemIsMovable, false);
+            item->setFlag(QGraphicsItem::ItemIsSelectable, false);
+            
+            qDebug() << "DrawingGroup::deserialize: child item parent set, visible:" << item->isVisible();
+        }
+    }
+    
+    update();
+}
+
+DrawingShape* DrawingGroup::clone() const
+{
+    qDebug() << "DrawingGroup::clone() called";
+    
+    // 先序列化当前对象的数据
+    QByteArray data = serialize();
+    qDebug() << "DrawingGroup::clone: serialized data size:" << data.size();
+    
+    // 创建新的组合对象
+    DrawingGroup *copy = new DrawingGroup();
+    
+    // 反序列化数据到新对象
+    copy->deserialize(data);
+    qDebug() << "DrawingGroup::clone() completed, child count:" << copy->items().count();
+    return copy;
+}
+
 QVariant DrawingGroup::itemChange(QGraphicsItem::GraphicsItemChange change, const QVariant &value)
 {
-
     return DrawingShape::itemChange(change, value);
 }

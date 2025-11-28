@@ -14,6 +14,12 @@ const QColor NodeHandleManager::BEZIER_NODE_COLOR = QColor(255, 255, 255, 230); 
 const QColor NodeHandleManager::BEZIER_CONTROL_IN_COLOR = QColor(255, 255, 255, 200); // 白色（进入控制点）
 const QColor NodeHandleManager::BEZIER_CONTROL_OUT_COLOR = QColor(255, 255, 255, 200); // 白色（离开控制点）
 
+// 智能节点类型颜色配置
+const QColor NodeHandleManager::CORNER_NODE_COLOR = QColor(255, 100, 100, 230);     // 红色 - 尖角节点
+const QColor NodeHandleManager::SMOOTH_NODE_COLOR = QColor(100, 255, 100, 230);     // 绿色 - 平滑节点
+const QColor NodeHandleManager::SYMMETRIC_NODE_COLOR = QColor(200, 100, 255, 230); // 紫色 - 对称节点
+const QColor NodeHandleManager::CURVE_NODE_COLOR = QColor(255, 180, 100, 230);      // 橙色 - 曲线节点
+
 NodeHandleManager::NodeHandleManager(DrawingScene *scene, QObject *parent)
     : QObject(parent)
     , m_scene(scene)
@@ -942,4 +948,247 @@ void NodeHandleManager::createSimpleControlArm(DrawingShape *shape)
     m_controlArmLines.clear();
     
     // 不再绘制红线，保持简洁
+}
+
+// 基于NodeInfo的智能手柄管理方法实现
+void NodeHandleManager::updateHandlesFromNodeInfo(DrawingShape *shape)
+{
+    if (!shape) return;
+    
+    // 清除现有手柄
+    clearHandles();
+    m_currentShape = shape;
+    
+    // 获取图形的节点信息
+    QVector<NodeInfo> nodeInfos = shape->getNodeInfo();
+    
+    // 为每个节点信息创建相应的手柄
+    for (int i = 0; i < nodeInfos.size(); ++i) {
+        createHandlesForNodeInfo(nodeInfos[i], i);
+    }
+    
+    if (m_handlesVisible) {
+        showHandles();
+    }
+}
+
+void NodeHandleManager::createHandlesForNodeInfo(const NodeInfo &nodeInfo, int index)
+{
+    if (!m_scene) return;
+    
+    QPointF scenePos = calculateHandlePosition(nodeInfo.position, m_currentShape);
+    NodeHandleType handleType = getHandleTypeFromNodeInfo(nodeInfo);
+    
+    NodeHandleInfo info;
+    info.nodeIndex = index;
+    info.originalPos = scenePos;
+    info.type = handleType;
+    
+    // 根据节点类型创建手柄
+    switch (handleType) {
+    case CornerRadiusHandle:
+        info.handle = createCornerRadiusHandle(scenePos);
+        break;
+    case SizeControlHandle:
+        info.handle = createSizeControlHandle(scenePos);
+        break;
+    case PathNodeHandle:
+        info.handle = createPathNodeHandle(scenePos);
+        break;
+    case PathControlHandle:
+        info.handle = createPathControlHandle(scenePos);
+        break;
+    default:
+        info.handle = createCustomNodeHandle(scenePos, index);
+        break;
+    }
+    
+    // 应用智能节点样式
+    setupHandleStyleFromNodeInfo(info.handle, nodeInfo);
+    
+    m_handleInfos.append(info);
+    
+    // 如果节点有控制点，创建控制点手柄
+    if (nodeInfo.hasControlIn) {
+        QPointF inControlPos = calculateHandlePosition(nodeInfo.controlIn, m_currentShape);
+        NodeHandleInfo inInfo;
+        inInfo.nodeIndex = index;
+        inInfo.originalPos = inControlPos;
+        inInfo.type = BezierControlIn;
+        inInfo.handle = createPathControlHandle(inControlPos);
+        setupHandleStyle(inInfo.handle, BezierControlIn);
+        m_handleInfos.append(inInfo);
+    }
+    
+    if (nodeInfo.hasControlOut) {
+        QPointF outControlPos = calculateHandlePosition(nodeInfo.controlOut, m_currentShape);
+        NodeHandleInfo outInfo;
+        outInfo.nodeIndex = index;
+        outInfo.originalPos = outControlPos;
+        outInfo.type = BezierControlOut;
+        outInfo.handle = createPathControlHandle(outControlPos);
+        setupHandleStyle(outInfo.handle, BezierControlOut);
+        m_handleInfos.append(outInfo);
+    }
+}
+
+NodeHandleManager::NodeHandleType NodeHandleManager::getHandleTypeFromNodeInfo(const NodeInfo &nodeInfo) const
+{
+    switch (nodeInfo.type) {
+    case NodeInfo::SizeControl:
+        return SizeControlHandle;
+    case NodeInfo::AngleControl:
+        return PathControlHandle;
+    case NodeInfo::RadiusControl:
+        return CornerRadiusHandle;
+    case NodeInfo::Corner:
+    case NodeInfo::Smooth:
+    case NodeInfo::Symmetric:
+    case NodeInfo::Curve:
+    case NodeInfo::Start:
+    case NodeInfo::End:
+        return PathNodeHandle;
+    default:
+        return CustomNodeHandle;
+    }
+}
+
+void NodeHandleManager::setupHandleStyleFromNodeInfo(CustomHandleItem *handle, const NodeInfo &nodeInfo) const
+{
+    if (!handle) return;
+    
+    // 根据节点类型设置颜色
+    switch (nodeInfo.type) {
+    case NodeInfo::Corner:
+        handle->setSpecificColor(CORNER_NODE_COLOR);
+        handle->setStyle(HandleItemBase::Square);
+        break;
+    case NodeInfo::Smooth:
+        handle->setSpecificColor(SMOOTH_NODE_COLOR);
+        handle->setStyle(HandleItemBase::Square);
+        break;
+    case NodeInfo::Symmetric:
+        handle->setSpecificColor(SYMMETRIC_NODE_COLOR);
+        handle->setStyle(HandleItemBase::Diamond);
+        break;
+    case NodeInfo::Curve:
+        handle->setSpecificColor(CURVE_NODE_COLOR);
+        handle->setStyle(HandleItemBase::Circle);
+        break;
+    case NodeInfo::Start:
+        handle->setSpecificColor(QColor(100, 200, 255, 230)); // 浅蓝色
+        handle->setStyle(HandleItemBase::Square);
+        break;
+    case NodeInfo::End:
+        handle->setSpecificColor(QColor(255, 100, 200, 230)); // 粉色
+        handle->setStyle(HandleItemBase::Square);
+        break;
+    default:
+        // 使用默认样式
+        break;
+    }
+}
+
+// 智能控制杆处理方法实现
+void NodeHandleManager::handleSmartControlArmDrag(CustomHandleItem *handle, const QPointF &newPos)
+{
+    if (!handle || !m_currentShape) return;
+    
+    // 获取手柄信息
+    NodeHandleInfo handleInfo = getHandleInfo(handle);
+    if (handleInfo.nodeIndex < 0) return;
+    
+    qDebug() << "=== Smart Control Arm Drag ===";
+    qDebug() << "Handle type:" << handleInfo.type << "Node index:" << handleInfo.nodeIndex;
+    
+    // 获取图形的节点信息
+    QVector<NodeInfo> nodeInfos = m_currentShape->getNodeInfo();
+    if (handleInfo.nodeIndex >= nodeInfos.size()) return;
+    
+    NodeInfo &nodeInfo = nodeInfos[handleInfo.nodeIndex];
+    QPointF localPos = m_currentShape->mapFromScene(newPos);
+    
+    // 判断是拖拽进入控制点还是离开控制点
+    bool isInArm = (handleInfo.type == BezierControlIn);
+    
+    qDebug() << "Node type before drag:" << nodeInfo.type;
+    qDebug() << "Is dragging in arm:" << isInArm;
+    qDebug() << "New control position:" << localPos;
+    
+    // 使用NodeInfo的智能单杆控制逻辑
+    nodeInfo.handleSingleArmDrag(isInArm, localPos);
+    
+    // 更新图形的控制点
+    updateNodeFromHandle(handle, newPos);
+    
+    qDebug() << "Node type after drag:" << nodeInfo.type;
+    nodeInfo.debugPrint();
+    qDebug() << "=== End Smart Control Arm Drag ===";
+}
+
+void NodeHandleManager::updateNodeFromHandle(CustomHandleItem *handle, const QPointF &newPos)
+{
+    if (!handle || !m_currentShape) return;
+    
+    NodeHandleInfo handleInfo = getHandleInfo(handle);
+    if (handleInfo.nodeIndex < 0) return;
+    
+    // 获取图形的节点信息
+    QVector<NodeInfo> nodeInfos = m_currentShape->getNodeInfo();
+    if (handleInfo.nodeIndex >= nodeInfos.size()) return;
+    
+    NodeInfo &nodeInfo = nodeInfos[handleInfo.nodeIndex];
+    QPointF localPos = m_currentShape->mapFromScene(newPos);
+    
+    // 根据手柄类型更新相应的控制点
+    switch (handleInfo.type) {
+    case BezierControlIn:
+        nodeInfo.controlIn = localPos;
+        nodeInfo.hasControlIn = true;
+        break;
+        
+    case BezierControlOut:
+        nodeInfo.controlOut = localPos;
+        nodeInfo.hasControlOut = true;
+        break;
+        
+    case PathNodeHandle:
+        nodeInfo.position = localPos;
+        break;
+        
+    default:
+        // 其他手柄类型的处理
+        break;
+    }
+    
+    // 对于路径图形，需要同步更新控制点数组
+    if (m_currentShape->shapeType() == DrawingShape::Path) {
+        DrawingPath *path = static_cast<DrawingPath*>(m_currentShape);
+        if (path) {
+            QVector<QPointF> controlPoints = path->controlPoints();
+            
+            // 根据节点信息更新控制点数组
+            if (handleInfo.type == BezierControlIn && nodeInfo.hasControlIn) {
+                // 找到对应的控制点索引并更新
+                // 这里需要根据实际的控制点数组结构来映射
+                for (int i = 0; i < controlPoints.size(); ++i) {
+                    if (i < nodeInfos.size() && nodeInfos[i].elementIndex == nodeInfo.elementIndex) {
+                        // 更新对应的控制点
+                        controlPoints[i] = nodeInfo.controlIn;
+                        break;
+                    }
+                }
+            } else if (handleInfo.type == BezierControlOut && nodeInfo.hasControlOut) {
+                // 类似地更新离开控制点
+                for (int i = 0; i < controlPoints.size(); ++i) {
+                    if (i < nodeInfos.size() && nodeInfos[i].elementIndex == nodeInfo.elementIndex) {
+                        controlPoints[i] = nodeInfo.controlOut;
+                        break;
+                    }
+                }
+            }
+            
+            path->setControlPoints(controlPoints);
+        }
+    }
 }

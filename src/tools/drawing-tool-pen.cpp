@@ -16,9 +16,10 @@
 #include "../core/drawing-shape.h"
 #include "../core/drawing-layer.h"
 #include "../core/layer-manager.h"
-#include "../core/object-pool.h"
+
 #include "../ui/mainwindow.h"
 #include "../ui/colorpalette.h"
+#include "../ui/command-manager.h"
 
 DrawingToolPen::DrawingToolPen(QObject *parent)
     : ToolBase(parent)
@@ -41,23 +42,7 @@ DrawingToolPen::DrawingToolPen(QObject *parent)
     // 加载钢笔预设
     m_brushEngine->loadDefaultProfile("Fountain Pen");
     
-    // 设置DrawingPath对象池的重置函数
-    auto pathPool = GlobalObjectPoolManager::instance().getPool<DrawingPath>();
-    pathPool->setResetFunction([](DrawingPath* path) {
-        if (path) {
-            // 重置路径状态
-            path->setPath(QPainterPath());
-            path->setControlPoints(QVector<QPointF>());
-            path->setControlPointTypes(QVector<QPainterPath::ElementType>());
-            path->setShowControlPolygon(false);
-            path->clearHighlights();
-            path->setSelected(false);
-            path->setVisible(true);
-            path->setPos(0, 0);
-            path->setTransform(QTransform());
-            path->setZValue(0);
-        }
-    });
+    // 钢笔工具不需要对象池，直接创建对象更简单高效
     
     // 连接信号
     connect(m_brushEngine, &BrushEngine::strokeUpdated, this, [this]() {
@@ -355,9 +340,10 @@ void DrawingToolPen::createPathShape()
             : QUndoCommand("添加钢笔路径", parent), m_scene(scene), m_path(path), m_layer(layer), m_pathOwnedByCommand(false) {}
         
         ~PenAddCommand() {
-            // 如果命令拥有路径对象且路径不在场景中，则归还到对象池
+            // 如果命令拥有路径对象且路径不在场景中，则删除对象
             if (m_pathOwnedByCommand && m_path && !m_path->scene()) {
-                GlobalObjectPoolManager::instance().getPool<DrawingPath>()->release(m_path);
+                delete m_path;
+                m_path = nullptr;
             }
         }
         
@@ -420,7 +406,12 @@ void DrawingToolPen::createPathShape()
     
     // 创建并推送撤销命令
     PenAddCommand *command = new PenAddCommand(m_scene, pathShape, activeLayer);
-    m_scene->undoStack()->push(command);
+    if (CommandManager::hasInstance()) {
+        CommandManager::instance()->pushCommand(command);
+    } else {
+        command->redo();
+        delete command;
+    }
     
     m_scene->setModified(true);
 }
@@ -627,8 +618,8 @@ void DrawingToolPen::beginFreeDraw(const QPointF &scenePos)
     m_pressures.clear();
     m_timer.restart();
     
-    // 从对象池获取路径对象
-    m_currentPath = GlobalObjectPoolManager::instance().getPool<DrawingPath>()->acquire();
+    // 直接创建路径对象
+    m_currentPath = new DrawingPath();
     QPainterPath path;
     path.moveTo(scenePos);
     m_currentPath->setPath(path);
@@ -690,8 +681,8 @@ void DrawingToolPen::endFreeDraw()
     if (boundingRect.width() <= 5 && boundingRect.height() <= 5) {
         // 太小了，删除
         m_scene->removeItem(m_currentPath);
-        // 返回到对象池
-        GlobalObjectPoolManager::instance().getPool<DrawingPath>()->release(m_currentPath);
+        // 删除路径对象
+        delete m_currentPath;
         m_currentPath = nullptr;
         m_freeDrawPoints.clear();
         m_pressures.clear();
@@ -763,7 +754,12 @@ void DrawingToolPen::endFreeDraw()
     
     // 创建并推送撤销命令
     PenFreeDrawCommand *command = new PenFreeDrawCommand(m_scene, m_currentPath, activeLayer);
-    m_scene->undoStack()->push(command);
+    if (CommandManager::hasInstance()) {
+        CommandManager::instance()->pushCommand(command);
+    } else {
+        command->redo();
+        delete command;
+    }
     
     // 标记场景已修改
     m_scene->setModified(true);

@@ -5,7 +5,9 @@
 #include "../tools/drawing-tool-bezier.h"
 #include "../ui/drawingscene.h"
 #include "../core/drawing-shape.h"
-#include "../core/object-pool.h"
+#include "../ui/snap-manager.h"
+#include "../ui/command-manager.h"
+
 
 DrawingBezierTool::DrawingBezierTool(QObject *parent)
     : ToolBase(parent)
@@ -14,38 +16,23 @@ DrawingBezierTool::DrawingBezierTool(QObject *parent)
     , m_currentItem(nullptr)
     , m_previewItem(nullptr)
 {
-    // 设置DrawingPath对象池的重置函数
-    auto pathPool = GlobalObjectPoolManager::instance().getPool<DrawingPath>();
-    pathPool->setResetFunction([](DrawingPath* path) {
-        if (path) {
-            // 重置路径状态
-            path->setPath(QPainterPath());
-            path->setControlPoints(QVector<QPointF>());
-            path->setControlPointTypes(QVector<QPainterPath::ElementType>());
-            path->setShowControlPolygon(false);
-            path->clearHighlights();
-            path->setSelected(false);
-            path->setVisible(true);
-            path->setPos(0, 0);
-            path->setTransform(QTransform());
-            path->setZValue(0);
-        }
-    });
+    // 贝塞尔工具不需要对象池，直接创建对象更简单高效
 }
 
 DrawingBezierTool::~DrawingBezierTool()
 {
     // 确保清理所有资源
     if (m_currentPath) {
-        // m_currentPath是QPainterPath，不需要归还到对象池
         delete m_currentPath;
         m_currentPath = nullptr;
     }
     
     // 清理预览项（如果存在）
     if (m_previewItem) {
-        // 注意：在析构时，场景可能已经被销毁，只归还到对象池
-        GlobalObjectPoolManager::instance().getPool<DrawingPath>()->release(m_previewItem);
+        if (m_scene) {
+            m_scene->removeItem(m_previewItem);
+        }
+        delete m_previewItem;
         m_previewItem = nullptr;
     }
     
@@ -61,11 +48,11 @@ bool DrawingBezierTool::mousePressEvent(QMouseEvent *event, const QPointF &scene
         DrawingScene *drawingScene = qobject_cast<DrawingScene*>(m_scene);
         if (drawingScene->isGridAlignmentEnabled()) {
             // 使用智能网格吸附
-            DrawingScene::SnapResult gridSnap = drawingScene->smartAlignToGrid(scenePos);
+            SnapResult gridSnap = drawingScene->snapManager()->smartAlignToGrid(scenePos);
             alignedPos = gridSnap.snappedPos;
             
             // 尝试对象吸附
-            DrawingScene::ObjectSnapResult objectSnap = drawingScene->snapToObjects(scenePos);
+            ObjectSnapResult objectSnap = drawingScene->snapManager()->snapToObjects(scenePos);
             if (objectSnap.snappedToObject) {
                 // 对象吸附优先级更高
                 alignedPos = objectSnap.snappedPos;
@@ -86,7 +73,7 @@ bool DrawingBezierTool::mousePressEvent(QMouseEvent *event, const QPointF &scene
             
             // 创建预览项
             if (!m_previewItem) {
-                m_previewItem = GlobalObjectPoolManager::instance().getPool<DrawingPath>()->acquire();
+                m_previewItem = new DrawingPath();
                 m_previewItem->setStrokePen(QPen(Qt::blue, 2, Qt::DashLine));
                 m_previewItem->setFillBrush(Qt::NoBrush);
                 if (m_scene) {
@@ -130,11 +117,11 @@ bool DrawingBezierTool::mouseMoveEvent(QMouseEvent *event, const QPointF &sceneP
         DrawingScene *drawingScene = qobject_cast<DrawingScene*>(m_scene);
         if (drawingScene->isGridAlignmentEnabled()) {
             // 使用智能网格吸附
-            DrawingScene::SnapResult gridSnap = drawingScene->smartAlignToGrid(scenePos);
+            SnapResult gridSnap = drawingScene->snapManager()->smartAlignToGrid(scenePos);
             alignedPos = gridSnap.snappedPos;
             
             // 尝试对象吸附
-            DrawingScene::ObjectSnapResult objectSnap = drawingScene->snapToObjects(scenePos);
+            ObjectSnapResult objectSnap = drawingScene->snapManager()->snapToObjects(scenePos);
             if (objectSnap.snappedToObject) {
                 // 对象吸附优先级更高
                 alignedPos = objectSnap.snappedPos;
@@ -230,8 +217,7 @@ void DrawingBezierTool::deactivate()
             if (m_scene) {
                 m_scene->removeItem(m_previewItem);
             }
-            // 归还到对象池
-            GlobalObjectPoolManager::instance().getPool<DrawingPath>()->release(m_previewItem);
+            delete m_previewItem;
             m_previewItem = nullptr;
         }
     }
@@ -287,25 +273,25 @@ void DrawingBezierTool::finishDrawing()
             DrawingScene *drawingScene = qobject_cast<DrawingScene*>(m_scene);
             if (drawingScene->isGridAlignmentEnabled()) {
                 // 重新构建路径，应用网格对齐到所有控制点
-                alignedPath.moveTo(drawingScene->alignToGrid(m_controlPoints.first()));
+                alignedPath.moveTo(drawingScene->snapManager()->alignToGrid(m_controlPoints.first()));
                 
                 for (int i = 1; i < m_controlPoints.size(); ) {
                     if (i + 2 < m_controlPoints.size()) {
                         // 有足够的点创建三次贝塞尔曲线
-                        QPointF p1 = drawingScene->alignToGrid(m_controlPoints[i]);
-                        QPointF p2 = drawingScene->alignToGrid(m_controlPoints[i+1]);
-                        QPointF p3 = drawingScene->alignToGrid(m_controlPoints[i+2]);
+                        QPointF p1 = drawingScene->snapManager() ? drawingScene->snapManager()->alignToGrid(m_controlPoints[i]) : m_controlPoints[i];
+                        QPointF p2 = drawingScene->snapManager() ? drawingScene->snapManager()->alignToGrid(m_controlPoints[i+1]) : m_controlPoints[i+1];
+                        QPointF p3 = drawingScene->snapManager() ? drawingScene->snapManager()->alignToGrid(m_controlPoints[i+2]) : m_controlPoints[i+2];
                         alignedPath.cubicTo(p1, p2, p3);
                         i += 3; // 跳过已经处理的两个控制点和终点
                     } else if (i + 1 < m_controlPoints.size()) {
                         // 有足够的点创建二次贝塞尔曲线
-                        QPointF p1 = drawingScene->alignToGrid(m_controlPoints[i]);
-                        QPointF p2 = drawingScene->alignToGrid(m_controlPoints[i+1]);
+                        QPointF p1 = drawingScene->snapManager() ? drawingScene->snapManager()->alignToGrid(m_controlPoints[i]) : m_controlPoints[i];
+                        QPointF p2 = drawingScene->snapManager() ? drawingScene->snapManager()->alignToGrid(m_controlPoints[i+1]) : m_controlPoints[i+1];
                         alignedPath.quadTo(p1, p2);
                         i += 2; // 跳过已经处理的一个控制点和终点
                     } else {
                         // 只有一个点，创建直线
-                        QPointF p1 = drawingScene->alignToGrid(m_controlPoints[i]);
+                        QPointF p1 = drawingScene->snapManager() ? drawingScene->snapManager()->alignToGrid(m_controlPoints[i]) : m_controlPoints[i];
                         alignedPath.lineTo(p1);
                         i += 1; // 移动到下一个点
                     }
@@ -314,7 +300,7 @@ void DrawingBezierTool::finishDrawing()
         }
         
         // 创建最终的路径图形
-        m_currentItem = GlobalObjectPoolManager::instance().getPool<DrawingPath>()->acquire();
+        m_currentItem = new DrawingPath();
         if (qobject_cast<DrawingScene*>(m_scene) && qobject_cast<DrawingScene*>(m_scene)->isGridAlignmentEnabled()) {
             m_currentItem->setPath(alignedPath);
         } else {
@@ -382,7 +368,12 @@ void DrawingBezierTool::finishDrawing()
             
             // 创建并推送撤销命令
             AddItemCommand *command = new AddItemCommand(m_scene, m_currentItem);
-            m_scene->undoStack()->push(command);
+            if (CommandManager::hasInstance()) {
+        CommandManager::instance()->pushCommand(command);
+    } else {
+        command->redo();
+        delete command;
+    }
         }
         
         qDebug() << "Finished drawing bezier curve with" << m_controlPoints.size() << "control points";
@@ -393,8 +384,7 @@ void DrawingBezierTool::finishDrawing()
         if (m_scene) {
             m_scene->removeItem(m_previewItem);
         }
-        // 归还到对象池
-        GlobalObjectPoolManager::instance().getPool<DrawingPath>()->release(m_previewItem);
+        delete m_previewItem;
         m_previewItem = nullptr;
     }
     

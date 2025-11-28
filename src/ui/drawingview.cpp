@@ -5,11 +5,16 @@
 #include <QPainter>
 #include "../ui/drawingview.h"
 #include "../core/toolbase.h"
+#include "../ui/drawingscene.h"
+#include "../ui/snap-manager.h"
+#include "../tools/tool-manager.h"
 
 DrawingView::DrawingView(QGraphicsScene *scene, QWidget *parent)
     : QGraphicsView(scene, parent)
     , m_zoomLevel(1.0)
     , m_currentTool(nullptr)
+    , m_toolManager(nullptr)
+    
 {
     // Qt原生渲染优化
     setRenderHint(QPainter::Antialiasing);
@@ -97,6 +102,8 @@ void DrawingView::mousePressEvent(QMouseEvent *event)
     QPointF scenePos = mapToScene(event->pos());
     emit mousePositionChanged(scenePos);
     
+    
+    
     if (m_currentTool && m_currentTool->mousePressEvent(event, scenePos)) {
         return;
     }
@@ -108,6 +115,8 @@ void DrawingView::mouseMoveEvent(QMouseEvent *event)
     QPointF scenePos = mapToScene(event->pos());
     emit mousePositionChanged(scenePos);
     
+    
+    
     if (m_currentTool && m_currentTool->mouseMoveEvent(event, scenePos)) {
         return;
     }
@@ -118,6 +127,12 @@ void DrawingView::mouseReleaseEvent(QMouseEvent *event)
 {
     QPointF scenePos = mapToScene(event->pos());
     
+    // 清除吸附指示器
+    DrawingScene *drawingScene = qobject_cast<DrawingScene*>(scene());
+    if (drawingScene && drawingScene->snapManager()) {
+        drawingScene->snapManager()->clearSnapIndicators();
+    }
+    
     if (m_currentTool && m_currentTool->mouseReleaseEvent(event, scenePos)) {
         return;
     }
@@ -127,6 +142,9 @@ void DrawingView::mouseReleaseEvent(QMouseEvent *event)
 void DrawingView::mouseDoubleClickEvent(QMouseEvent *event)
 {
     QPointF scenePos = mapToScene(event->pos());
+    
+    // 让状态机通过正常的鼠标事件处理流程来处理双击
+    // 不在这里直接调用 triggerToolSwitch，避免重复处理
     
     if (m_currentTool && m_currentTool->mouseDoubleClickEvent(event, scenePos)) {
         return;
@@ -146,6 +164,20 @@ void DrawingView::scrollContentsBy(int dx, int dy)
 {
     QGraphicsView::scrollContentsBy(dx, dy);
     emit viewportChanged();
+}
+
+void DrawingView::setToolManager(ToolManager* toolManager)
+{
+    m_toolManager = toolManager;
+}
+
+
+
+void DrawingView::onToolSwitchRequested(ToolType newTool)
+{
+    if (m_toolManager) {
+        m_toolManager->switchTool(newTool);
+    }
 }
 
 void DrawingView::updateZoomLabel()

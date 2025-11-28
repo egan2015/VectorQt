@@ -406,10 +406,33 @@ void PropertyPanel::updateValues()
         QRectF bounds = item->boundingRect();
         QPointF pos = item->pos();
         
-        m_xSpinBox->setValue(pos.x());
-        m_ySpinBox->setValue(pos.y());
-        m_widthSpinBox->setValue(bounds.width());
-        m_heightSpinBox->setValue(bounds.height());
+        // 对于路径对象，使用变换后的边界框来获取准确的位置和尺寸
+        if (shape && shape->shapeType() == DrawingShape::Path) {
+            DrawingPath *pathShape = dynamic_cast<DrawingPath*>(shape);
+            if (pathShape) {
+                // 获取变换后的路径边界框
+                QRectF transformedBounds = pathShape->sceneBoundingRect();
+                // 对于路径，使用变换后的边界框的位置和尺寸
+                // 但需要减去item的pos()，因为transformedShape已经包含了位置信息
+                QPointF actualPos = transformedBounds.topLeft();
+                m_xSpinBox->setValue(actualPos.x());
+                m_ySpinBox->setValue(actualPos.y());
+                m_widthSpinBox->setValue(transformedBounds.width());
+                m_heightSpinBox->setValue(transformedBounds.height());
+            } else {
+                // 备用方案
+                m_xSpinBox->setValue(pos.x());
+                m_ySpinBox->setValue(pos.y());
+                m_widthSpinBox->setValue(bounds.width());
+                m_heightSpinBox->setValue(bounds.height());
+            }
+        } else {
+            // 其他图形对象使用原有方法
+            m_xSpinBox->setValue(pos.x());
+            m_ySpinBox->setValue(pos.y());
+            m_widthSpinBox->setValue(bounds.width());
+            m_heightSpinBox->setValue(bounds.height());
+        }
         m_lastKnownWidth = bounds.width();
         m_lastKnownHeight = bounds.height();
         
@@ -504,6 +527,7 @@ void PropertyPanel::onPositionChanged()
     QList<QGraphicsItem*> selected = m_scene->selectedItems();
     if (selected.size() == 1) {
         QGraphicsItem *item = selected.first();
+        // 统一使用setPos，让Qt处理位置更新
         item->setPos(m_xSpinBox->value(), m_ySpinBox->value());
         m_scene->setModified(true);
     }

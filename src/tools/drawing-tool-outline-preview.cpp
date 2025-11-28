@@ -8,6 +8,7 @@
 #include "../core/drawing-shape.h"
 #include "../ui/drawingscene.h"
 #include "../tools/transform-handle.h"
+#include "../ui/snap-manager.h"
 
 namespace
 {
@@ -102,7 +103,6 @@ void OutlinePreviewTransformTool::activate(DrawingScene *scene, DrawingView *vie
         view->setFocusPolicy(Qt::StrongFocus);
         view->setFocus();
     }
-
     // 每次激活时都重新创建 HandleManager，确保场景指针正确
     if (m_handleManager)
     {
@@ -319,12 +319,19 @@ bool OutlinePreviewTransformTool::mouseMoveEvent(QMouseEvent *event, const QPoin
         QPointF alignedPos = scenePos;
         if (m_scene && m_scene->isGridAlignmentEnabled())
         {
+            // 清除过期的吸附指示器
+            m_scene->snapManager()->clearExpiredSnapIndicators(scenePos);
+            
             // 使用智能网格吸附
-            DrawingScene::SnapResult gridSnap = m_scene->smartAlignToGrid(scenePos);
+            SnapResult gridSnap = m_scene->snapManager()->smartAlignToGrid(scenePos);
             alignedPos = gridSnap.snappedPos;
 
             // 尝试对象吸附
-            DrawingScene::ObjectSnapResult objectSnap = m_scene->snapToObjects(scenePos, nullptr);
+            DrawingShape *excludeShape = nullptr;
+            if (!m_selectedShapes.isEmpty()) {
+                excludeShape = m_selectedShapes.first();
+            }
+            ObjectSnapResult objectSnap = m_scene->snapManager()->snapToObjects(scenePos, excludeShape);
             if (objectSnap.snappedToObject)
             {
                 // 对象吸附优先级更高
@@ -353,12 +360,19 @@ bool OutlinePreviewTransformTool::mouseReleaseEvent(QMouseEvent *event, const QP
         QPointF alignedPos = scenePos;
         if (m_scene && m_scene->isGridAlignmentEnabled())
         {
+            // 清除过期的吸附指示器
+            m_scene->snapManager()->clearExpiredSnapIndicators(scenePos);
+            
             // 使用智能网格吸附
-            DrawingScene::SnapResult gridSnap = m_scene->smartAlignToGrid(scenePos);
+            SnapResult gridSnap = m_scene->snapManager()->smartAlignToGrid(scenePos);
             alignedPos = gridSnap.snappedPos;
 
             // 尝试对象吸附
-            DrawingScene::ObjectSnapResult objectSnap = m_scene->snapToObjects(scenePos, nullptr);
+            DrawingShape *excludeShape = nullptr;
+            if (!m_selectedShapes.isEmpty()) {
+                excludeShape = m_selectedShapes.first();
+            }
+            ObjectSnapResult objectSnap = m_scene->snapManager()->snapToObjects(scenePos, excludeShape);
             if (objectSnap.snappedToObject)
             {
                 // 对象吸附优先级更高
@@ -546,12 +560,19 @@ void OutlinePreviewTransformTool::transform(const QPointF &mousePos, Qt::Keyboar
     QPointF alignedPos = mousePos;
     if (m_scene && m_scene->isGridAlignmentEnabled())
     {
+        // 清除过期的吸附指示器
+        m_scene->snapManager()->clearExpiredSnapIndicators(mousePos);
+        
         // 使用智能网格吸附
-        DrawingScene::SnapResult gridSnap = m_scene->smartAlignToGrid(mousePos);
+        SnapResult gridSnap = m_scene->snapManager()->smartAlignToGrid(mousePos);
         alignedPos = gridSnap.snappedPos;
 
         // 尝试对象吸附（排除当前选中的图形）
-        DrawingScene::ObjectSnapResult objectSnap = m_scene->snapToObjects(mousePos, nullptr);
+        DrawingShape *excludeShape = nullptr;
+        if (!m_selectedShapes.isEmpty()) {
+            excludeShape = m_selectedShapes.first();
+        }
+        ObjectSnapResult objectSnap = m_scene->snapManager()->snapToObjects(mousePos, excludeShape);
         if (objectSnap.snappedToObject)
         {
             // 对象吸附优先级更高
@@ -926,7 +947,8 @@ void OutlinePreviewTransformTool::onSelectionChanged()
     // 清理无效的图形引用（已被删除的对象）
     cleanupInvalidShapes();
 
-    // 选择工具只处理基本选择，不管理节点显示
+    // 更新m_selectedShapes列表
+    m_selectedShapes.clear();
     if (m_scene)
     {
         QList<QGraphicsItem *> selectedItems = m_scene->selectedItems();
@@ -937,8 +959,17 @@ void OutlinePreviewTransformTool::onSelectionChanged()
             {
                 DrawingShape *shape = static_cast<DrawingShape *>(item);
                 shape->clearHighlights();
+                m_selectedShapes.append(shape);
             }
         }
+    }
+    
+    // 如果工具已经激活但m_selectedShapes为空，而场景中有选中项，
+    // 可能是初始化顺序问题，强制更新一次手柄
+    if (m_selectedShapes.isEmpty() && m_scene && !m_scene->selectedItems().isEmpty()) {
+        QTimer::singleShot(10, this, [this]() {
+            updateHandlePositions();
+        });
     }
 
     // 更新UI
@@ -982,6 +1013,7 @@ void OutlinePreviewTransformTool::updateHandlePositions()
 
     QRectF bounds = calculateInitialSelectionBounds();
 
+    //qDebug() << "Updating handle positions "<< bounds ;
     // 如果有选中的图形，就更新手柄位置
     if (bounds.isEmpty())
     {

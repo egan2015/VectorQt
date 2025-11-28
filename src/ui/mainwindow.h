@@ -38,6 +38,12 @@ class ToolStateManager;
 class ToolManager;
 class ShortcutManager;
 
+class EffectManager;
+class SnapManager;
+class PathOperationsManager;
+class SelectionManager;
+class CommandManager;
+
 
 class MainWindow : public QMainWindow
 {
@@ -55,13 +61,24 @@ protected:
     void resizeEvent(QResizeEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
     void keyReleaseEvent(QKeyEvent *event) override;
+    bool event(QEvent *event) override;
 
 private slots:
+    // 文件操作槽函数（委托给FileManager）
     void newFile();
     void openFile();
     void saveFile();
     void saveFileAs();
     void exportFile();
+    
+    
+    void onStatusMessageChanged(const QString &message);
+    void onWindowTitleChanged(const QString &title);
+    void initializeTools();
+    
+    // EffectManager信号处理
+    void onEffectApplied(const QString &effectName);
+    void onEffectCleared();
     void undo();
     void redo();
     void selectTool();
@@ -78,7 +95,7 @@ private slots:
     void penTool();
     void eraserTool();
     void lineTool();
-    void pathEditTool();
+    
     void textTool();
     
     // 工具面板槽函数
@@ -96,39 +113,14 @@ private slots:
     void onPenJoinStyleChanged(int style);
     void onPenCapStyleChanged(int style);
     
-    void deleteSelected();
-    void copySelected();
-    void paste();
-    void duplicate();  // Ctrl+D 快速复制粘贴
     void applyBlurEffect();  // 应用高斯模糊
     void applyDropShadowEffect();  // 应用阴影效果
     void clearFilterEffect();  // 清除滤镜效果
-    void convertTextToPath();  // 文本转路径
-    void selectAll();
-    void deselectAll();
     void zoomIn();
     void zoomOut();
     void resetZoom();
     void fitToWindow();
-    void toggleGrid();
-    void toggleGridAlignment();
-    void groupSelected();
-    void ungroupSelected();
-    void bringToFront();
-    void sendToBack();
-    void bringForward();
-    void sendBackward();
-    void alignLeft();
-    void alignCenter();
-    void alignRight();
-    void alignTop();
-    void alignMiddle();
-    void alignBottom();
-    void sameWidth();
-    void sameHeight();
-    void sameSize();
-    void distributeHorizontal();
-    void distributeVertical();
+    
     void showGridSettings();
     void about();
     void onSelectionChanged();
@@ -138,6 +130,8 @@ private slots:
     void onObjectStateChanged(DrawingShape* shape);
     void updateStatusBar(const QString &message);
     void showContextMenu(const QPointF &pos);
+    void onToolSwitchRequested(int toolType);
+    void updateToolBarState(int currentTool);
     
     // 调色板颜色应用槽函数
     void onApplyColorToSelection(const QColor &color, bool isFill);
@@ -145,27 +139,6 @@ private slots:
     // 🌟 参考线相关槽函数
     void onGuideRequested(const QPointF &position, Qt::Orientation orientation);
     void clearAllGuides();
-    
-    // 路径布尔运算槽函数
-    void pathUnion();
-    void pathSubtract();
-    void pathIntersect();
-    void pathXor();
-    
-    // 路径编辑槽函数
-    void pathSimplify();
-    void pathSmooth();
-    void pathReverse();
-    void generateShape();
-    
-    // 执行路径布尔运算的通用方法
-    void performPathBooleanOperation(int op, const QString &opName);
-    
-    // 新增路径编辑功能
-    void executeBooleanOperation(int op);  // 使用int代替PathEditor::BooleanOperation
-    void executePathOperation(const QString &operation);
-    void createShapeAtPosition(const QString &shapeType, const QPointF &pos);
-    void convertSelectedTextToPath();
     
     // 性能面板槽函数
     void togglePerformancePanel();
@@ -180,10 +153,19 @@ private:
     void setupDocks();
     void setupStatusBar();
     void setupColorPalette();
+    void setupUndoView();
     void createActions();
     void connectActions();
     void updateUI();
     void setCurrentTool(ToolBase *tool);
+    
+    // File management methods (从FileManager合并而来)
+    bool maybeSave();
+    void loadFile(const QString &filePath);
+    bool saveFile(const QString &filePath);
+    bool exportFile(const QString &filePath);
+    void setCurrentFile(const QString &filePath);
+    void updateWindowTitle();
     
     
     DrawingScene *m_scene;
@@ -224,7 +206,7 @@ private:
     QAction *m_penToolAction;
     QAction *m_eraserToolAction;
     QAction *m_lineToolAction;
-    QAction *m_pathEditToolAction;
+    
     QAction *m_textToolAction;
     QAction *m_pathUnionAction;
     QAction *m_pathSubtractAction;
@@ -234,7 +216,13 @@ private:
     QAction *m_togglePerformancePanelAction;
     QAction *m_pathSmoothAction;
     QAction *m_pathReverseAction;
+    QAction *m_pathConvertToCurveAction;
+    QAction *m_pathOffsetPathAction;
+    QAction *m_pathClipPathAction;
     QAction *m_generateShapeAction;
+    QAction *m_generateStarAction;
+    QAction *m_generateArrowAction;
+    QAction *m_generateGearAction;
     QAction *m_deleteAction;
     QAction *m_copyAction;
     QAction *m_pasteAction;
@@ -285,22 +273,39 @@ private:
     ToolManager *m_toolManager;
     ShortcutManager *m_shortcutManager;
     
+    
+    
+    // Effect management system
+    EffectManager *m_effectManager;
+    
+    // Snap management system (合并了GridManager)
+    SnapManager *m_snapManager;
+    
+    // Selection management system
+    PathOperationsManager *m_pathOperationsManager;
+    
+    // Selection management system
+    SelectionManager *m_selectionManager;
+    
+    // Command management system
+    CommandManager *m_commandManager;
+    
+    // File management system (从FileManager合并而来)
+    QString m_currentFilePath;
+    bool m_isUntitled;
+    
     QLabel *m_statusLabel;
     QLabel *m_zoomLabel;
     QLabel *m_positionLabel;
     
     // 性能面板（现在集成在属性面板tab中）
     QDockWidget *m_performanceDock; // 保留用于菜单兼容性
-    QString m_currentFile;
-    bool m_isModified;
     
     // UI更新定时器
     QTimer *m_uiUpdateTimer;
     int m_lastSelectedCount;
     
-    // 文件对话框目录记忆
-    QString m_lastOpenDir;
-    QString m_lastSaveDir;
+    
 };
 
 #endif // MAINWINDOW_H

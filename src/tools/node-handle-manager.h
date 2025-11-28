@@ -86,8 +86,18 @@ public:
     // 应用手柄位置变化到图形
     void applyHandleChanges();
     
+    // 智能控制杆处理
+    void handleSmartControlArmDrag(CustomHandleItem *handle, const QPointF &newPos);
+    void updateNodeFromHandle(CustomHandleItem *handle, const QPointF &newPos);
+    
     // 更新现有手柄位置（不重新创建）
     void updateExistingHandlePositions(DrawingShape *shape);
+    
+    // 基于NodeInfo的智能手柄管理
+    void updateHandlesFromNodeInfo(DrawingShape *shape);
+    void createHandlesForNodeInfo(const NodeInfo &nodeInfo, int index);
+    NodeHandleType getHandleTypeFromNodeInfo(const NodeInfo &nodeInfo) const;
+    void setupHandleStyleFromNodeInfo(CustomHandleItem *handle, const NodeInfo &nodeInfo) const;
 
 private:
     // 创建不同类型的节点手柄
@@ -135,7 +145,14 @@ private:
     static const QColor PATH_CONTROL_COLOR;     // 控制点（圆形）- 浅蓝色
     static const QColor BEZIER_NODE_COLOR;      // 贝塞尔节点 - 深蓝色
     static const QColor BEZIER_CONTROL_IN_COLOR; // 贝塞尔进入控制点 - 蓝色
-    static const QColor BEZIER_CONTROL_OUT_COLOR; // 贝塞尔离开控制点 - 绿色
+    static const QColor BEZIER_CONTROL_OUT_COLOR; // 贝塞尔离开控制点 - 白色
+    
+    // 智能节点类型颜色配置
+    static const QColor CORNER_NODE_COLOR;      // 尖角节点 - 红色
+    static const QColor SMOOTH_NODE_COLOR;      // 平滑节点 - 绿色
+    static const QColor SYMMETRIC_NODE_COLOR;   // 对称节点 - 紫色
+    static const QColor CURVE_NODE_COLOR;       // 曲线节点 - 橙色
+
 };
 
 #endif // NODE_HANDLE_MANAGER_H

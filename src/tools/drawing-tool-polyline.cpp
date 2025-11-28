@@ -3,6 +3,7 @@
 #include "../tools/drawing-tool-polyline.h"
 #include "../ui/drawingscene.h"
 #include "../ui/drawingview.h"
+#include "../ui/command-manager.h"
 
 DrawingToolPolyline::DrawingToolPolyline(QObject *parent)
     : ToolBase(parent)
@@ -132,7 +133,12 @@ bool DrawingToolPolyline::mouseDoubleClickEvent(QMouseEvent *event, const QPoint
             
             // 创建并推送撤销命令
             AddItemCommand *command = new AddItemCommand(m_scene, m_currentPolyline);
-            m_scene->undoStack()->push(command);
+            if (CommandManager::hasInstance()) {
+        CommandManager::instance()->pushCommand(command);
+    } else {
+        command->redo();
+        delete command;
+    }
             
             m_currentPolyline = nullptr;
         }

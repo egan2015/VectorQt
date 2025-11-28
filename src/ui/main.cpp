@@ -1,3 +1,4 @@
+#include <iostream>
 #include <QApplication>
 #include <QGraphicsView>
 #include <QGraphicsRectItem>
@@ -6,6 +7,7 @@
 #include <QTranslator>
 #include <QLibraryInfo>
 #include "../ui/mainwindow.h"
+#include "../core/memory-manager.h"
 
 int main(int argc, char *argv[])
 {

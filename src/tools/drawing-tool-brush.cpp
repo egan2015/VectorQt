@@ -6,7 +6,7 @@
 #include "../tools/drawing-tool-brush.h"
 #include "../core/drawing-throttle.h"
 #include "../core/brush-engine.h"
-#include "../core/object-pool.h"
+
 #include "../core/smart-render-manager.h"
 #include "../core/performance-monitor.h"
 #include "../ui/drawingscene.h"
@@ -14,6 +14,7 @@
 #include "../core/drawing-shape.h"
 #include "../core/drawing-layer.h"
 #include "../core/layer-manager.h"
+#include "../ui/command-manager.h"
 
 DrawingToolBrush::DrawingToolBrush(QObject *parent)
     : ToolBase(parent)
@@ -29,23 +30,7 @@ DrawingToolBrush::DrawingToolBrush(QObject *parent)
     m_throttle->setDistanceThreshold(1.5);  // 1.5像素阈值
     m_throttle->setMaxPendingEvents(8);     // 最多缓存8个事件
     
-    // 设置DrawingPath对象池的重置函数
-    auto pathPool = GlobalObjectPoolManager::instance().getPool<DrawingPath>();
-    pathPool->setResetFunction([](DrawingPath* path) {
-        if (path) {
-            // 重置路径状态
-            path->setPath(QPainterPath());
-            path->setControlPoints(QVector<QPointF>());
-            path->setControlPointTypes(QVector<QPainterPath::ElementType>());
-            path->setShowControlPolygon(false);
-            path->clearHighlights();
-            path->setSelected(false);
-            path->setVisible(true);
-            path->setPos(0, 0);
-            path->setTransform(QTransform());
-            path->setZValue(0);
-        }
-    });
+    // 画笔工具不需要对象池，直接创建对象更简单高效
 }
 
 void DrawingToolBrush::activate(DrawingScene *scene, DrawingView *view)
@@ -77,8 +62,8 @@ void DrawingToolBrush::deactivate()
         if (boundingRect.width() <= 5 && boundingRect.height() <= 5) {
             // 太小了，删除
             m_scene->removeItem(m_currentPath);
-            // 返回到对象池
-            GlobalObjectPoolManager::instance().getPool<DrawingPath>()->release(m_currentPath);
+            // 删除路径对象
+            delete m_currentPath;
             m_currentPath = nullptr;
             m_points.clear();
             qDebug() << "Brush stroke too small on deactivate, deleted";
@@ -121,13 +106,10 @@ bool DrawingToolBrush::mousePressEvent(QMouseEvent *event, const QPointF &sceneP
         m_points.append(scenePos);
         m_lastPoint = scenePos;
         
-        // 从对象池获取路径对象
-        m_currentPath = GlobalObjectPoolManager::instance().getPool<DrawingPath>()->acquire();
+        // 直接创建路径对象
+        m_currentPath = new DrawingPath();
         
-        // 监控ObjectPool性能
-        auto pool = GlobalObjectPoolManager::instance().getPool<DrawingPath>();
-        qDebug() << "ObjectPool[DrawingPath] - Size:" << pool->size() 
-                 << "Hit Rate:" << QString::number(pool->getHitRate() * 100, 'f', 1) + "%";
+        // 移除对象池性能监控
         QPainterPath path;
         path.moveTo(scenePos);
         m_currentPath->setPath(path);
@@ -199,8 +181,8 @@ bool DrawingToolBrush::mouseReleaseEvent(QMouseEvent *event, const QPointF &scen
             if (boundingRect.width() <= 5 && boundingRect.height() <= 5) {
                 // 太小了，删除
                 m_scene->removeItem(m_currentPath);
-                // 返回到对象池
-                GlobalObjectPoolManager::instance().getPool<DrawingPath>()->release(m_currentPath);
+                // 删除路径对象
+                delete m_currentPath;
                 m_currentPath = nullptr;
                 m_points.clear();
                 qDebug() << "Brush stroke too small, deleted";
@@ -230,9 +212,10 @@ bool DrawingToolBrush::mouseReleaseEvent(QMouseEvent *event, const QPointF &scen
                             : QUndoCommand("添加画笔", parent), m_scene(scene), m_path(path), m_layer(layer), m_pathOwnedByCommand(false) {}
                         
                         ~BrushAddCommand() {
-                            // 如果命令拥有路径对象且路径不在场景中，则归还到对象池
+                            // 如果命令拥有路径对象且路径不在场景中，则删除对象
                             if (m_pathOwnedByCommand && m_path && !m_path->scene()) {
-                                GlobalObjectPoolManager::instance().getPool<DrawingPath>()->release(m_path);
+                                delete m_path;
+                                m_path = nullptr;
                             }
                         }
                         
@@ -295,7 +278,12 @@ bool DrawingToolBrush::mouseReleaseEvent(QMouseEvent *event, const QPointF &scen
                     
                     // 创建并推送撤销命令
                     BrushAddCommand *command = new BrushAddCommand(m_scene, m_currentPath, activeLayer);
-                    m_scene->undoStack()->push(command);
+                    if (CommandManager::hasInstance()) {
+        CommandManager::instance()->pushCommand(command);
+    } else {
+        command->redo();
+        delete command;
+    }
                 
                 m_scene->setModified(true);
                 m_currentPath = nullptr; // 不再由工具管理

@@ -93,7 +93,7 @@ private slots:
     void penTool();
     void eraserTool();
     void lineTool();
-    void pathEditTool();
+    
     void textTool();
     
     // 工具面板槽函数
@@ -204,7 +204,7 @@ private:
     QAction *m_penToolAction;
     QAction *m_eraserToolAction;
     QAction *m_lineToolAction;
-    QAction *m_pathEditToolAction;
+    
     QAction *m_textToolAction;
     QAction *m_pathUnionAction;
     QAction *m_pathSubtractAction;

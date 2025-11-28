@@ -43,7 +43,6 @@ enum class ToolType {
     Pen,              // 钢笔工具
     Eraser,           // 橡皮擦工具
     Line,             // 直线工具
-    PathEdit,         // 路径编辑工具
     Text,             // 文本工具
     Unknown           // 未知工具
 };

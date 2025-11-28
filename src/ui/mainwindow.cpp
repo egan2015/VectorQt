@@ -53,7 +53,6 @@
 #include "../tools/drawing-tool-fill.h"
 #include "../tools/drawing-tool-gradient-fill.h"
 #include "../tools/drawing-tool-line.h"
-#include "../tools/drawing-tool-path-edit.h"
 #include "../tools/drawing-tool-outline-preview.h"
 #include "../core/patheditor.h"
 #include "../ui/ruler.h"
@@ -442,7 +441,6 @@ void MainWindow::setupUI()
         m_toolManager->createAndRegisterTool<DrawingToolPen>(ToolType::Pen, this);
         m_toolManager->createAndRegisterTool<DrawingToolEraser>(ToolType::Eraser, this);
         m_toolManager->createAndRegisterTool<DrawingToolLine>(ToolType::Line, this);
-        m_toolManager->createAndRegisterTool<DrawingToolPathEdit>(ToolType::PathEdit, this);
         
         // 连接状态栏更新信号（针对选择工具）
         auto selectTool = m_toolManager->getToolAs<OutlinePreviewTransformTool>(ToolType::Select);
@@ -592,7 +590,7 @@ void MainWindow::setupUI()
         m_shortcutManager->registerShortcut(ToolType::Pen, QKeySequence("P"), m_penToolAction);
         m_shortcutManager->registerShortcut(ToolType::Eraser, QKeySequence("Shift+E"), m_eraserToolAction);
         m_shortcutManager->registerShortcut(ToolType::Line, QKeySequence("L"), m_lineToolAction);
-        m_shortcutManager->registerShortcut(ToolType::PathEdit, QKeySequence("Ctrl+Shift+P"), m_pathEditToolAction);
+        
         
         // 注册临时快捷键（按住临时切换，松开恢复）
         // 使用不和永久快捷键冲突的按键
@@ -1254,12 +1252,7 @@ void MainWindow::createActions()
     m_lineToolAction->setIcon(QIcon(":/icons/icons/line-tool-new.svg"));
     m_toolGroup->addAction(m_lineToolAction);
 
-    m_pathEditToolAction = new QAction("&路径编辑", this);
-    m_pathEditToolAction->setCheckable(true);
-    m_pathEditToolAction->setShortcut(QKeySequence("Ctrl+Shift+P"));
-    m_pathEditToolAction->setStatusTip("编辑选中路径的节点");
-    m_pathEditToolAction->setIcon(QIcon(":/icons/icons/path-edit-tool-new.svg"));
-    m_toolGroup->addAction(m_pathEditToolAction);
+    
 
     m_textToolAction = new QAction("&文本工具", this);
     m_textToolAction->setCheckable(true);
@@ -1509,7 +1502,7 @@ void MainWindow::connectActions()
     connect(m_penToolAction, &QAction::triggered, this, &MainWindow::penTool);
     connect(m_eraserToolAction, &QAction::triggered, this, &MainWindow::eraserTool);
     connect(m_lineToolAction, &QAction::triggered, this, &MainWindow::lineTool);
-    connect(m_pathEditToolAction, &QAction::triggered, this, &MainWindow::pathEditTool);
+    
     connect(m_textToolAction, &QAction::triggered, this, &MainWindow::textTool);
     
     // Path boolean operation connections
@@ -1823,10 +1816,7 @@ void MainWindow::lineTool()
     if (m_toolManager) m_toolManager->switchTool(ToolType::Line);
 }
 
-void MainWindow::pathEditTool()
-{
-    if (m_toolManager) m_toolManager->switchTool(ToolType::PathEdit);
-}
+
 
 void MainWindow::textTool()
 {

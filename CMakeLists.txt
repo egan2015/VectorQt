@@ -73,7 +73,6 @@ set(SOURCES
     src/tools/drawing-tool-line.cpp
     src/tools/drawing-tool-polyline.cpp
     src/tools/drawing-tool-polygon.cpp
-    src/tools/drawing-tool-path-edit.cpp
     src/tools/drawing-tool-node-edit.cpp
     src/tools/drawing-tool-outline-preview.cpp
     
@@ -142,7 +141,6 @@ set(HEADERS
     src/tools/drawing-tool-line.h
     src/tools/drawing-tool-polyline.h
     src/tools/drawing-tool-polygon.h
-    src/tools/drawing-tool-path-edit.h
     src/tools/drawing-tool-node-edit.h
     src/tools/drawing-tool-outline-preview.h
     

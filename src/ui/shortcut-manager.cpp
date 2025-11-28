@@ -238,7 +238,7 @@ bool ShortcutManager::isContextValid(ShortcutContext context) const
         return m_toolManager && m_toolManager->currentToolType() == ToolType::NodeEdit;
         
     case ShortcutContext::PathEditMode:
-        return m_toolManager && m_toolManager->currentToolType() == ToolType::PathEdit;
+        return false;
         
     case ShortcutContext::TextEditMode:
         return m_toolManager && m_toolManager->currentToolType() == ToolType::Text;

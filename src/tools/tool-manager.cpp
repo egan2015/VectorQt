@@ -16,8 +16,7 @@ const QHash<ToolType, QString> ToolManager::s_toolNames = {
     {ToolType::GradientFill, "渐变填充"},
     {ToolType::Pen, "钢笔"},
     {ToolType::Eraser, "橡皮擦"},
-    {ToolType::Line, "直线"},
-    {ToolType::PathEdit, "路径编辑"},
+    {ToolType::Line, "直线工具"},
     {ToolType::Text, "文本"},
     {ToolType::Unknown, "未知"}
 };

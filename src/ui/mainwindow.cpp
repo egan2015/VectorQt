@@ -731,6 +731,11 @@ void MainWindow::setupMenus()
     m_pathReverseAction->setStatusTip(tr("反转选中路径的方向"));
     pathMenu->addAction(m_pathReverseAction);
     
+    m_convertTextToPathAction = new QAction("文本转路径(&T)", this);
+    m_convertTextToPathAction->setShortcut(QKeySequence("Ctrl+Shift+T"));
+    m_convertTextToPathAction->setStatusTip("将选中的文本转换为可编辑的路径");
+    pathMenu->addAction(m_convertTextToPathAction);
+    
     m_pathConvertToCurveAction = new QAction("转换为曲线(&C)", this);
     m_pathConvertToCurveAction->setStatusTip(tr("将直线段转换为贝塞尔曲线"));
     pathMenu->addAction(m_pathConvertToCurveAction);
@@ -1057,10 +1062,6 @@ void MainWindow::createActions()
 
     m_clearFilterAction = new QAction("清除滤镜(&C)", this);
     m_clearFilterAction->setStatusTip("清除选中对象的所有滤镜效果");
-
-    m_convertTextToPathAction = new QAction("文本转路径(&T)", this);
-    m_convertTextToPathAction->setShortcut(QKeySequence("Ctrl+Shift+T"));
-    m_convertTextToPathAction->setStatusTip("将选中的文本转换为可编辑的路径");
 
     m_selectAllAction = new QAction("全选(&A)", this);
     m_selectAllAction->setShortcut(QKeySequence::SelectAll);
@@ -2372,125 +2373,7 @@ QColor MainWindow::getCurrentFillColor() const
 
 
 
-// 路径操作撤销命令
-class PathOperationCommand : public QUndoCommand
-{
-public:
-    PathOperationCommand(DrawingScene *scene, DrawingShape *originalShape, DrawingPath *newPath, const QString &operationText, QUndoCommand *parent = nullptr)
-        : QUndoCommand(operationText, parent)
-        , m_scene(scene)
-        , m_originalShape(originalShape)
-        , m_newPath(newPath)
-        , m_originalShapeInScene(false)
-        , m_newPathInScene(false)
-        , m_originalLayer(nullptr)
-        , m_targetLayer(nullptr)
-    {
-        // 记录对象初始状态
-        if (m_originalShape) {
-            m_originalShapeInScene = (m_originalShape->scene() != nullptr);
-        }
-        if (m_newPath) {
-            m_newPathInScene = (m_newPath->scene() != nullptr);
-        }
-        
-        // 记录图形所属的图层
-        LayerManager *layerManager = LayerManager::instance();
-        if (layerManager) {
-            m_originalLayer = layerManager->findLayerForShape(m_originalShape);
-            // 新路径应该添加到活动图层
-            m_targetLayer = layerManager->activeLayer();
-        }
-    }
-    
-    ~PathOperationCommand()
-    {
-        // 安全删除对象，只在确定不需要时删除
-        if (m_newPath && !m_newPath->scene()) {
-            delete m_newPath;
-        }
-        // 注意：不在这里删除原始形状，因为它们可能被其他命令引用
-    }
-    
-    void undo() override
-    {
-        if (!m_scene) return;
-        
-        LayerManager *layerManager = LayerManager::instance();
-        
-        // 移除新创建的路径
-        if (m_newPath && m_newPath->scene()) {
-            m_scene->removeItem(m_newPath);
-            m_newPath->setSelected(false);
-            // 从图层中移除
-            if (layerManager && m_targetLayer) {
-                m_targetLayer->removeShape(m_newPath);
-            }
-        }
-        
-        // 恢复原始形状，只有在它们不在场景中时才添加
-        if (m_originalShape && !m_originalShape->scene()) {
-            m_scene->addItem(m_originalShape);
-            m_originalShape->setSelected(true);
-            // 添加到原始图层
-            if (layerManager && m_originalLayer) {
-                m_originalLayer->addShape(m_originalShape);
-            }
-        }
-        
-        m_scene->update();
-        
-        // 刷新对象树模型
-        if (layerManager) {
-            if (m_originalLayer) emit layerManager->layerContentChanged(m_originalLayer);
-            if (m_targetLayer) emit layerManager->layerContentChanged(m_targetLayer);
-        }
-    }
-    
-    void redo() override
-    {
-        if (!m_scene) return;
-        
-        LayerManager *layerManager = LayerManager::instance();
-        
-        // 移除原始形状，只有在它们在场景中时才移除
-        if (m_originalShape && m_originalShape->scene()) {
-            m_scene->removeItem(m_originalShape);
-            m_originalShape->setSelected(false);
-            // 从图层中移除
-            if (layerManager && m_originalLayer) {
-                m_originalLayer->removeShape(m_originalShape);
-            }
-        }
-        
-        // 添加新路径，只有在它不在场景中时才添加
-        if (m_newPath && !m_newPath->scene()) {
-            m_scene->addItem(m_newPath);
-            m_newPath->setSelected(true);
-            // 添加到目标图层
-            if (layerManager && m_targetLayer) {
-                m_targetLayer->addShape(m_newPath);
-            }
-        }
-        
-        m_scene->update();
-        m_scene->setModified(true);
-        
-        // 刷新对象树模型
-        if (layerManager) {
-            emit layerManager->layerContentChanged(m_targetLayer);
-        }
-    }
-    
-private:
-    DrawingScene *m_scene;
-    DrawingShape *m_originalShape;
-    DrawingPath *m_newPath;
-    bool m_originalShapeInScene;
-    bool m_newPathInScene;
-    DrawingLayer *m_originalLayer;
-    DrawingLayer *m_targetLayer;
-};
+
 
 // 在指定位置创建形状
 
@@ -2657,6 +2540,10 @@ void MainWindow::showContextMenu(const QPointF &pos)
             pathMenu->addAction(m_pathClipPathAction);
             pathMenu->addSeparator();
         }
+        
+        // 文本转路径操作始终显示
+        pathMenu->addAction(m_convertTextToPathAction);
+        pathMenu->addSeparator();
         
         // 生成图形子菜单始终显示
         QMenu *generateMenu = pathMenu->addMenu("生成特殊图形");

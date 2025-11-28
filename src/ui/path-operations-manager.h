@@ -5,6 +5,12 @@
 #include <QString>
 #include <QPainterPath>
 #include <QMap>
+#include <QUndoCommand>
+#include <QList>
+#include <QGraphicsItem>
+#include <QPen>
+#include <QBrush>
+#include <QPointF>
 
 class DrawingScene;
 class QMenu;
@@ -16,6 +22,8 @@ class CommandManager;
 class PathOperationsManager : public QObject
 {
     Q_OBJECT
+    
+    friend class PathOperationCommand;
 
 public:
     explicit PathOperationsManager(MainWindow *parent = nullptr);
@@ -68,6 +76,10 @@ public slots:
     void convertTextToPath();
     void convertSelectedTextToPath();
     
+    // 内部实现方法
+    void convertTextToPathInternal();
+    void convertSelectedTextToPathInternal();
+    
     // 图形生成
     void generateShape();
     void generateStar();
@@ -101,13 +113,6 @@ private:
     QPainterPath simplifyPath(const QPainterPath &path);
     QPainterPath smoothPath(const QPainterPath &path);
     
-    // 静态辅助方法
-    static QPainterPath simplifyPathStatic(const QPainterPath &path);
-    static QPainterPath smoothPathStatic(const QPainterPath &path);
-    static QPainterPath convertToCurveStatic(const QPainterPath &path);
-    static QPainterPath offsetPathStatic(const QPainterPath &path, qreal offset);
-    static QPainterPath clipPathStatic(const QPainterPath &path);
-    
     // 图形生成辅助方法
     static QPainterPath createStarPath(const QPointF &center, qreal radius, int points);
     static QPainterPath createArrowPath(const QPointF &center, qreal size);
@@ -129,8 +134,37 @@ private:
     // 执行路径操作的具体步骤
     void executePathOperationSteps(PathOperation op);
     
+    // 静态辅助方法
+    static QPainterPath simplifyPathStatic(const QPainterPath &path);
+    static QPainterPath smoothPathStatic(const QPainterPath &path);
+    static QPainterPath convertToCurveStatic(const QPainterPath &path);
+    static QPainterPath offsetPathStatic(const QPainterPath &path, qreal offset);
+    static QPainterPath clipPathStatic(const QPainterPath &path);
+    
     // 宏命令版本的状态保存
     QMap<DrawingShape*, QPainterPath> m_originalPaths;
+};
+
+// 路径操作命令类
+class PathOperationCommand : public QUndoCommand
+{
+public:
+    PathOperationCommand(DrawingScene *scene, PathOperationsManager::PathOperation op, 
+                        const QString &opName, QUndoCommand *parent = nullptr);
+    ~PathOperationCommand();
+    
+    void undo() override;
+    void redo() override;
+    
+private:
+    DrawingScene *m_scene;
+    PathOperationsManager::PathOperation m_operation;
+    QList<QGraphicsItem*> m_selectedItems;
+    QList<DrawingShape*> m_originalShapes;
+    QList<DrawingPath*> m_newPaths;
+    QList<QPointF> m_positions;
+    QList<QPen> m_strokePens;
+    QList<QBrush> m_fillBrushes;
 };
 
 #endif // PATH_OPERATIONS_MANAGER_H

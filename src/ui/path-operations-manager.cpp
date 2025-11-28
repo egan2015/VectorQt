@@ -101,8 +101,86 @@ void PathOperationsManager::pathClipPath()
 
 void PathOperationsManager::convertTextToPath()
 {
-    // TODO: 实现文本转路径功能
-    emit statusMessageChanged("文本转路径功能尚未实现");
+    if (!m_scene) {
+        emit statusMessageChanged("没有活动场景");
+        return;
+    }
+    
+    // 查找场景中的所有文本图形
+    QList<DrawingText*> textShapes;
+    for (QGraphicsItem *item : m_scene->items()) {
+        if (DrawingText *textShape = dynamic_cast<DrawingText*>(item)) {
+            textShapes.append(textShape);
+        }
+    }
+    
+    if (textShapes.isEmpty()) {
+        emit statusMessageChanged("场景中没有找到文本对象");
+        return;
+    }
+    
+    // 使用专门的文本转路径命令
+    if (CommandManager::hasInstance()) {
+        TextToPathCommand *command = new TextToPathCommand(CommandManager::instance(), textShapes);
+        CommandManager::instance()->pushCommand(command);
+    } else {
+        qWarning() << "No CommandManager available for text to path operation";
+        convertTextToPathInternal();
+    }
+}
+
+void PathOperationsManager::convertTextToPathInternal()
+{
+    // 查找场景中的所有文本图形
+    QList<DrawingText*> textShapes;
+    for (QGraphicsItem *item : m_scene->items()) {
+        // 使用dynamic_cast来识别DrawingText类型
+        if (DrawingText *textShape = dynamic_cast<DrawingText*>(item)) {
+            textShapes.append(textShape);
+        }
+    }
+    
+    if (textShapes.isEmpty()) {
+        emit statusMessageChanged("场景中没有找到文本对象");
+        return;
+    }
+    
+    // 转换所有文本图形
+    int convertedCount = 0;
+    for (DrawingText *textShape : textShapes) {
+        // 获取文本属性
+        QString text = textShape->text();
+        QFont font = textShape->font();
+        QPointF position = textShape->position();
+        
+        // 创建路径并添加文本 - 注意addText使用的是本地坐标(0,0)
+        QPainterPath textPath;
+        textPath.addText(QPointF(0, 0), font, text);
+        
+        // 创建新的路径图形
+        DrawingPath *pathShape = new DrawingPath();
+        pathShape->setPath(textPath);
+        
+        // 复制文本的样式
+        pathShape->setFillBrush(textShape->fillBrush());
+        pathShape->setStrokePen(textShape->strokePen());
+        
+        // 设置文档
+        pathShape->setDocument(textShape->document());
+        
+        // 设置位置到原文本的位置
+        pathShape->setPos(position);
+        
+        // 添加到场景
+        m_scene->addItem(pathShape);
+        
+        // 移除原文本（不删除，由CommandManager管理）
+        m_scene->removeItem(textShape);
+        
+        convertedCount++;
+    }
+    
+    emit statusMessageChanged(QString("已转换 %1 个文本对象为路径").arg(convertedCount));
 }
 
 void PathOperationsManager::convertSelectedTextToPath()
@@ -110,10 +188,36 @@ void PathOperationsManager::convertSelectedTextToPath()
     if (!m_scene) return;
     
     QList<QGraphicsItem*> selected = m_scene->selectedItems();
+    QList<DrawingText*> textShapes;
+    
+    for (QGraphicsItem *item : selected) {
+        if (DrawingText *textShape = dynamic_cast<DrawingText*>(item)) {
+            textShapes.append(textShape);
+        }
+    }
+    
+    if (textShapes.isEmpty()) {
+        emit statusMessageChanged("请先选择文本对象");
+        return;
+    }
+    
+    // 使用专门的文本转路径命令
+    if (CommandManager::hasInstance()) {
+        TextToPathCommand *command = new TextToPathCommand(CommandManager::instance(), textShapes);
+        CommandManager::instance()->pushCommand(command);
+    } else {
+        qWarning() << "No CommandManager available for text to path operation";
+        convertSelectedTextToPathInternal();
+    }
+}
+
+void PathOperationsManager::convertSelectedTextToPathInternal()
+{
+    QList<QGraphicsItem*> selected = m_scene->selectedItems();
     bool hasTextItems = false;
     
     for (QGraphicsItem *item : selected) {
-        if (QGraphicsTextItem *textItem = qgraphicsitem_cast<QGraphicsTextItem*>(item)) {
+        if (DrawingText *textShape = dynamic_cast<DrawingText*>(item)) {
             hasTextItems = true;
             break;
         }
@@ -124,8 +228,42 @@ void PathOperationsManager::convertSelectedTextToPath()
         return;
     }
     
-    // TODO: 实现选中文本转路径功能
-    emit statusMessageChanged("选中文本转路径功能尚未实现");
+    // 使用QPainterPath的addText方法实现文本转路径
+    for (QGraphicsItem *item : selected) {
+        // 使用dynamic_cast来识别DrawingText类型
+        if (DrawingText *textShape = dynamic_cast<DrawingText*>(item)) {
+            // 获取文本属性
+            QString text = textShape->text();
+            QFont font = textShape->font();
+            QPointF position = textShape->position();
+            
+            // 创建路径并添加文本 - 注意addText使用的是本地坐标(0,0)
+            QPainterPath textPath;
+            textPath.addText(QPointF(0, 0), font, text);
+            
+            // 创建新的路径图形
+            DrawingPath *pathShape = new DrawingPath();
+            pathShape->setPath(textPath);
+            
+            // 复制文本的样式
+            pathShape->setFillBrush(textShape->fillBrush());
+            pathShape->setStrokePen(textShape->strokePen());
+            
+            // 设置文档
+            pathShape->setDocument(textShape->document());
+            
+            // 设置位置到原文本的位置
+            pathShape->setPos(position);
+            
+            // 添加到场景
+            m_scene->addItem(pathShape);
+            
+            // 移除原文本（不删除，由CommandManager管理）
+            m_scene->removeItem(textShape);
+            
+            emit statusMessageChanged("文本已转换为路径");
+        }
+    }
 }
 
 void PathOperationsManager::performBooleanOperation(BooleanOperation op, const QString &opName)
@@ -717,234 +855,7 @@ void PathOperationsManager::performPathOperation(PathOperation op, const QString
     
     qDebug() << "Processing" << selectedItems.count() << "selected items";
     
-    // 创建撤销命令
-    class PathOperationCommand : public QUndoCommand {
-    public:
-        PathOperationCommand(DrawingScene *scene, PathOperationsManager::PathOperation op, 
-                           const QString &opName, QUndoCommand *parent = nullptr)
-            : QUndoCommand(opName, parent), m_scene(scene), m_operation(op)
-        {
-            // 保存原始状态
-            if (m_scene) {
-                m_selectedItems = m_scene->selectedItems();
-                
-                // 序列化所有选中的图形
-                for (QGraphicsItem *item : m_selectedItems) {
-                    DrawingShape *shape = dynamic_cast<DrawingShape*>(item);
-                    if (shape) {
-                        m_serializedData[shape] = shape->serialize();
-                        m_parents[shape] = shape->parentItem();
-                        m_positions[shape] = shape->pos();
-                    }
-                }
-            }
-        }
-
-        void undo() override {
-            if (!m_scene) return;
-            
-            // 删除创建的新对象并恢复原始对象
-            for (auto it = m_createdObjects.begin(); it != m_createdObjects.end(); ++it) {
-                DrawingShape *createdShape = it.value();
-                if (createdShape) {
-                    m_scene->removeItem(createdShape);
-                    delete createdShape;
-                }
-            }
-            m_createdObjects.clear();
-            
-            // 恢复原始图形
-            for (auto it = m_serializedData.begin(); it != m_serializedData.end(); ++it) {
-                DrawingShape *originalShape = it.key();
-                QByteArray data = it.value();
-                
-                // 读取形状类型
-                QDataStream typeStream(data);
-                int typeValue;
-                typeStream >> typeValue;
-                DrawingShape::ShapeType shapeType = static_cast<DrawingShape::ShapeType>(typeValue);
-                
-                // 创建对应的形状对象
-                DrawingShape *restoredShape = nullptr;
-                switch (shapeType) {
-                    case DrawingShape::Rectangle:
-                        restoredShape = new DrawingRectangle();
-                        break;
-                    case DrawingShape::Ellipse:
-                        restoredShape = new DrawingEllipse();
-                        break;
-                    case DrawingShape::Line:
-                        restoredShape = new DrawingLine();
-                        break;
-                    case DrawingShape::Path:
-                        restoredShape = new DrawingPath();
-                        break;
-                    case DrawingShape::Polyline:
-                        restoredShape = new DrawingPolyline();
-                        break;
-                    case DrawingShape::Polygon:
-                        restoredShape = new DrawingPolygon();
-                        break;
-                    case DrawingShape::Text:
-                        restoredShape = new DrawingText();
-                        break;
-                    case DrawingShape::Group:
-                        restoredShape = new DrawingGroup();
-                        break;
-                    default:
-                        qDebug() << "Unsupported shape type for restoration:" << typeValue;
-                        continue;
-                }
-                
-                if (restoredShape) {
-                    // 反序列化数据
-                    restoredShape->deserialize(data);
-                    
-                    // 恢复父级关系和位置
-                    restoredShape->setParentItem(m_parents[originalShape]);
-                    restoredShape->setPos(m_positions[originalShape]);
-                    
-                    // 添加到场景
-                    m_scene->addItem(restoredShape);
-                    restoredShape->setSelected(true);
-                }
-            }
-            
-            if (m_scene) m_scene->setModified(true);
-        }
-
-        void redo() override {
-            if (!m_scene) return;
-            
-            // 清除选择
-            m_scene->clearSelection();
-            
-            // 清除之前创建的对象
-            for (auto it = m_createdObjects.begin(); it != m_createdObjects.end(); ++it) {
-                DrawingShape *createdShape = it.value();
-                if (createdShape) {
-                    m_scene->removeItem(createdShape);
-                    delete createdShape;
-                }
-            }
-            m_createdObjects.clear();
-            
-            // 对每个选中的图形执行路径操作
-            for (QGraphicsItem *item : m_selectedItems) {
-                DrawingShape *shape = dynamic_cast<DrawingShape*>(item);
-                if (!shape) {
-                    qDebug() << "Item is not a DrawingShape, skipping";
-                    continue;
-                }
-                
-                qDebug() << "Processing shape type:" << shape->shapeType();
-                
-                // 获取变换后的路径
-                QPainterPath originalPath = shape->transformedShape();
-                QPainterPath resultPath;
-                
-                // 根据操作类型执行路径操作
-                switch (m_operation) {
-                    case Simplify:
-                        // 简化路径：移除冗余的点
-                        resultPath = PathOperationsManager::simplifyPathStatic(originalPath);
-                        break;
-                        
-                    case Smooth:
-                        // 平滑路径：使用贝塞尔曲线平滑
-                        resultPath = PathOperationsManager::smoothPathStatic(originalPath);
-                        break;
-                        
-                    case Reverse:
-                        // 反转路径方向
-                        resultPath = originalPath.toReversed();
-                        break;
-                        
-                    case ConvertToCurve:
-                        // 转换为曲线：将直线段转换为贝塞尔曲线
-                        resultPath = PathOperationsManager::convertToCurveStatic(originalPath);
-                        break;
-                        
-                    case OffsetPath:
-                        // 偏移路径：创建偏移的轮廓
-                        resultPath = PathOperationsManager::offsetPathStatic(originalPath, 5.0);
-                        break;
-                        
-                    case ClipPath:
-                        // 裁剪路径：使用边界框进行裁剪
-                        resultPath = PathOperationsManager::clipPathStatic(originalPath);
-                        break;
-                }
-                
-                if (resultPath.isEmpty()) {
-                    // 路径操作失败，继续下一个
-                    continue;
-                }
-                
-                // 根据图形类型应用路径操作
-                if (shape->shapeType() == DrawingShape::Path) {
-                    DrawingPath *drawingPath = dynamic_cast<DrawingPath*>(shape);
-                    if (drawingPath) {
-                        // 保存位置信息
-                        QPointF pos = drawingPath->pos();
-                        
-                        // 调整路径为相对于原点的路径
-                        QRectF bounds = resultPath.boundingRect();
-                        QTransform offsetTransform;
-                        offsetTransform.translate(-bounds.left(), -bounds.top());
-                        QPainterPath adjustedPath = offsetTransform.map(resultPath);
-                        
-                        drawingPath->setPath(adjustedPath);
-                        drawingPath->setPos(pos + bounds.topLeft());
-                        
-                        // 保存创建的对象引用
-                        m_createdObjects[shape] = drawingPath;
-                    }
-                } else {
-                    // 对于其他图形类型（矩形、椭圆等），创建新的Path对象替换原图形
-                    // 保存原图形的样式和位置
-                    QPointF pos = shape->pos();
-                    QPen strokePen = shape->strokePen();
-                    QBrush fillBrush = shape->fillBrush();
-                    
-                    // 创建新的路径对象
-                    DrawingPath *newPath = new DrawingPath();
-                    
-                    // 调整路径为相对于原点的路径
-                    QRectF bounds = resultPath.boundingRect();
-                    QTransform offsetTransform;
-                    offsetTransform.translate(-bounds.left(), -bounds.top());
-                    QPainterPath adjustedPath = offsetTransform.map(resultPath);
-                    
-                    newPath->setPath(adjustedPath);
-                    newPath->setPos(pos + bounds.topLeft());
-                    newPath->setStrokePen(strokePen);
-                    newPath->setFillBrush(fillBrush);
-                    
-                    // 从场景中移除原图形
-                    m_scene->removeItem(shape);
-                    
-                    // 添加新路径到场景
-                    m_scene->addItem(newPath);
-                    newPath->setSelected(true);
-                    
-                    // 保存创建的对象引用
-                    m_createdObjects[shape] = newPath;
-                }
-            }
-            
-            if (m_scene) m_scene->setModified(true);
-        }
-
-    private:
-        DrawingScene *m_scene;
-        PathOperationsManager::PathOperation m_operation;
-        QList<QGraphicsItem*> m_selectedItems;
-        QMap<DrawingShape*, QByteArray> m_serializedData;
-        QMap<DrawingShape*, QGraphicsItem*> m_parents;
-        QMap<DrawingShape*, QPointF> m_positions;
-        QMap<DrawingShape*, DrawingShape*> m_createdObjects;
-    };
+    
 
     // 使用CommandManager执行路径操作
     if (m_commandManager) {
@@ -973,14 +884,15 @@ void PathOperationsManager::performPathOperationMacro(PathOperation op, const QS
         return;
     }
     
-    // 使用宏命令包装整个路径操作过程
-    CommandManager::instance()->executeMacro(opName, [this, op]() {
-        executePathOperationSteps(op);
-    });
+    // 使用专门的路径操作命令，避免使用宏命令
+    PathOperationCommand *command = new PathOperationCommand(m_scene, op, opName);
+    CommandManager::instance()->pushCommand(command);
     
     emit pathOperationCompleted(opName);
     emit statusMessageChanged(QString("已执行 %1 操作").arg(opName));
 }
+
+
 
 // 替换路径命令
 class ReplacePathCommand : public QUndoCommand {
@@ -1029,6 +941,166 @@ private:
     DrawingPath* m_newPath;
     bool m_replaced;
 };
+
+// PathOperationCommand实现
+PathOperationCommand::PathOperationCommand(DrawingScene *scene, PathOperationsManager::PathOperation op, 
+                                          const QString &opName, QUndoCommand *parent)
+    : QUndoCommand(opName, parent), m_scene(scene), m_operation(op)
+{
+    // 保存原始图形的指针和属性
+    if (m_scene) {
+        m_selectedItems = m_scene->selectedItems();
+        for (QGraphicsItem *item : m_selectedItems) {
+            DrawingShape *shape = dynamic_cast<DrawingShape*>(item);
+            if (shape && (shape->shapeType() == DrawingShape::Path ||
+                         shape->shapeType() == DrawingShape::Rectangle ||
+                         shape->shapeType() == DrawingShape::Ellipse ||
+                         shape->shapeType() == DrawingShape::Polygon ||
+                         shape->shapeType() == DrawingShape::Polyline)) {
+                m_originalShapes.append(shape);
+                m_positions.append(shape->pos());
+                m_strokePens.append(shape->strokePen());
+                m_fillBrushes.append(shape->fillBrush());
+            }
+        }
+    }
+}
+
+PathOperationCommand::~PathOperationCommand() {
+    // 析构时清理创建的新路径
+    for (DrawingPath *path : m_newPaths) {
+        if (path && path->scene() != m_scene) {
+            delete path;
+        }
+    }
+    m_newPaths.clear();
+}
+
+void PathOperationCommand::undo() {
+    if (!m_scene) return;
+    
+    // 移除所有新创建的路径
+    for (DrawingPath *path : m_newPaths) {
+        if (path && path->scene() == m_scene) {
+            m_scene->removeItem(path);
+        }
+    }
+    
+    // 恢复原始图形
+    m_scene->clearSelection();
+    for (int i = 0; i < m_originalShapes.count(); ++i) {
+        DrawingShape *shape = m_originalShapes[i];
+        if (shape) {
+            m_scene->addItem(shape);
+            shape->setPos(m_positions[i]);
+            shape->setStrokePen(m_strokePens[i]);
+            shape->setFillBrush(m_fillBrushes[i]);
+            shape->setSelected(true);
+        }
+    }
+    
+    if (m_scene) m_scene->setModified(true);
+}
+
+void PathOperationCommand::redo() {
+    if (!m_scene) return;
+    
+    // 如果是第一次执行，需要计算新的路径
+    if (m_newPaths.isEmpty()) {
+        for (int i = 0; i < m_originalShapes.count(); ++i) {
+            DrawingShape *shape = m_originalShapes[i];
+            if (!shape) continue;
+            
+            // 获取图形的路径
+            QPainterPath originalPath;
+            if (shape->shapeType() == DrawingShape::Path) {
+                DrawingPath *pathShape = static_cast<DrawingPath*>(shape);
+                originalPath = pathShape->path();
+            } else {
+                originalPath = shape->transformedShape();
+                QTransform transform;
+                transform.translate(shape->pos().x(), shape->pos().y());
+                originalPath = transform.map(originalPath);
+            }
+            
+            // 执行路径操作
+            QPainterPath newPath;
+            switch (m_operation) {
+                case PathOperationsManager::Simplify:
+                    newPath = PathOperationsManager::simplifyPathStatic(originalPath);
+                    break;
+                case PathOperationsManager::Smooth:
+                    newPath = PathOperationsManager::smoothPathStatic(originalPath);
+                    break;
+                case PathOperationsManager::Reverse:
+                    newPath = originalPath.toReversed();
+                    break;
+                case PathOperationsManager::ConvertToCurve:
+                    newPath = PathOperationsManager::convertToCurveStatic(originalPath);
+                    break;
+                case PathOperationsManager::OffsetPath:
+                    newPath = PathOperationsManager::offsetPathStatic(originalPath, 5.0);
+                    break;
+                case PathOperationsManager::ClipPath:
+                    newPath.addRect(originalPath.boundingRect());
+                    break;
+            }
+            
+            if (!newPath.isEmpty()) {
+                // 创建新的路径对象
+                DrawingPath *newPathShape = new DrawingPath();
+                
+                // 调整路径为相对于原点的路径
+                QRectF bounds = newPath.boundingRect();
+                QTransform offsetTransform;
+                offsetTransform.translate(-bounds.left(), -bounds.top());
+                QPainterPath adjustedPath = offsetTransform.map(newPath);
+                
+                newPathShape->setPath(adjustedPath);
+                newPathShape->setStrokePen(shape->strokePen());
+                newPathShape->setFillBrush(shape->fillBrush());
+                newPathShape->setPos(bounds.topLeft());
+                
+                if (shape->document()) {
+                    newPathShape->setDocument(shape->document());
+                }
+                
+                m_newPaths.append(newPathShape);
+            }
+        }
+        
+        // 从场景中移除原始图形
+        for (DrawingShape *shape : m_originalShapes) {
+            if (shape && shape->scene() == m_scene) {
+                m_scene->removeItem(shape);
+            }
+        }
+        
+        // 添加新路径到场景
+        for (DrawingPath *path : m_newPaths) {
+            if (path) {
+                m_scene->addItem(path);
+                path->setSelected(true);
+            }
+        }
+    } else {
+        // 重做时：移除原图形，添加已存在的新路径
+        for (DrawingShape *shape : m_originalShapes) {
+            if (shape && shape->scene() == m_scene) {
+                m_scene->removeItem(shape);
+            }
+        }
+        
+        for (DrawingPath *path : m_newPaths) {
+            if (path) {
+                m_scene->addItem(path);
+                path->setSelected(true);
+            }
+        }
+    }
+    
+    if (m_scene) m_scene->setModified(true);
+}
 
 void PathOperationsManager::executePathOperationSteps(PathOperation op)
 {

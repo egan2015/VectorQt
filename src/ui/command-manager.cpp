@@ -931,3 +931,86 @@ void UngroupCommand::redo()
     
     emit m_commandManager->statusMessageChanged(QString("已取消组合 %1 个组").arg(m_groups.count()));
 }
+
+// TextToPathCommand实现
+TextToPathCommand::TextToPathCommand(CommandManager *manager, const QList<DrawingText*>& textShapes, 
+                                     QUndoCommand *parent)
+    : BaseCommand(manager, "文本转路径", parent)
+    , m_textShapes(textShapes)
+{
+    // 初始化数据结构
+    for (DrawingText *textShape : textShapes) {
+        m_positions.append(textShape->position());
+        m_fillBrushes[textShape] = textShape->fillBrush();
+        m_strokePens[textShape] = textShape->strokePen();
+    }
+}
+
+void TextToPathCommand::redo()
+{
+    // 转换每个文本对象为路径
+    for (int i = 0; i < m_textShapes.count(); ++i) {
+        DrawingText *textShape = m_textShapes[i];
+        
+        // 获取文本属性
+        QString text = textShape->text();
+        QFont font = textShape->font();
+        
+        // 创建路径并添加文本
+        QPainterPath textPath;
+        textPath.addText(QPointF(0, 0), font, text);
+        
+        // 创建新的路径图形
+        DrawingPath *pathShape = new DrawingPath();
+        pathShape->setPath(textPath);
+        
+        // 复制文本的样式
+        pathShape->setFillBrush(textShape->fillBrush());
+        pathShape->setStrokePen(textShape->strokePen());
+        
+        // 设置文档
+        pathShape->setDocument(textShape->document());
+        
+        // 设置位置到原文本的位置
+        pathShape->setPos(textShape->position());
+        
+        // 添加到场景
+        if (m_scene) {
+            m_scene->addItem(pathShape);
+            m_pathShapes.append(pathShape);
+            
+            // 从场景中移除原文本
+            m_scene->removeItem(textShape);
+        }
+    }
+    
+    emit m_commandManager->statusMessageChanged(QString("已转换 %1 个文本对象为路径").arg(m_textShapes.count()));
+}
+
+void TextToPathCommand::undo()
+{
+    // 恢复每个文本对象
+    for (int i = 0; i < m_textShapes.count(); ++i) {
+        DrawingText *textShape = m_textShapes[i];
+        DrawingPath *pathShape = (i < m_pathShapes.count()) ? m_pathShapes[i] : nullptr;
+        
+        // 恢复文本对象到场景
+        if (m_scene && textShape) {
+            m_scene->addItem(textShape);
+            
+            // 恢复位置和样式
+            textShape->setPos(m_positions[i]);
+            textShape->setFillBrush(m_fillBrushes[textShape]);
+            textShape->setStrokePen(m_strokePens[textShape]);
+            
+            // 移除路径对象
+            if (pathShape) {
+                m_scene->removeItem(pathShape);
+                delete pathShape;
+            }
+        }
+    }
+    
+    m_pathShapes.clear();
+    emit m_commandManager->statusMessageChanged(QString("已恢复 %1 个文本对象").arg(m_textShapes.count()));
+}

@@ -2087,7 +2087,7 @@ void DrawingText::mousePressEvent(QGraphicsSceneMouseEvent *event)
         }
     }
     
-    QGraphicsItem::mousePressEvent(event);
+    DrawingShape::mousePressEvent(event);
 }
 
 void DrawingText::mouseDoubleClickEvent(QGraphicsSceneMouseEvent *event)
@@ -2100,7 +2100,7 @@ void DrawingText::mouseDoubleClickEvent(QGraphicsSceneMouseEvent *event)
         return;
     }
     
-    QGraphicsItem::mouseDoubleClickEvent(event);
+    DrawingShape::mouseDoubleClickEvent(event);
 }
 
 // DrawingText 节点信息实现

@@ -15,6 +15,8 @@
 class DrawingScene;
 class DrawingShape;
 class DrawingGroup;
+class DrawingText;
+class DrawingPath;
 
 class CommandManager : public QObject
 {
@@ -285,6 +287,24 @@ private:
     QList<DrawingShape*> m_ungroupedShapes;
     QMap<DrawingShape*, DrawingGroup*> m_parentGroups;
     QMap<DrawingShape*, QPointF> m_positions;
+};
+
+// 文本转路径命令
+class TextToPathCommand : public BaseCommand
+{
+public:
+    TextToPathCommand(CommandManager *manager, const QList<DrawingText*>& textShapes, 
+                      QUndoCommand *parent = nullptr);
+    
+    void undo() override;
+    void redo() override;
+    
+private:
+    QList<DrawingText*> m_textShapes;
+    QList<DrawingPath*> m_pathShapes;
+    QList<QPointF> m_positions;
+    QMap<DrawingText*, QBrush> m_fillBrushes;
+    QMap<DrawingText*, QPen> m_strokePens;
 };
 
 #endif // COMMAND_MANAGER_H

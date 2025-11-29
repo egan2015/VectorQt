@@ -32,6 +32,9 @@ QHash<QString, QDomElement> s_markers;
 // Marker渲染缓存
 static QHash<QString, QPixmap> s_markerCache;
 
+// Marker数据缓存
+QHash<QString, MarkerData> s_markerDataCache;
+
 // 定义的元素存储（用于use元素）
 static QHash<QString, QDomElement> s_definedElements;
 
@@ -1972,6 +1975,8 @@ void SvgHandler::parseDefsElements(const QDomElement &root)
             if (!id.isEmpty())
             {
                 s_markers[id] = markerElement;
+                // 预解析Marker数据
+                s_markerDataCache[id] = parseMarkerData(markerElement);
                 // 预渲染Marker到缓存
                 renderMarkerToCache(id, markerElement);
                 // qDebug() << "解析Marker:" << id;
@@ -2540,6 +2545,87 @@ QBrush SvgHandler::parsePatternBrush(const QString &patternId)
 // Marker解析方法
 
 
+// 解析Marker数据
+MarkerData SvgHandler::parseMarkerData(const QDomElement &markerElement)
+{
+    MarkerData data;
+    
+    // 解析Marker内容
+    QDomNodeList children = markerElement.childNodes();
+    for (int i = 0; i < children.size(); ++i)
+    {
+        QDomNode node = children.at(i);
+        if (node.isElement())
+        {
+            QDomElement childElement = node.toElement();
+            QString tagName = childElement.tagName();
+
+            // 获取样式
+            QColor fillColor = parseColor(childElement.attribute("fill", "black"));
+            QColor strokeColor = parseColor(childElement.attribute("stroke", "none"));
+            qreal strokeWidth = parseLength(childElement.attribute("stroke-width", "1"));
+
+            if (tagName == "path")
+            {
+                QString d = childElement.attribute("d");
+                if (!d.isEmpty())
+                {
+                    QPainterPath path;
+                    parseSvgPathData(d, path);
+                    
+                    QVariantList params;
+                    params << QVariant::fromValue(path);
+                    
+                    data = MarkerData(MarkerData::Path, params, fillColor, strokeColor, strokeWidth);
+                    break; // 只处理第一个子元素
+                }
+            }
+            else if (tagName == "circle")
+            {
+                qreal cx = parseLength(childElement.attribute("cx", "0"));
+                qreal cy = parseLength(childElement.attribute("cy", "0"));
+                qreal r = parseLength(childElement.attribute("r", "0"));
+                
+                QVariantList params;
+                params << cx << cy << r;
+                
+                data = MarkerData(MarkerData::Circle, params, fillColor, strokeColor, strokeWidth);
+                break;
+            }
+            else if (tagName == "rect")
+            {
+                qreal x = parseLength(childElement.attribute("x", "0"));
+                qreal y = parseLength(childElement.attribute("y", "0"));
+                qreal width = parseLength(childElement.attribute("width", "0"));
+                qreal height = parseLength(childElement.attribute("height", "0"));
+                
+                QVariantList params;
+                params << x << y << width << height;
+                
+                data = MarkerData(MarkerData::Rect, params, fillColor, strokeColor, strokeWidth);
+                break;
+            }
+            else if (tagName == "polygon")
+            {
+                QString points = childElement.attribute("points");
+                if (!points.isEmpty())
+                {
+                    QPainterPath path;
+                    parseSvgPointsData(points, path, false); // 不自动闭合
+                    
+                    QVariantList params;
+                    params << QVariant::fromValue(path);
+                    
+                    data = MarkerData(MarkerData::Polygon, params, fillColor, strokeColor, strokeWidth);
+                    break;
+                }
+            }
+        }
+    }
+    
+    return data;
+}
+
 // 渲染Marker到缓存
 void SvgHandler::renderMarkerToCache(const QString &id, const QDomElement &markerElement)
 {
@@ -2717,16 +2803,14 @@ void SvgHandler::applyMarkerToPath(DrawingPath *path, const QString &markerId, c
         return;
     }
 
-    if (s_markers.contains(markerId) && s_markerCache.contains(markerId))
+    if (s_markerDataCache.contains(markerId))
     {
-        QDomElement markerElement = s_markers[markerId];
-        QPixmap markerPixmap = s_markerCache[markerId];
-
-        // 获取Marker属性
-        qreal markerWidth = parseLength(markerElement.attribute("markerWidth", "10"));
-        qreal markerHeight = parseLength(markerElement.attribute("markerHeight", "10"));
-        qreal refX = parseLength(markerElement.attribute("refX", "0"));
-        qreal refY = parseLength(markerElement.attribute("refY", "0"));
+        MarkerData markerData = s_markerDataCache[markerId];
+        
+        if (!markerData.isValid)
+        {
+            return;
+        }
 
         // 获取路径的起点和终点
         QPainterPath painterPath = path->path();
@@ -2768,16 +2852,13 @@ void SvgHandler::applyMarkerToPath(DrawingPath *path, const QString &markerId, c
             }
         }
 
-        // 创建Marker图像变换
+        // 创建Marker变换
         QTransform transform;
-        transform.translate(markerPoint.x() - refX, markerPoint.y() - refY);
+        transform.translate(markerPoint.x(), markerPoint.y());
         transform.rotate(angle);
 
         // 存储Marker信息用于渲染
-        path->setMarker(markerId, markerPixmap, transform);
-    }
-    else
-    {
+        path->setMarker(markerId, markerData, transform);
     }
 }
 

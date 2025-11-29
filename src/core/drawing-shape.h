@@ -14,8 +14,28 @@
 #include <QFont>
 #include <QUndoCommand>
 #include <QDomElement>
+#include <QVariant>
 #include <memory>
 #include "smart-render-manager.h"
+
+// Marker渲染数据结构
+struct MarkerData
+{
+    enum Type { None, Path, Circle, Rect, Polygon };
+    
+    Type type = None;
+    QVariantList params;  // 存储具体参数
+    QColor fillColor = Qt::black;
+    QColor strokeColor = Qt::transparent;
+    qreal strokeWidth = 1.0;
+    bool isValid = false;
+    
+    // 构造函数
+    MarkerData() = default;
+    MarkerData(Type t, const QVariantList& p, const QColor& fill, 
+               const QColor& stroke, qreal width)
+        : type(t), params(p), fillColor(fill), strokeColor(stroke), strokeWidth(width), isValid(true) {}
+};
 
 class DrawingDocument;
 
@@ -503,7 +523,7 @@ public:
     bool isPointOnPath(const QPointF &pos, qreal threshold = 5.0) const override;
 
     // Marker相关
-    void setMarker(const QString &markerId, const QPixmap &markerPixmap, const QTransform &markerTransform);
+    void setMarker(const QString &markerId, const MarkerData &markerData, const QTransform &markerTransform);
     bool hasMarker() const { return !m_markerId.isEmpty(); }
     QString markerId() const { return m_markerId; }
 
@@ -526,8 +546,11 @@ private:
     int findNearestControlPoint(const QPointF &scenePos) const;
     bool isPointNearControlPoint(const QPointF &scenePos, const QPointF &controlPoint, qreal threshold = 10.0) const;
     
-    // 直接绘制marker（避免pixmap缩放问题）
-    void renderMarkerDirectly(QPainter *painter, const QDomElement &markerElement);
+    // 直接绘制marker（使用预解析的数据）
+    void renderMarkerDirectly(QPainter *painter);
+    
+    // 获取marker的边界框
+    static QRectF getMarkerBounds(const MarkerData &markerData);
 
     QPainterPath m_path;
     QVector<QPainterPath::Element> m_pathElements;          // 原始路径元素，保存曲线信息
@@ -537,7 +560,7 @@ private:
 
     // Marker相关
     QString m_markerId;
-    QPixmap m_markerPixmap;
+    MarkerData m_markerData;  // 预解析的marker数据
     QTransform m_markerTransform;
     bool m_showControlPolygon = false;        // 是否显示控制点连线
     int m_activeControlPoint = -1;            // 当前活动的控制点索引

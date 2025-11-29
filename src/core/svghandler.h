@@ -16,8 +16,12 @@
 #include <QGraphicsDropShadowEffect>
 #include <QHash>
 
+// 前向声明
+struct MarkerData;
+
 // Marker存储 - 声明为extern以便其他文件访问
 extern QHash<QString, QDomElement> s_markers;
+extern QHash<QString, MarkerData> s_markerDataCache;
 
 class DrawingScene;
 class DrawingShape;
@@ -135,6 +139,7 @@ private:
     static QBrush parsePatternBrush(const QString &patternId);
     
     // 解析Marker
+    static MarkerData parseMarkerData(const QDomElement &markerElement);
     static void renderMarkerToCache(const QString &id, const QDomElement &markerElement);
     static QPainterPath createMarkerPath(const QString &markerId, const QPointF &startPoint, const QPointF &endPoint);
     // 应用Marker到路径

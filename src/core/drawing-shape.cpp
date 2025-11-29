@@ -1201,10 +1201,10 @@ DrawingPath::DrawingPath(QGraphicsItem *parent)
 {
 }
 
-void DrawingPath::setMarker(const QString &markerId, const QPixmap &markerPixmap, const QTransform &markerTransform)
+void DrawingPath::setMarker(const QString &markerId, const MarkerData &markerData, const QTransform &markerTransform)
 {
     m_markerId = markerId;
-    m_markerPixmap = markerPixmap;
+    m_markerData = markerData;
     m_markerTransform = markerTransform;
     update(); // 触发重绘以显示Marker
 }
@@ -1268,14 +1268,19 @@ QRectF DrawingPath::localBounds() const
     QRectF bounds = m_path.boundingRect();
     
     // 如果有marker，需要扩展边界框以包含marker区域
-    if (hasMarker())
+    if (hasMarker() && m_markerData.isValid)
     {
         // 获取路径终点
         if (m_path.elementCount() > 0)
         {
             QPointF endPoint = m_path.elementAt(m_path.elementCount() - 1);
-            // 假设marker大小约为20x20，扩展边界框
-            QRectF markerBounds(endPoint.x() - 10, endPoint.y() - 10, 20, 20);
+            
+            // 使用相同的逻辑获取marker边界框
+            QRectF markerBounds = getMarkerBounds(m_markerData);
+            
+            // 将marker中心对齐到路径终点
+            QPointF centerOffset = markerBounds.center();
+            markerBounds.translate(endPoint - centerOffset);
             bounds = bounds.united(markerBounds);
         }
     }
@@ -1797,21 +1802,19 @@ void DrawingPath::paintShape(QPainter *painter)
         // 获取旋转角度（使用负值，因为Qt是顺时针旋转）
         qreal angle = -qAtan2(m_markerTransform.m21(), m_markerTransform.m11()) * 180.0 / M_PI;
         
-        // 直接绘制矢量图形而不是pixmap
-        if (s_markers.contains(m_markerId))
+        // 使用预解析的数据直接绘制
+        if (m_markerData.isValid)
         {
-            QDomElement markerElement = s_markers[m_markerId];
-            
-            // 获取refX和refY
-            qreal refX = markerElement.attribute("refX", "0").toDouble();
-            qreal refY = markerElement.attribute("refY", "0").toDouble();
-            
-            // 移动到线段端点，然后旋转，再偏移ref点
+            // 移动到线段端点，然后旋转
             painter->translate(markerPos);
             painter->rotate(angle);
-            //painter->translate(-refX, -refY);
             
-            renderMarkerDirectly(painter, markerElement);
+            // 将marker中心对齐到原点
+            QRectF markerBounds = getMarkerBounds(m_markerData);
+            QPointF centerOffset = markerBounds.center();
+            painter->translate(-centerOffset.x(), -centerOffset.y());
+            
+            renderMarkerDirectly(painter);
         }
 
         // 恢复画家状态
@@ -1936,124 +1939,106 @@ void DrawingPath::paintShape(QPainter *painter)
     }
 }
 
-// 直接绘制marker（避免pixmap缩放问题）
-void DrawingPath::renderMarkerDirectly(QPainter *painter, const QDomElement &markerElement)
+// 获取marker的边界框
+QRectF DrawingPath::getMarkerBounds(const MarkerData &markerData)
 {
-    // 解析Marker内容
-    QDomNodeList children = markerElement.childNodes();
-    for (int i = 0; i < children.size(); ++i)
+    if (!markerData.isValid)
     {
-        QDomNode node = children.at(i);
-        if (node.isElement())
+        return QRectF(0, 0, 10, 10); // 默认大小
+    }
+
+    switch (markerData.type)
+    {
+    case MarkerData::Circle:
+        if (markerData.params.size() >= 3)
         {
-            QDomElement childElement = node.toElement();
-            QString tagName = childElement.tagName();
-
-            if (tagName == "path")
-            {
-                QString d = childElement.attribute("d");
-                if (!d.isEmpty())
-                {
-                    QPainterPath path;
-                    // 简单的路径解析 - 只处理基本的M和L命令
-                    QStringList commands = d.split(QRegularExpression("[\\s,]+"), Qt::SkipEmptyParts);
-                    bool firstPoint = true;
-                    for (int j = 0; j < commands.size(); j += 3) // 假设格式为 M x y L x y
-                    {
-                        if (j + 2 < commands.size())
-                        {
-                            qreal x = commands[j+1].toDouble();
-                            qreal y = commands[j+2].toDouble();
-                            if (firstPoint)
-                            {
-                                path.moveTo(x, y);
-                                firstPoint = false;
-                            }
-                            else
-                            {
-                                path.lineTo(x, y);
-                            }
-                        }
-                    }
-
-                    // 获取样式
-                    QColor fillColor = QColor(childElement.attribute("fill", "black"));
-                    QColor strokeColor = QColor(childElement.attribute("stroke", "none"));
-                    qreal strokeWidth = childElement.attribute("stroke-width", "1").toDouble();
-
-                    // 应用样式
-                    painter->setBrush(QBrush(fillColor));
-                    painter->setPen(QPen(strokeColor, strokeWidth));
-
-                    // 绘制路径
-                    painter->drawPath(path);
-                }
-            }
-            else if (tagName == "circle")
-            {
-                qreal cx = childElement.attribute("cx", "0").toDouble();
-                qreal cy = childElement.attribute("cy", "0").toDouble();
-                qreal r = childElement.attribute("r", "0").toDouble();
-
-                QColor fillColor = QColor(childElement.attribute("fill", "black"));
-                QColor strokeColor = QColor(childElement.attribute("stroke", "none"));
-                qreal strokeWidth = childElement.attribute("stroke-width", "1").toDouble();
-
-                painter->setBrush(QBrush(fillColor));
-                painter->setPen(QPen(strokeColor, strokeWidth));
-                painter->drawEllipse(QPointF(cx, cy), r, r);
-            }
-            else if (tagName == "rect")
-            {
-                qreal x = childElement.attribute("x", "0").toDouble();
-                qreal y = childElement.attribute("y", "0").toDouble();
-                qreal width = childElement.attribute("width", "0").toDouble();
-                qreal height = childElement.attribute("height", "0").toDouble();
-
-                QColor fillColor = QColor(childElement.attribute("fill", "black"));
-                QColor strokeColor = QColor(childElement.attribute("stroke", "none"));
-                qreal strokeWidth = childElement.attribute("stroke-width", "1").toDouble();
-
-                painter->setBrush(QBrush(fillColor));
-                painter->setPen(QPen(strokeColor, strokeWidth));
-                painter->drawRect(x, y, width, height);
-            }
-            else if (tagName == "polygon")
-            {
-                QString points = childElement.attribute("points");
-                if (!points.isEmpty())
-                {
-                    QPainterPath path;
-                    // 简化的点解析
-                    QString cleanedStr = points.simplified();
-                    QStringList pointPairs = cleanedStr.split(",", Qt::SkipEmptyParts);
-                    
-                    bool firstPoint = true;
-                    for (const QString &pair : pointPairs) {
-                        QStringList coords = pair.trimmed().split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
-                        if (coords.size() >= 2) {
-                            qreal x = coords[0].toDouble();
-                            qreal y = coords[1].toDouble();
-                            
-                            if (firstPoint) {
-                                path.moveTo(x, y);
-                                firstPoint = false;
-                            } else {
-                                path.lineTo(x, y);
-                            }
-                        }
-                    }
-
-                    QColor fillColor = QColor(childElement.attribute("fill", "black"));
-                    QColor strokeColor = QColor(childElement.attribute("stroke", "none"));
-                    qreal strokeWidth = childElement.attribute("stroke-width", "1").toDouble();
-
-                    painter->setBrush(QBrush(fillColor));
-                    painter->setPen(QPen(strokeColor, strokeWidth));
-                    painter->drawPath(path);
-                }
-            }
+            qreal cx = markerData.params[0].toReal();
+            qreal cy = markerData.params[1].toReal();
+            qreal r = markerData.params[2].toReal();
+            return QRectF(cx - r, cy - r, 2 * r, 2 * r);
         }
+        break;
+
+    case MarkerData::Rect:
+        if (markerData.params.size() >= 4)
+        {
+            qreal x = markerData.params[0].toReal();
+            qreal y = markerData.params[1].toReal();
+            qreal width = markerData.params[2].toReal();
+            qreal height = markerData.params[3].toReal();
+            return QRectF(x, y, width, height);
+        }
+        break;
+
+    case MarkerData::Path:
+    case MarkerData::Polygon:
+        if (markerData.params.size() > 0)
+        {
+            QPainterPath path = markerData.params[0].value<QPainterPath>();
+            return path.boundingRect();
+        }
+        break;
+
+    default:
+        break;
+    }
+
+    return QRectF(0, 0, 10, 10); // 默认大小
+}
+
+// 直接绘制marker（使用预解析的数据）
+void DrawingPath::renderMarkerDirectly(QPainter *painter)
+{
+    if (!m_markerData.isValid)
+    {
+        return;
+    }
+
+    // 应用样式
+    painter->setBrush(QBrush(m_markerData.fillColor));
+    painter->setPen(QPen(m_markerData.strokeColor, m_markerData.strokeWidth));
+
+    switch (m_markerData.type)
+    {
+    case MarkerData::Path:
+        if (m_markerData.params.size() > 0)
+        {
+            QPainterPath path = m_markerData.params[0].value<QPainterPath>();
+            painter->drawPath(path);
+        }
+        break;
+
+    case MarkerData::Circle:
+        if (m_markerData.params.size() >= 3)
+        {
+            qreal cx = m_markerData.params[0].toReal();
+            qreal cy = m_markerData.params[1].toReal();
+            qreal r = m_markerData.params[2].toReal();
+            painter->drawEllipse(QPointF(cx, cy), r, r);
+        }
+        break;
+
+    case MarkerData::Rect:
+        if (m_markerData.params.size() >= 4)
+        {
+            qreal x = m_markerData.params[0].toReal();
+            qreal y = m_markerData.params[1].toReal();
+            qreal width = m_markerData.params[2].toReal();
+            qreal height = m_markerData.params[3].toReal();
+            painter->drawRect(x, y, width, height);
+        }
+        break;
+
+    case MarkerData::Polygon:
+        if (m_markerData.params.size() > 0)
+        {
+            QPainterPath path = m_markerData.params[0].value<QPainterPath>();
+            painter->drawPath(path);
+        }
+        break;
+
+    default:
+        break;
     }
 }
 
@@ -2079,7 +2064,15 @@ QByteArray DrawingPath::serialize() const
     }
 
     stream << m_markerId;
-    stream << m_markerPixmap;
+    
+    // 序列化MarkerData
+    stream << static_cast<int>(m_markerData.type);
+    stream << m_markerData.params;
+    stream << m_markerData.fillColor;
+    stream << m_markerData.strokeColor;
+    stream << m_markerData.strokeWidth;
+    stream << m_markerData.isValid;
+    
     stream << m_markerTransform;
     stream << m_showControlPolygon;
     stream << strokePen();
@@ -2139,7 +2132,17 @@ void DrawingPath::deserialize(const QByteArray &data)
     // 读取控制点相关数据（控制点是动态的，不需要序列化）
     // 路径设置后会重新生成控制点
     stream >> m_markerId;
-    stream >> m_markerPixmap;
+    
+    // 反序列化MarkerData
+    int typeInt;
+    stream >> typeInt;
+    m_markerData.type = static_cast<MarkerData::Type>(typeInt);
+    stream >> m_markerData.params;
+    stream >> m_markerData.fillColor;
+    stream >> m_markerData.strokeColor;
+    stream >> m_markerData.strokeWidth;
+    stream >> m_markerData.isValid;
+    
     stream >> m_markerTransform;
     stream >> m_showControlPolygon;
 

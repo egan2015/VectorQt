@@ -13,6 +13,7 @@
 #include <QGraphicsSceneMouseEvent>
 #include <QFont>
 #include <QUndoCommand>
+#include <QDomElement>
 #include <memory>
 #include "smart-render-manager.h"
 
@@ -524,6 +525,9 @@ private:
     // 控制点交互相关
     int findNearestControlPoint(const QPointF &scenePos) const;
     bool isPointNearControlPoint(const QPointF &scenePos, const QPointF &controlPoint, qreal threshold = 10.0) const;
+    
+    // 直接绘制marker（避免pixmap缩放问题）
+    void renderMarkerDirectly(QPainter *painter, const QDomElement &markerElement);
 
     QPainterPath m_path;
     QVector<QPainterPath::Element> m_pathElements;          // 原始路径元素，保存曲线信息

@@ -14,6 +14,10 @@
 #include <QString>
 #include <QGraphicsBlurEffect>
 #include <QGraphicsDropShadowEffect>
+#include <QHash>
+
+// Marker存储 - 声明为extern以便其他文件访问
+extern QHash<QString, QDomElement> s_markers;
 
 class DrawingScene;
 class DrawingShape;
@@ -131,7 +135,6 @@ private:
     static QBrush parsePatternBrush(const QString &patternId);
     
     // 解析Marker
-    static void parseMarkerElements(const QDomElement &root);
     static void renderMarkerToCache(const QString &id, const QDomElement &markerElement);
     static QPainterPath createMarkerPath(const QString &markerId, const QPointF &startPoint, const QPointF &endPoint);
     // 应用Marker到路径
@@ -140,6 +143,9 @@ private:
     
     // 从字符串解析长度值
     static qreal parseLength(const QString &lengthStr);
+    
+    // 从字符串解析点数据
+    static void parseSvgPointsData(const QString &pointsStr, QPainterPath &path, bool closePath = true);
     
     // 导出场景到SVG文档
     static QDomDocument exportSceneToSvgDocument(DrawingScene *scene);

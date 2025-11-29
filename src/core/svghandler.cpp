@@ -27,7 +27,7 @@ static QHash<QString, QGraphicsEffect *> s_filters;
 static QHash<QString, QBrush> s_patterns;
 
 // Marker存储
-static QHash<QString, QDomElement> s_markers;
+QHash<QString, QDomElement> s_markers;
 
 // Marker渲染缓存
 static QHash<QString, QPixmap> s_markerCache;
@@ -70,7 +70,9 @@ bool SvgHandler::importFromSvg(DrawingScene *scene, const QString &fileName)
 
 bool SvgHandler::parseSvgDocument(DrawingScene *scene, const QDomDocument &doc)
 {
+    // qDebug() << "parseSvgDocument: 开始解析";
     QDomElement root = doc.documentElement();
+    // qDebug() << "根元素标签:" << root.tagName();
     if (root.tagName() != "svg")
     {
         qDebug() << "不是有效的SVG文档，标签名:" << root.tagName();
@@ -91,9 +93,6 @@ bool SvgHandler::parseSvgDocument(DrawingScene *scene, const QDomDocument &doc)
 
     // 解析Pattern定义
     parsePatternElements(root);
-
-    // 解析Marker定义
-    parseMarkerElements(root);
 
     // 遍历SVG文档中的所有元素
     QDomNodeList children = root.childNodes();
@@ -118,10 +117,10 @@ bool SvgHandler::parseSvgDocument(DrawingScene *scene, const QDomDocument &doc)
             {
                 // 处理组元素
                 DrawingGroup *group = parseGroupElement(scene, element);
-                if (group)
-                {
-                    elementCount++;
-                }
+                // 对于图层，parseGroupElement返回nullptr但图层已被创建
+                // 对于普通组，返回有效的group指针
+                // 所以无论哪种情况，只要没有抛出异常，我们都认为解析成功
+                elementCount++;
             }
             else
             {
@@ -260,8 +259,10 @@ DrawingShape *SvgHandler::parseSvgElement(const QDomElement &element)
 
 DrawingGroup *SvgHandler::parseGroupElement(DrawingScene *scene, const QDomElement &groupElement)
 {
+    // qDebug() << "parseGroupElement: 开始解析组元素";
     // 检查是否是图层（带有 inkscape:label 属性）
     QString layerId = groupElement.attribute("inkscape:label");
+    // qDebug() << "inkscape:label:" << layerId;
     bool isLayer = !layerId.isEmpty() &&
                    groupElement.hasAttribute("inkscape:groupmode") &&
                    groupElement.attribute("inkscape:groupmode") == "layer";
@@ -405,6 +406,7 @@ DrawingGroup *SvgHandler::parseGroupElement(DrawingScene *scene, const QDomEleme
         }
     }
 
+    // qDebug() << "parseGroupElement: 返回" << (group ? "有效组" : "nullptr");
     return group;
 }
 
@@ -1015,7 +1017,7 @@ DrawingText *SvgHandler::parseTextElement(const QDomElement &element)
 
     // 创建文本形状
     DrawingText *shape = new DrawingText(text);
-    shape->setPosition(position);
+    shape->setPos(position);
 
     // 解析字体属性
     QString fontFamily = element.attribute("font-family", "Arial");
@@ -1173,6 +1175,7 @@ void SvgHandler::parseStyleAttributes(DrawingShape *shape, const QDomElement &el
     if (!filter.isEmpty() && filter.startsWith("url(#"))
     {
         QString filterId = filter.mid(5, filter.length() - 6); // 去掉 "url(#" 和 ")"
+        qDebug() << "找到filter属性:" << filter << "filterId:" << filterId;
         applyFilterToShape(shape, filterId);
     }
 }
@@ -1379,6 +1382,38 @@ qreal SvgHandler::parseLength(const QString &lengthStr)
     }
 
     return 10.0; // 默认值
+}
+
+void SvgHandler::parseSvgPointsData(const QString &pointsStr, QPainterPath &path, bool closePath)
+{
+    // 移除多余的逗号和空格，然后用逗号分割点对
+    QString cleanedStr = pointsStr.simplified();
+    QStringList pointPairs = cleanedStr.split(",", Qt::SkipEmptyParts);
+    
+    if (pointPairs.isEmpty()) {
+        return;
+    }
+    
+    bool firstPoint = true;
+    for (const QString &pair : pointPairs) {
+        QStringList coords = pair.trimmed().split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
+        if (coords.size() >= 2) {
+            qreal x = coords[0].toDouble();
+            qreal y = coords[1].toDouble();
+            
+            if (firstPoint) {
+                path.moveTo(x, y);
+                firstPoint = false;
+            } else {
+                path.lineTo(x, y);
+            }
+        }
+    }
+    
+    // 只有在需要时才闭合路径
+    if (closePath) {
+        path.closeSubpath();
+    }
 }
 
 bool SvgHandler::exportToSvg(DrawingScene *scene, const QString &fileName)
@@ -1891,37 +1926,56 @@ void SvgHandler::parseDefsElements(const QDomElement &root)
         return;
     }
 
-    QDomElement defs = defsNodes.at(0).toElement();
-    // qDebug() << "解析defs元素";
-
     // 清理之前的渐变定义
     s_gradients.clear();
 
-    // 解析所有线性渐变
-    QDomNodeList linearGradients = defs.elementsByTagName("linearGradient");
-    for (int i = 0; i < linearGradients.size(); ++i)
+    // 处理所有的defs元素
+    for (int defsIndex = 0; defsIndex < defsNodes.size(); ++defsIndex)
     {
-        QDomElement element = linearGradients.at(i).toElement();
-        QString id = element.attribute("id");
-        if (!id.isEmpty())
-        {
-            QLinearGradient gradient = parseLinearGradient(element);
-            s_gradients[id] = gradient;
-            // qDebug() << "解析线性渐变:" << id;
-        }
-    }
+        QDomElement defs = defsNodes.at(defsIndex).toElement();
+        // qDebug() << "解析defs元素" << defsIndex;
 
-    // 解析所有径向渐变
-    QDomNodeList radialGradients = defs.elementsByTagName("radialGradient");
-    for (int i = 0; i < radialGradients.size(); ++i)
-    {
-        QDomElement element = radialGradients.at(i).toElement();
-        QString id = element.attribute("id");
-        if (!id.isEmpty())
+        // 解析所有线性渐变
+        QDomNodeList linearGradients = defs.elementsByTagName("linearGradient");
+        for (int i = 0; i < linearGradients.size(); ++i)
         {
-            QRadialGradient gradient = parseRadialGradient(element);
-            s_gradients[id] = gradient;
-            // qDebug() << "解析径向渐变:" << id;
+            QDomElement element = linearGradients.at(i).toElement();
+            QString id = element.attribute("id");
+            if (!id.isEmpty())
+            {
+                QLinearGradient gradient = parseLinearGradient(element);
+                s_gradients[id] = gradient;
+                // qDebug() << "解析线性渐变:" << id;
+            }
+        }
+
+        // 解析所有径向渐变
+        QDomNodeList radialGradients = defs.elementsByTagName("radialGradient");
+        for (int i = 0; i < radialGradients.size(); ++i)
+        {
+            QDomElement element = radialGradients.at(i).toElement();
+            QString id = element.attribute("id");
+            if (!id.isEmpty())
+            {
+                QRadialGradient gradient = parseRadialGradient(element);
+                s_gradients[id] = gradient;
+                // qDebug() << "解析径向渐变:" << id;
+            }
+        }
+
+        // 解析所有Marker
+        QDomNodeList markers = defs.elementsByTagName("marker");
+        for (int i = 0; i < markers.size(); ++i)
+        {
+            QDomElement markerElement = markers.at(i).toElement();
+            QString id = markerElement.attribute("id");
+            if (!id.isEmpty())
+            {
+                s_markers[id] = markerElement;
+                // 预渲染Marker到缓存
+                renderMarkerToCache(id, markerElement);
+                // qDebug() << "解析Marker:" << id;
+            }
         }
     }
 }
@@ -1973,23 +2027,10 @@ QLinearGradient SvgHandler::parseLinearGradient(const QDomElement &element)
         y2 = y2Str.toDouble();
     }
 
-    // qDebug() << "线性渐变参数: x1=" << x1 << " y1=" << y1 << " x2=" << x2 << " y2=" << y2;
-
     QLinearGradient gradient(QPointF(x1, y1), QPointF(x2, y2));
 
     // 解析渐变停止点
     parseGradientStops(&gradient, element);
-
-    // 调试：检查渐变停止点
-    auto stops = gradient.stops();
-    // qDebug() << "渐变停止点数量:" << stops.count();
-    for (int i = 0; i < stops.count(); ++i)
-    {
-        auto stop = stops.at(i);
-        // qDebug() << "停止点" << i << ": 位置=" << stop.first
-        // << "颜色=" << stop.second.name()
-        // << "透明度=" << stop.second.alphaF();
-    }
 
     return gradient;
 }
@@ -2051,23 +2092,13 @@ QRadialGradient SvgHandler::parseRadialGradient(const QDomElement &element)
         fy = fyStr.toDouble();
     }
 
-    // qDebug() << "径向渐变参数: cx=" << cx << " cy=" << cy << " r=" << r << " fx=" << fx << " fy=" << fy;
-
+    // 对于径向渐变，在ObjectBoundingMode下，坐标和半径是相对于对象边界框的
+    // cx, cy, fx, fy 应该是 0-1 范围内的相对坐标
+    // r 应该是相对于边界框最大尺寸的相对半径
     QRadialGradient gradient(QPointF(cx, cy), r, QPointF(fx, fy));
 
     // 解析渐变停止点
     parseGradientStops(&gradient, element);
-
-    // 调试：检查渐变停止点
-    auto stops = gradient.stops();
-    // qDebug() << "渐变停止点数量:" << stops.count();
-    for (int i = 0; i < stops.count(); ++i)
-    {
-        auto stop = stops.at(i);
-        // qDebug() << "停止点" << i << ": 位置=" << stop.first
-        // << "颜色=" << stop.second.name()
-        // << "透明度=" << stop.second.alphaF();
-    }
 
     return gradient;
 }
@@ -2177,6 +2208,8 @@ void SvgHandler::parseFilterElements(const QDomElement &root)
         {
             // 查找滤镜内部的子元素
             QDomNodeList filterPrimitives = filterElement.childNodes();
+            QGraphicsEffect *lastEffect = nullptr; // 存储最后一个效果，Qt会自动叠加
+            
             for (int j = 0; j < filterPrimitives.size(); ++j)
             {
                 QDomNode node = filterPrimitives.at(j);
@@ -2198,11 +2231,16 @@ void SvgHandler::parseFilterElements(const QDomElement &root)
 
                     if (effect)
                     {
-                        s_filters[id] = effect;
-                        // qDebug() << "解析滤镜:" << id << "类型:" << tagName;
-                        break; // 一个滤镜只处理第一个原始元素
+                        lastEffect = effect; // 保存最后一个效果
+                        // qDebug() << "解析滤镜primitive:" << id << "类型:" << tagName;
                     }
                 }
+            }
+            
+            // 使用最后一个效果（Qt会自动处理叠加）
+            if (lastEffect)
+            {
+                s_filters[id] = lastEffect;
             }
         }
     }
@@ -2245,15 +2283,17 @@ void SvgHandler::applyFilterToShape(DrawingShape *shape, const QString &filterId
         return;
     }
 
+    qDebug() << "应用滤镜到形状，filterId:" << filterId;
     if (s_filters.contains(filterId))
     {
         QGraphicsEffect *effect = s_filters[filterId];
         if (!effect)
         {
-            // qDebug() << "滤镜效果为空:" << filterId;
+            qDebug() << "滤镜效果为空:" << filterId;
             return;
         }
 
+        qDebug() << "找到滤镜效果:" << filterId;
         // 注意：Qt中一个effect不能被多个item共享，需要克隆
         if (auto blurEffect = qobject_cast<QGraphicsBlurEffect *>(effect))
         {
@@ -2262,7 +2302,7 @@ void SvgHandler::applyFilterToShape(DrawingShape *shape, const QString &filterId
             {
                 newBlur->setBlurRadius(blurEffect->blurRadius());
                 shape->setGraphicsEffect(newBlur);
-                // qDebug() << "应用高斯模糊滤镜到图形:" << filterId << "半径:" << blurEffect->blurRadius();
+                qDebug() << "应用高斯模糊滤镜到图形:" << filterId << "半径:" << blurEffect->blurRadius();
             }
         }
         else if (auto shadowEffect = qobject_cast<QGraphicsDropShadowEffect *>(effect))
@@ -2498,38 +2538,7 @@ QBrush SvgHandler::parsePatternBrush(const QString &patternId)
 }
 
 // Marker解析方法
-void SvgHandler::parseMarkerElements(const QDomElement &root)
-{
-    // 查找defs元素
-    QDomNodeList defsNodes = root.elementsByTagName("defs");
-    if (defsNodes.isEmpty())
-    {
-        // 静默返回，不显示警告信息，因为简单的SVG文件可能不需要Marker
-        return;
-    }
 
-    QDomElement defs = defsNodes.at(0).toElement();
-    // qDebug() << "解析Marker元素";
-
-    // 清理之前的Marker定义
-    s_markers.clear();
-    s_markerCache.clear();
-
-    // 解析所有Marker
-    QDomNodeList markers = defs.elementsByTagName("marker");
-    for (int i = 0; i < markers.size(); ++i)
-    {
-        QDomElement markerElement = markers.at(i).toElement();
-        QString id = markerElement.attribute("id");
-        if (!id.isEmpty())
-        {
-            s_markers[id] = markerElement;
-            // 预渲染Marker到缓存
-            renderMarkerToCache(id, markerElement);
-            // qDebug() << "解析Marker:" << id;
-        }
-    }
-}
 
 // 渲染Marker到缓存
 void SvgHandler::renderMarkerToCache(const QString &id, const QDomElement &markerElement)
@@ -2543,7 +2552,7 @@ void SvgHandler::renderMarkerToCache(const QString &id, const QDomElement &marke
 
     // 创建缓存图像
     QPixmap pixmap(static_cast<int>(markerWidth), static_cast<int>(markerHeight));
-    pixmap.fill(Qt::transparent);
+    pixmap.fill(Qt::transparent); // 使用透明背景
 
     QPainter painter(&pixmap);
     painter.setRenderHint(QPainter::Antialiasing);
@@ -2607,6 +2616,24 @@ void SvgHandler::renderMarkerToCache(const QString &id, const QDomElement &marke
                 painter.setBrush(QBrush(fillColor));
                 painter.setPen(QPen(strokeColor, strokeWidth));
                 painter.drawRect(x, y, width, height);
+            }
+            else if (tagName == "polygon")
+            {
+                QString points = childElement.attribute("points");
+                if (!points.isEmpty())
+                {
+                    QPainterPath path;
+                    // 对于marker中的polygon，不自动闭合路径，让SVG属性决定
+                    parseSvgPointsData(points, path, false);
+
+                    QColor fillColor = parseColor(childElement.attribute("fill", "black"));
+                    QColor strokeColor = parseColor(childElement.attribute("stroke", "none"));
+                    qreal strokeWidth = parseLength(childElement.attribute("stroke-width", "1"));
+
+                    painter.setBrush(QBrush(fillColor));
+                    painter.setPen(QPen(strokeColor, strokeWidth));
+                    painter.drawPath(path);
+                }
             }
         }
     }

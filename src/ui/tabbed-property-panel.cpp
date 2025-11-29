@@ -1,16 +1,16 @@
 #include <QTabWidget>
 #include <QVBoxLayout>
 #include <QIcon>
-#include "../ui/tabbed-property-panel.h"
-#include "../ui/propertypanel.h"
-#include "../ui/layer-panel.h"
+#include "tabbed-property-panel.h"
+#include "propertypanel.h"
+#include "layer-panel.h"
+#include "tools-panel.h"
+#include "page-settings-panel.h"
+#include "drawingscene.h"
+#include "drawingview.h"
+#include "object-tree-view.h"
+#include "performance-panel-tab.h"
 #include "../core/layer-manager.h"
-#include "../ui/tools-panel.h"
-#include "../ui/page-settings-panel.h"
-#include "../ui/drawingscene.h"
-#include "../ui/drawingview.h"
-#include "../ui/object-tree-view.h"
-#include "../ui/performance-panel-tab.h"
 
 TabbedPropertyPanel::TabbedPropertyPanel(QWidget *parent)
     : QTabWidget(parent)

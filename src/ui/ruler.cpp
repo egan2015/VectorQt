@@ -5,7 +5,7 @@
 #include <QMenu>
 #include <QContextMenuEvent>
 #include <QEnterEvent>
-#include "../ui/ruler.h"
+#include "ruler.h"
 
 Ruler::Ruler(Orientation orientation, QWidget *parent)
     : QWidget(parent)

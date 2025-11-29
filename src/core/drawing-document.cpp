@@ -1,78 +1,197 @@
 #include <QDebug>
-#include "../core/drawing-document.h"
-#include "../core/drawing-shape.h"
+#include "drawing-document.h"
+#include "../ui/drawingscene.h"
+#include "layer-manager.h"
+#include "svghandler.h"
+#include "../ui/command-manager.h"
 
 DrawingDocument::DrawingDocument(QObject *parent)
     : QObject(parent)
+    , m_scene(nullptr)
+    , m_layerManager(nullptr)
+    , m_modified(false)
+    , m_isUntitled(true)
+    , m_open(false)
 {
 }
 
 DrawingDocument::~DrawingDocument()
 {
-    clear();
+    closeDocument();
 }
 
-void DrawingDocument::addItem(DrawingShape *item)
+bool DrawingDocument::createDocument()
 {
-    if (!item) {
-        return;
+    // 如果已有文档打开，先关闭
+    if (m_open) {
+        closeDocument();
     }
     
-    m_items.push_back(item);
-    item->setDocument(this);
+    // 使用LayerManager单例（后续改为成员变量）
+    m_layerManager = LayerManager::instance();
+    
+    // 初始化新文档
+    initializeDocument();
+    
+    m_open = true;
+    m_modified = false;
+    m_isUntitled = true;
+    m_filePath.clear();
+    
+    emit documentCreated();
+    emit modificationChanged(false);
+    emit filePathChanged(QString());
+    
+    return true;
 }
- 
 
-void DrawingDocument::removeItem(DrawingShape *item)
+bool DrawingDocument::closeDocument()
 {
-    if (!item) {
-        return;
+    if (!m_open) {
+        return true;
     }
     
-    for (auto it = m_items.begin(); it != m_items.end(); ++it) {
-        if (*it == item) {
-            // 然后清除文档引用和从列表中移除
-            item->setDocument(nullptr);
-            m_items.erase(it);
-            break;
-        }
-    }
-}
-
-std::vector<DrawingShape*> DrawingDocument::items() const
-{
-    return m_items;
-}
-
-void DrawingDocument::clear()
-{
-    // 先发送所有移除信号
-    for (DrawingShape *item : m_items) {
+    // 检查是否需要保存
+    if (m_modified) {
+        // 这里应该询问用户是否保存，暂时返回false
+        return false;
     }
     
-    // 然后清除文档引用和列表
-    for (DrawingShape *item : m_items) {
-        if (item) {
-            item->setDocument(nullptr);
-        }
-    }
-    m_items.clear();
+    cleanupDocument();
     
+    m_open = false;
+    emit documentClosed();
+    
+    return true;
 }
 
-QRectF DrawingDocument::bounds() const
+bool DrawingDocument::isOpen() const
 {
-    QRectF result;
-    for (DrawingShape *item : m_items) {
-        if (item) {
-            if (result.isEmpty()) {
-                result = item->boundingRect();
-            } else {
-                result |= item->boundingRect();
-            }
-        }
+    return m_open;
+}
+
+void DrawingDocument::setScene(DrawingScene *scene)
+{
+    m_scene = scene;
+    if (m_layerManager && m_scene) {
+        m_layerManager->setScene(m_scene);
     }
-    return result;
+}
+
+void DrawingDocument::setFilePath(const QString &filePath)
+{
+    if (m_filePath != filePath) {
+        m_filePath = filePath;
+        m_isUntitled = filePath.isEmpty();
+        emit filePathChanged(filePath);
+    }
+}
+
+void DrawingDocument::setModified(bool modified)
+{
+    if (m_modified != modified) {
+        m_modified = modified;
+        emit modificationChanged(modified);
+    }
+}
+
+bool DrawingDocument::save()
+{
+    if (!m_open || !m_scene) {
+        return false;
+    }
+    
+    if (m_isUntitled || m_filePath.isEmpty()) {
+        return false;  // 需要调用saveAs
+    }
+    
+    return SvgHandler::exportToSvg(m_scene, m_filePath);
+}
+
+bool DrawingDocument::saveAs(const QString &filePath)
+{
+    if (!m_open || !m_scene) {
+        return false;
+    }
+    
+    if (SvgHandler::exportToSvg(m_scene, filePath)) {
+        setFilePath(filePath);
+        setModified(false);
+        return true;
+    }
+    
+    return false;
+}
+
+bool DrawingDocument::load(const QString &filePath)
+{
+    if (!m_scene) {
+        return false;
+    }
+    
+    // 如果已有文档打开，先关闭
+    if (m_open) {
+        closeDocument();
+    }
+    
+    // 初始化文档
+    initializeDocument();
+    
+    // 加载SVG文件
+    if (SvgHandler::importFromSvg(m_scene, filePath)) {
+        m_open = true;
+        m_modified = false;
+        m_isUntitled = false;
+        m_filePath = filePath;
+        
+        emit documentCreated();
+        emit modificationChanged(false);
+        emit filePathChanged(filePath);
+        
+        return true;
+    }
+    
+    // 加载失败，清理
+    cleanupDocument();
+    return false;
+}
+
+void DrawingDocument::initializeDocument()
+{
+    // 清理场景
+    if (m_scene) {
+        m_scene->clearScene();
+    }
+    
+    // 清理图层
+    if (m_layerManager) {
+        m_layerManager->clearAllLayers();
+        // 重新设置Scene，这会触发创建默认图层
+        m_layerManager->setScene(m_scene);
+    }
+    
+    // 清理撤销栈
+    if (CommandManager::hasInstance()) {
+        CommandManager::instance()->clear();
+    }
+}
+
+void DrawingDocument::cleanupDocument()
+{
+    // 清理场景
+    if (m_scene) {
+        m_scene->clearScene();
+    }
+    
+    // 清理图层
+    if (m_layerManager) {
+        m_layerManager->clearAllLayers();
+    }
+    
+    // 清理撤销栈
+    if (CommandManager::hasInstance()) {
+        CommandManager::instance()->clear();
+    }
 }
 
 

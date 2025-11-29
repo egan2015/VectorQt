@@ -6,7 +6,6 @@
 #include <QTimer>
 #include <QElapsedTimer>
 #include <QSet>
-#include <QMutex>
 #include <QCache>
 #include <QWidget>
 
@@ -81,7 +80,6 @@ private:
     
     QRegion m_dirtyRegion;
     QList<UpdateRequest> m_pendingUpdates;
-    QMutex m_mutex;
     
     // 设置参数
     int m_maxUpdateRate;  // 最大更新帧率

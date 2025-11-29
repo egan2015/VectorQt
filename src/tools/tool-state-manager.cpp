@@ -1,6 +1,6 @@
-#include "tool-state-manager.h"
 #include <QDateTime>
 #include <QDebug>
+#include "tool-state-manager.h"
 
 ToolStateManager::ToolStateManager(QObject *parent)
     : QObject(parent)

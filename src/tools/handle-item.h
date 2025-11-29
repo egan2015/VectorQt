@@ -5,7 +5,7 @@
 #include <QPainter>
 #include <QStyleOptionGraphicsItem>
 #include <QWidget>
-#include "../tools/handle-types.h"
+#include "handle-types.h"
 
 /**
  * @brief 专门的手柄图形基类

@@ -10,7 +10,7 @@
 #include <QElapsedTimer>
 #include <QtMath>
 #include <QDebug>
-#include "../tools/drawing-tool-pen.h"
+#include "drawing-tool-pen.h"
 #include "../ui/drawingscene.h"
 #include "../ui/drawingview.h"
 #include "../core/drawing-shape.h"
@@ -665,7 +665,7 @@ void DrawingToolPen::updateFreeDraw(const QPointF &scenePos)
         
         m_currentPath->setPath(path);
         
-        qDebug() << "Pen tool: Updated path with" << m_freeDrawPoints.size() << "points";
+        // qDebug() << "Pen tool: Updated path with" << m_freeDrawPoints.size() << "points";
     }
 }
 

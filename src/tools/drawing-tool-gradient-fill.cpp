@@ -6,7 +6,7 @@
 #include <QGraphicsEllipseItem>
 #include <QGraphicsLineItem>
 #include <algorithm>
-#include "../tools/drawing-tool-gradient-fill.h"
+#include "drawing-tool-gradient-fill.h"
 #include "../ui/drawingscene.h"
 #include "../ui/drawingview.h"
 #include "../core/drawing-shape.h"

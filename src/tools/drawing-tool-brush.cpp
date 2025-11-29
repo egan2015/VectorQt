@@ -3,7 +3,7 @@
 #include <QPainterPath>
 #include <QPen>
 #include <QDebug>
-#include "../tools/drawing-tool-brush.h"
+#include "drawing-tool-brush.h"
 #include "../core/drawing-throttle.h"
 #include "../core/brush-engine.h"
 
@@ -156,7 +156,7 @@ bool DrawingToolBrush::mouseMoveEvent(QMouseEvent *event, const QPointF &scenePo
             
             m_currentPath->setPath(path);
             
-            qDebug() << "Updated path with" << m_points.size() << "points";
+            // qDebug() << "Updated path with" << m_points.size() << "points";
         }
         
         return true;

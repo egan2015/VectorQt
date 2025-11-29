@@ -1,6 +1,6 @@
 #include <QDebug>
 #include <QGraphicsLineItem>
-#include "../tools/node-handle-manager.h"
+#include "node-handle-manager.h"
 #include "../ui/drawingscene.h"
 #include "../core/drawing-shape.h"
 
@@ -42,7 +42,6 @@ void NodeHandleManager::updateHandles(DrawingShape *shape)
         clearHandles();
         return;
     }
-    qDebug() << "Updating node handles for shape:" << shape;
     // 如果图形发生变化，清除旧手柄并重新创建
     if (m_currentShape != shape) {
         clearHandles();

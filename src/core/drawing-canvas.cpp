@@ -4,7 +4,7 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPaintEvent>
-#include "../core/drawing-canvas.h"
+#include "drawing-canvas.h"
 #include "../ui/drawingview.h"
 
 DrawingCanvas::DrawingCanvas(QWidget *parent)

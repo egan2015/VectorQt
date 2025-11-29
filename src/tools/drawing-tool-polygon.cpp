@@ -1,6 +1,6 @@
 #include <QGraphicsScene>
 #include <QMouseEvent>
-#include "../tools/drawing-tool-polygon.h"
+#include "drawing-tool-polygon.h"
 #include "../ui/drawingscene.h"
 #include "../ui/drawingview.h"
 #include "../ui/command-manager.h"

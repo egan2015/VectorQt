@@ -9,8 +9,8 @@
 #include <QScrollArea>
 #include <QGridLayout>
 #include <QLabel>
-#include "../ui/colorpalette.h"
-#include "../ui/drawingscene.h"
+#include "colorpalette.h"
+#include "drawingscene.h"
 
 ColorPalette::ColorPalette(QWidget *parent)
     : QWidget(parent)

@@ -289,6 +289,23 @@ private:
     QMap<DrawingShape*, QPointF> m_positions;
 };
 
+// 文本编辑命令
+class TextEditCommand : public BaseCommand
+{
+public:
+    TextEditCommand(CommandManager *manager, DrawingText *textShape, 
+                    const QString &oldText, const QString &newText,
+                    QUndoCommand *parent = nullptr);
+    
+    void undo() override;
+    void redo() override;
+    
+private:
+    DrawingText *m_textShape;
+    QString m_oldText;
+    QString m_newText;
+};
+
 // 文本转路径命令
 class TextToPathCommand : public BaseCommand
 {

@@ -21,22 +21,28 @@
 #include <QElapsedTimer>
 #include <QDateTime>
 #include <algorithm>
-#include "../ui/mainwindow.h"
-#include "../ui/drawingscene.h"
-#include "../ui/drawingview.h"
-#include "../core/drawing-canvas.h"
-#include "../core/toolbase.h"
-#include "../ui/propertypanel.h"
-#include "../ui/tabbed-property-panel.h"
+#include "mainwindow.h"
+#include "drawingscene.h"
+#include "drawingview.h"
+#include "propertypanel.h"
+#include "tabbed-property-panel.h"
 
-#include "../ui/effect-manager.h"
-#include "../ui/snap-manager.h"
-#include "../ui/path-operations-manager.h"
-#include "../ui/selection-manager.h"
-#include "../ui/command-manager.h"
-#include "../ui/tools-panel.h"
+#include "effect-manager.h"
+#include "snap-manager.h"
+#include "path-operations-manager.h"
+#include "selection-manager.h"
+#include "command-manager.h"
+#include "tools-panel.h"
+#include "layer-panel.h"
+#include "ruler.h"
+#include "scrollable-toolbar.h"
+#include "colorpalette.h"
+#include "shortcut-manager.h"
 #include "../tools/drawing-tool-brush.h"
 #include "../tools/drawing-tool-pen.h"
+#include "../core/drawing-canvas.h"
+#include "../core/drawing-document.h"
+#include "../core/toolbase.h"
 
 #include "../tools/drawing-tool-eraser.h"
 #include "../core/patheditor.h"
@@ -44,33 +50,26 @@
 #include "../core/drawing-layer.h"
 #include "../tools/drawing-tool-fill.h"
 #include "../core/layer-manager.h"
-#include "../ui/layer-panel.h"
 #include "../tools/drawing-tool-bezier.h"
-// #include "drawing-tool-bezier-edit.h" // 已移除 - 待重新实现
 #include "../tools/drawing-tool-node-edit.h"
 #include "../tools/drawing-tool-polyline.h"
 #include "../tools/drawing-tool-polygon.h"
-#include "../tools/drawing-tool-fill.h"
 #include "../tools/drawing-tool-gradient-fill.h"
 #include "../tools/drawing-tool-line.h"
+#include "../tools/drawing-tool-text.h"
 #include "../tools/drawing-tool-outline-preview.h"
 #include "../core/patheditor.h"
-#include "../ui/ruler.h"
-#include "../ui/scrollable-toolbar.h"
 #include "../core/svghandler.h"
 #include "../core/drawing-shape.h"
-#include "../ui/colorpalette.h"
 #include "../core/drawing-group.h"
 #include "../tools/tool-state-manager.h"
 #include "../tools/tool-manager.h"
-// #include "../core/event-bus.h"  // 暂时不使用，保留为未来扩展
-#include "../ui/shortcut-manager.h"
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent), m_scene(nullptr), m_canvas(nullptr), m_propertyPanel(nullptr), m_tabbedPropertyPanel(nullptr), m_undoView(nullptr), m_layerManager(nullptr), m_currentTool(nullptr),
       m_colorPalette(nullptr), m_scrollableToolBar(nullptr),
       m_horizontalRuler(nullptr), m_verticalRuler(nullptr), m_cornerWidget(nullptr),
-      m_uiUpdateTimer(nullptr), m_lastSelectedCount(0), m_toolStateManager(nullptr), m_toolManager(nullptr), m_shortcutManager(nullptr), m_effectManager(nullptr),
+      m_uiUpdateTimer(nullptr), m_lastSelectedCount(0), m_toolStateManager(nullptr), m_toolManager(nullptr), m_shortcutManager(nullptr), m_effectManager(nullptr), m_document(nullptr),
       m_isUntitled(true)
 {
     // 初始化工具管理系统
@@ -81,9 +80,9 @@ MainWindow::MainWindow(QWidget *parent)
     // 初始化快捷键管理器
     m_shortcutManager = new ShortcutManager(this);
     m_shortcutManager->setToolManager(m_toolManager);
-    // 场景将在newFile()后设置
     
-    
+    // 初始化文档管理器
+    m_document = new DrawingDocument(this);
     
     // 初始化效果管理器
     m_effectManager = new EffectManager(this);
@@ -255,6 +254,13 @@ MainWindow::~MainWindow()
         delete m_pathOperationsManager;
         m_pathOperationsManager = nullptr;
     }
+    
+    // 在销毁Scene之前先销毁Document
+    if (m_document) {
+        delete m_document;
+        m_document = nullptr;
+    }
+    
     // 清理场景
     if (m_scene) {
         delete m_scene;
@@ -270,6 +276,11 @@ void MainWindow::setupUI()
     m_scene->setSceneRect(0, 0, 1000, 800);
     m_scene->setGridVisible(true); // 确保网格初始可见
     m_scene->setGridAlignmentEnabled(true); // 默认启用网格对齐
+    
+    // 设置Document的Scene
+    if (m_document) {
+        m_document->setScene(m_scene);
+    }
     
     // 设置网格图标的初始状态（确保与场景状态同步）
     if (m_toggleGridAction) {
@@ -441,6 +452,7 @@ void MainWindow::setupUI()
         m_toolManager->createAndRegisterTool<DrawingToolPen>(ToolType::Pen, this);
         m_toolManager->createAndRegisterTool<DrawingToolEraser>(ToolType::Eraser, this);
         m_toolManager->createAndRegisterTool<DrawingToolLine>(ToolType::Line, this);
+        m_toolManager->createAndRegisterTool<DrawingToolText>(ToolType::Text, this);
         
         // 连接状态栏更新信号（针对选择工具）
         auto selectTool = m_toolManager->getToolAs<OutlinePreviewTransformTool>(ToolType::Select);
@@ -512,6 +524,27 @@ void MainWindow::setupUI()
     // Connect undo stack signals to update menu states - 使用CommandManager
     if (m_commandManager) {
         // CommandManager的信号已在构造函数中连接
+    }
+    
+    // Connect Document signals
+    if (m_document) {
+        connect(m_document, &DrawingDocument::modificationChanged,
+                this, [this](bool modified) {
+                    m_isUntitled = m_document->isUntitled();
+                    updateWindowTitle();
+                });
+        connect(m_document, &DrawingDocument::filePathChanged,
+                this, [this](const QString &filePath) {
+                    m_currentFilePath = filePath;
+                    updateWindowTitle();
+                });
+        connect(m_document, &DrawingDocument::documentCreated,
+                this, [this]() {
+                    // 文档创建或加载后，重新激活选择工具以重建视觉组件
+                    if (m_toolManager) {
+                        m_toolManager->switchTool(ToolType::Select);
+                    }
+                });
     }
 
     DrawingView *drawingView = qobject_cast<DrawingView *>(m_canvas->view());
@@ -590,7 +623,7 @@ void MainWindow::setupUI()
         m_shortcutManager->registerShortcut(ToolType::Pen, QKeySequence("P"), m_penToolAction);
         m_shortcutManager->registerShortcut(ToolType::Eraser, QKeySequence("Shift+E"), m_eraserToolAction);
         m_shortcutManager->registerShortcut(ToolType::Line, QKeySequence("L"), m_lineToolAction);
-        
+        m_shortcutManager->registerShortcut(ToolType::Text, QKeySequence("T"), m_textToolAction);
         
         // 注册临时快捷键（按住临时切换，松开恢复）
         // 使用不和永久快捷键冲突的按键
@@ -610,6 +643,11 @@ void MainWindow::setupUI()
     }
     
     // 工具初始化移到了 QEvent::Polish 事件中，确保所有组件都准备好
+    
+    // 创建初始文档
+    if (m_document) {
+        m_document->createDocument();
+    }
     
     // 初始化UI更新定时器
 }
@@ -1696,13 +1734,14 @@ void MainWindow::newFile()
     if (!m_canvas) return;
     
     if (maybeSave()) {
-        if (DrawingScene* drawingScene = qobject_cast<DrawingScene*>(m_canvas->scene())) {
-            drawingScene->clearScene();
+        // 使用Document创建新文档
+        if (m_document) {
+            m_document->createDocument();
+            m_currentFilePath.clear();
+            m_isUntitled = true;
+            updateWindowTitle();
+            emit onStatusMessageChanged("新文档已创建");
         }
-        m_currentFilePath.clear();
-        m_isUntitled = true;
-        updateWindowTitle();
-        emit onStatusMessageChanged("新文档已创建");
     }
 }
 
@@ -1725,24 +1764,31 @@ void MainWindow::saveFile()
 {
     if (!m_canvas) return;
     
-    if (m_isUntitled) {
-        saveFileAs();
-    } else {
-        saveFile(m_currentFilePath);
+    // 使用Document保存
+    if (m_document) {
+        if (m_document->isUntitled() || m_document->filePath().isEmpty()) {
+            saveFileAs();
+        } else {
+            m_document->save();
+        }
     }
 }
 
-void MainWindow::saveFileAs()
+bool MainWindow::saveFileAs()
 {
-    if (!m_canvas) return;
+    if (!m_canvas) return false;
     
     QString fileName = QFileDialog::getSaveFileName(this,
         tr("保存文件"), m_currentFilePath,
         tr("SVG 文件 (*.svg);;所有文件 (*.*)"));
     
     if (!fileName.isEmpty()) {
-        saveFile(fileName);
+        // 使用Document保存
+        if (m_document) {
+            return m_document->saveAs(fileName);
+        }
     }
+    return false;
 }
 
 void MainWindow::exportFile()
@@ -1868,9 +1914,10 @@ void MainWindow::lineTool()
 
 void MainWindow::textTool()
 {
-    // 暂时使用选择工具作为文本工具的基础
-    selectTool();
-    m_statusLabel->setText("文本工具已激活 - 选择文本对象后右键选择'文本转路径'");
+    if (m_toolManager) {
+        m_toolManager->switchTool(ToolType::Text);
+        m_statusLabel->setText("文本工具已激活");
+    }
 }
 
 // updateZoomLabel implementation is below
@@ -2211,7 +2258,10 @@ void MainWindow::onObjectStateChanged(DrawingShape* shape)
 
 void MainWindow::onSceneChanged()
 {
-    // 现在由DrawingCanvas内部管理修改状态
+    // 同步Scene的修改状态到Document
+    if (m_scene && m_document) {
+        m_document->setModified(m_scene->isModified());
+    }
     updateUI(); // 更新窗口标题显示修改状态
 }
 
@@ -2622,14 +2672,18 @@ void MainWindow::togglePerformancePanel()
 // 文件操作辅助方法实现（从FileManager合并而来）
 bool MainWindow::maybeSave()
 {
-    DrawingScene* drawingScene = m_canvas ? qobject_cast<DrawingScene*>(m_canvas->scene()) : nullptr;
-    if (drawingScene && drawingScene->isModified()) {
+    // 使用Document的修改状态
+    if (m_document && m_document->isModified()) {
         QMessageBox::StandardButton reply = QMessageBox::question(this, "VectorQt",
                                                                   "文档已修改，是否保存？",
                                                                   QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
         
         if (reply == QMessageBox::Save) {
-            return saveFile(m_isUntitled ? QString() : m_currentFilePath);
+            if (m_document->isUntitled() || m_document->filePath().isEmpty()) {
+                return saveFileAs();
+            } else {
+                return m_document->save();
+            }
         } else if (reply == QMessageBox::Cancel) {
             return false;
         }
@@ -2641,14 +2695,14 @@ void MainWindow::loadFile(const QString &filePath)
 {
     if (!m_canvas) return;
     
-    DrawingScene* drawingScene = qobject_cast<DrawingScene*>(m_canvas->scene());
-    if (!drawingScene) return;
-    
-    if (SvgHandler::importFromSvg(drawingScene, filePath)) {
-        setCurrentFile(filePath);
-        emit onStatusMessageChanged(tr("文件已加载: %1").arg(filePath));
-    } else {
-        QMessageBox::warning(this, "VectorQt", tr("无法加载文件 %1").arg(filePath));
+    // 使用Document加载文件
+    if (m_document) {
+        if (m_document->load(filePath)) {
+            setCurrentFile(filePath);
+            emit onStatusMessageChanged(tr("文件已加载: %1").arg(filePath));
+        } else {
+            QMessageBox::warning(this, "VectorQt", tr("无法加载文件 %1").arg(filePath));
+        }
     }
 }
 
@@ -2656,18 +2710,18 @@ bool MainWindow::saveFile(const QString &filePath)
 {
     if (!m_canvas) return false;
     
-    DrawingScene* drawingScene = qobject_cast<DrawingScene*>(m_canvas->scene());
-    if (!drawingScene) return false;
-    
-    if (SvgHandler::exportToSvg(drawingScene, filePath)) {
-        setCurrentFile(filePath);
-        drawingScene->setModified(false);
-        emit onStatusMessageChanged(tr("文件已保存: %1").arg(filePath));
-        return true;
-    } else {
-        QMessageBox::warning(this, "VectorQt", tr("无法保存文件 %1").arg(filePath));
-        return false;
+    // 使用Document保存文件
+    if (m_document) {
+        if (m_document->saveAs(filePath)) {
+            setCurrentFile(filePath);
+            emit onStatusMessageChanged(tr("文件已保存: %1").arg(filePath));
+            return true;
+        } else {
+            QMessageBox::warning(this, "VectorQt", tr("无法保存文件 %1").arg(filePath));
+            return false;
+        }
     }
+    return false;
 }
 
 bool MainWindow::exportFile(const QString &filePath)

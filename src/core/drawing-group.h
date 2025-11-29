@@ -7,7 +7,7 @@
 #include <QRectF>
 #include <QPointF>
 #include <QPainter>
-#include "../core/drawing-shape.h"
+#include "drawing-shape.h"
 
 // class EditHandleManager; // 已弃用 - 使用新的手柄系统
 

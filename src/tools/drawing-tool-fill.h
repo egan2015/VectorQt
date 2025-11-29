@@ -1,8 +1,8 @@
 #ifndef DRAWING_TOOL_FILL_H
 #define DRAWING_TOOL_FILL_H
 
-#include "../core/toolbase.h"
 #include <QBrush>
+#include "../core/toolbase.h"
 
 class DrawingScene;
 class DrawingView;

@@ -63,7 +63,6 @@ set(SOURCES
     src/ui/shortcut-manager.cpp
     
     # 绘图工具模块
-    src/tools/drawing-tool.cpp
     src/tools/drawing-tool-bezier.cpp
     src/tools/drawing-tool-brush.cpp
     src/tools/drawing-tool-eraser.cpp
@@ -71,6 +70,7 @@ set(SOURCES
     src/tools/drawing-tool-gradient-fill.cpp
     src/tools/drawing-tool-pen.cpp
     src/tools/drawing-tool-line.cpp
+    src/tools/drawing-tool-text.cpp
     src/tools/drawing-tool-polyline.cpp
     src/tools/drawing-tool-polygon.cpp
     src/tools/drawing-tool-node-edit.cpp
@@ -131,7 +131,6 @@ set(HEADERS
     src/ui/shortcut-manager.h
     
     # 绘图工具模块
-    src/tools/drawing-tool.h
     src/tools/drawing-tool-bezier.h
     src/tools/drawing-tool-brush.h
     src/tools/drawing-tool-eraser.h
@@ -139,6 +138,7 @@ set(HEADERS
     src/tools/drawing-tool-gradient-fill.h
     src/tools/drawing-tool-pen.h
     src/tools/drawing-tool-line.h
+    src/tools/drawing-tool-text.h
     src/tools/drawing-tool-polyline.h
     src/tools/drawing-tool-polygon.h
     src/tools/drawing-tool-node-edit.h

@@ -1,7 +1,7 @@
 #include <QDebug>
 #include <QtMath>
 #include <QLineF>
-#include "../core/drawing-throttle.h"
+#include "drawing-throttle.h"
 
 DrawingThrottle::DrawingThrottle(QObject *parent)
     : QObject(parent)

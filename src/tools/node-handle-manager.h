@@ -5,9 +5,9 @@
 #include <QList>
 #include <QPointF>
 #include <QRectF>
-#include "../tools/handle-item.h"
-#include "../tools/handle-types.h"
-#include "../tools/bezier-control-arm.h"
+#include "handle-item.h"
+#include "handle-types.h"
+#include "bezier-control-arm.h"
 #include "../core/drawing-shape.h"
 
 class DrawingScene;

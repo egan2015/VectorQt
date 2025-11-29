@@ -1,10 +1,10 @@
+#include <QGraphicsBlurEffect>
+#include <QGraphicsDropShadowEffect>
 #include "effect-manager.h"
 #include "mainwindow.h"
 #include "drawingscene.h"
 #include "command-manager.h"
 #include "../core/drawing-shape.h"
-#include <QGraphicsBlurEffect>
-#include <QGraphicsDropShadowEffect>
 
 EffectManager::EffectManager(MainWindow *parent)
     : QObject(parent)

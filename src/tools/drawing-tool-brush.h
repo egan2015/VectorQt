@@ -1,10 +1,10 @@
 #ifndef DRAWING_TOOL_BRUSH_H
 #define DRAWING_TOOL_BRUSH_H
 
-#include "../core/toolbase.h"
-#include "../core/brush-engine.h"
 #include <QPointF>
 #include <QVector>
+#include "../core/toolbase.h"
+#include "../core/brush-engine.h"
 
 class DrawingPath;
 class QMouseEvent;

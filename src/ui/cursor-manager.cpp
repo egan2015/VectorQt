@@ -5,7 +5,7 @@
 #include <QPen>
 #include <QPainterPath>
 #include <QtMath>
-#include "../ui/cursor-manager.h"
+#include "cursor-manager.h"
 
 CursorManager& CursorManager::instance()
 {
@@ -57,6 +57,7 @@ void CursorManager::createCursors()
     m_cursors[FillCursor] = QCursor(Qt::PointingHandCursor);
     m_cursors[NodeEditCursor] = QCursor(Qt::CrossCursor);
     m_cursors[PathEditCursor] = QCursor(createCrosshairWithShape(PathEditCursor), hotSpotX, hotSpotY);
+    m_cursors[TextCursor] = QCursor(Qt::IBeamCursor);
     m_cursors[DefaultCursor] = QCursor(Qt::ArrowCursor);
     
     m_initialized = true;

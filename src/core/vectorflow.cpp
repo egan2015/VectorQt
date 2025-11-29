@@ -1,5 +1,5 @@
 #include <QApplication>
-#include "../core/vectorflow.h"
+#include "vectorflow.h"
 #include "../ui/mainwindow.h"
 
 VectorQt::VectorQt()
@@ -21,10 +21,9 @@ void VectorQt::setupMainWindow()
 int VectorQt::run(int argc, char *argv[])
 {
     m_application = new QApplication(argc, argv);
-    
+
     setupApplication();
     setupMainWindow();
-    
+
     return m_application->exec();
 }
-

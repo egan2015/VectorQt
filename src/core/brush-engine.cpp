@@ -3,7 +3,7 @@
 #include <QRandomGenerator>
 #include <QColor>
 #include <QPen>
-#include "../core/brush-engine.h"
+#include "brush-engine.h"
 
 BrushEngine::BrushEngine(QObject *parent)
     : QObject(parent)

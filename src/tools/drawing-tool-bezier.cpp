@@ -2,7 +2,7 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QDebug>
-#include "../tools/drawing-tool-bezier.h"
+#include "drawing-tool-bezier.h"
 #include "../ui/drawingscene.h"
 #include "../core/drawing-shape.h"
 #include "../ui/snap-manager.h"

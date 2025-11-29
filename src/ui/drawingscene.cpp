@@ -10,14 +10,14 @@
 #include <QPointer>
 #include <algorithm>
 #include <limits>
-#include "../ui/drawingscene.h"
+#include "drawingscene.h"
+#include "command-manager.h"
+#include "snap-manager.h"
 #include "../core/drawing-shape.h"
 #include "../core/drawing-group.h"
 #include "../core/drawing-layer.h"
 #include "../core/layer-manager.h"
 #include "../core/performance-monitor.h"
-#include "../ui/command-manager.h"
-#include "../ui/snap-manager.h"
 
 class AddItemCommand : public QUndoCommand
 {
@@ -277,7 +277,7 @@ public:
     }
     
     void undo() override {
-        qDebug() << "SceneTransformCommand::undo called, shapes count:" << m_shapes.size();
+        // qDebug() << "SceneTransformCommand::undo called, shapes count:" << m_shapes.size();
         
         // 恢复到变换前的状态
         for (int i = 0; i < m_shapes.size() && i < m_oldStates.size(); ++i) {
@@ -285,7 +285,7 @@ public:
             // 检查图形是否仍然有效且在正确的场景中
             if (shape && shape->scene() == m_scene) {
                 const TransformState &state = m_oldStates[i];
-                qDebug() << "  Restoring shape" << i << "to pos:" << state.position << "transform:" << state.transform;
+                // qDebug() << "  Restoring shape" << i << "to pos:" << state.position << "transform:" << state.transform;
                 
                 shape->setPos(state.position);
                 shape->applyTransform(state.transform);
@@ -309,7 +309,7 @@ public:
     }
     
     void redo() override {
-        qDebug() << "SceneTransformCommand::redo called, shapes count:" << m_shapes.size();
+        // qDebug() << "SceneTransformCommand::redo called, shapes count:" << m_shapes.size();
         
         // 应用到变换后的状态
         for (int i = 0; i < m_shapes.size() && i < m_newStates.size(); ++i) {
@@ -317,7 +317,7 @@ public:
             // 检查图形是否仍然有效且在正确的场景中
             if (shape && shape->scene() == m_scene) {
                 const TransformState &state = m_newStates[i];
-                qDebug() << "  Applying shape" << i << "to pos:" << state.position;
+                // qDebug() << "  Applying shape" << i << "to pos:" << state.position;
                 
                 shape->setPos(state.position);
                 shape->applyTransform(state.transform);
@@ -450,7 +450,7 @@ void DrawingScene::beginTransform(TransformType type)
         }
     }
     
-    qDebug() << "beginTransform called. Type:" << type << "Shapes count:" << m_transformShapes.size();
+    // qDebug() << "beginTransform called. Type:" << type << "Shapes count:" << m_transformShapes.size();
 }
 
 void DrawingScene::endTransform()
@@ -475,19 +475,19 @@ void DrawingScene::endTransform()
     
     // 检查是否有实际的变化，如果有变化则推送到撤销栈
     bool hasChanged = command->hasChanged();
-    qDebug() << "SceneTransformCommand hasChanged:" << hasChanged << "Shapes count:" << m_transformShapes.size();
+    // qDebug() << "SceneTransformCommand hasChanged:" << hasChanged << "Shapes count:" << m_transformShapes.size();
     
     if (hasChanged) {
         if (CommandManager::hasInstance()) {
             CommandManager::instance()->pushCommand(command);
-            qDebug() << "SceneTransformCommand pushed to command manager. Stack size:" << CommandManager::instance()->undoStack()->count();
+            // qDebug() << "SceneTransformCommand pushed to command manager. Stack size:" << CommandManager::instance()->undoStack()->count();
         } else {
-            qDebug() << "No CommandManager instance, deleting command";
+            // qDebug() << "No CommandManager instance, deleting command";
             delete command;
         }
     } else {
         // 没有实际变化，删除命令
-        qDebug() << "SceneTransformCommand deleted (no actual changes)";
+        // qDebug() << "SceneTransformCommand deleted (no actual changes)";
         delete command;
     }
     
@@ -519,9 +519,9 @@ void DrawingScene::endTransformWithStates(const QList<TransformState>& newStates
     // 直接推送到撤销栈，不检查hasChanged（因为我们明确提供了新状态）
     if (CommandManager::hasInstance()) {
         CommandManager::instance()->pushCommand(command);
-        qDebug() << "SceneTransformCommand pushed with provided states. Stack size:" << CommandManager::instance()->undoStack()->count();
+        // qDebug() << "SceneTransformCommand pushed with provided states. Stack size:" << CommandManager::instance()->undoStack()->count();
     } else {
-        qDebug() << "No CommandManager instance, deleting command";
+        // qDebug() << "No CommandManager instance, deleting command";
         delete command;
     }
     

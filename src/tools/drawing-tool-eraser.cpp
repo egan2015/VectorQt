@@ -5,7 +5,7 @@
 #include <QPen>
 #include <QBrush>
 #include <QDebug>
-#include "../tools/drawing-tool-eraser.h"
+#include "drawing-tool-eraser.h"
 #include "../ui/drawingscene.h"
 #include "../ui/drawingview.h"
 #include "../core/drawing-shape.h"
@@ -65,7 +65,7 @@ bool DrawingToolEraser::mousePressEvent(QMouseEvent *event, const QPointF &scene
             }
         }
     } catch (...) {
-        qDebug() << "Error during mouse press erasing";
+        // qDebug() << "Error during mouse press erasing";
         m_isErasing = false;
     }
     

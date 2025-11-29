@@ -1,10 +1,10 @@
 #ifndef DRAWING_TOOL_ERASER_H
 #define DRAWING_TOOL_ERASER_H
 
-#include "../core/toolbase.h"
 #include <QPointF>
 #include <QList>
 #include <QRectF>
+#include "../core/toolbase.h"
 
 class DrawingScene;
 class DrawingView;

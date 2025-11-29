@@ -10,29 +10,31 @@
 #include <QDataStream>
 #include <QIODevice>
 
-#include "../core/drawing-shape.h"
-#include "../core/drawing-document.h"
-#include "../core/smart-render-manager.h"
+#include "drawing-shape.h"
+#include "drawing-document.h"
+#include "smart-render-manager.h"
+#include "toolbase.h"
 
 #include "../ui/drawingview.h"
-#include "../core/toolbase.h"
 #include "../ui/drawingscene.h"
 #include "../ui/snap-manager.h"
 #include "../ui/command-manager.h"
 // BezierControlPointCommand 实现
-BezierControlPointCommand::BezierControlPointCommand(DrawingScene *scene, DrawingPath *path, int pointIndex, 
-                                                   const QPointF &oldPos, const QPointF &newPos, QUndoCommand *parent)
-    : QUndoCommand("编辑贝塞尔控制点", parent), m_scene(scene), m_path(path), m_pointIndex(pointIndex), 
+BezierControlPointCommand::BezierControlPointCommand(DrawingScene *scene, DrawingPath *path, int pointIndex,
+                                                     const QPointF &oldPos, const QPointF &newPos, QUndoCommand *parent)
+    : QUndoCommand("编辑贝塞尔控制点", parent), m_scene(scene), m_path(path), m_pointIndex(pointIndex),
       m_oldPos(oldPos), m_newPos(newPos)
 {
 }
 
 void BezierControlPointCommand::undo()
 {
-    if (m_path && m_path->scene() == m_scene) {
+    if (m_path && m_path->scene() == m_scene)
+    {
         // 恢复到旧位置
         QVector<QPointF> controlPoints = m_path->controlPoints();
-        if (m_pointIndex < controlPoints.size()) {
+        if (m_pointIndex < controlPoints.size())
+        {
             controlPoints[m_pointIndex] = m_oldPos;
             m_path->setControlPoints(controlPoints);
             m_path->updatePathFromControlPoints();
@@ -43,38 +45,31 @@ void BezierControlPointCommand::undo()
 
 void BezierControlPointCommand::redo()
 {
-    if (m_path && m_path->scene() == m_scene) {
+    if (m_path && m_path->scene() == m_scene)
+    {
         // 应用到新位置
         QVector<QPointF> controlPoints = m_path->controlPoints();
-        if (m_pointIndex < controlPoints.size()) {
+        if (m_pointIndex < controlPoints.size())
+        {
             controlPoints[m_pointIndex] = m_newPos;
             m_path->setControlPoints(controlPoints);
             m_path->updatePathFromControlPoints();
             m_path->update();
         }
-        
     }
 }
 
-
 // DrawingShape
 DrawingShape::DrawingShape(ShapeType type, QGraphicsItem *parent)
-    : QGraphicsItem(parent)
-    , m_id(generateUniqueId())
-    , m_type(type)
-    , m_fillBrush(Qt::white)
-    , m_strokePen(QPen(Qt::black, 1.0))
-    , m_showSelectionIndicator(true)
-    , m_isMoving(false)
-    , m_moveStartPos(0, 0)
+    : QGraphicsItem(parent), m_id(generateUniqueId()), m_type(type), m_fillBrush(Qt::white), m_strokePen(QPen(Qt::black, 1.0)), m_showSelectionIndicator(true), m_isMoving(false), m_moveStartPos(0, 0)
 {
-    setFlags(QGraphicsItem::ItemIsSelectable | 
-             QGraphicsItem::ItemIsMovable | 
+    setFlags(QGraphicsItem::ItemIsSelectable |
+             QGraphicsItem::ItemIsMovable |
              QGraphicsItem::ItemSendsGeometryChanges);
-    
+
     // Qt原生渲染优化 - 启用设备缓存
     setCacheMode(QGraphicsItem::DeviceCoordinateCache);
-    
+
     // 根据图形复杂度设置不同的缓存策略
     setupCacheMode();
 }
@@ -97,17 +92,16 @@ void DrawingShape::applyTransform(const QTransform &transform, const QPointF &an
     prepareGeometryChange();
     m_transform = transform;
     update();
-    
+
     // 通知对象状态已变化
     notifyObjectStateChanged();
-    
+
     // 通知文档对象已修改
-    if (m_document) {
+    if (m_document)
+    {
         // TODO: 实现Document的setModified方法
     }
 }
-
-
 
 void DrawingShape::bakeTransform(const QTransform &transform)
 {
@@ -118,8 +112,9 @@ void DrawingShape::bakeTransform(const QTransform &transform)
 
 void DrawingShape::notifyObjectStateChanged()
 {
-    DrawingScene* drawingScene = qobject_cast<DrawingScene*>(scene());
-    if (drawingScene) {
+    DrawingScene *drawingScene = qobject_cast<DrawingScene *>(scene());
+    if (drawingScene)
+    {
         emit drawingScene->objectStateChanged(this);
     }
 }
@@ -127,38 +122,40 @@ void DrawingShape::notifyObjectStateChanged()
 void DrawingShape::setupCacheMode()
 {
     // 根据图形类型和复杂度设置缓存策略
-    switch (shapeType()) {
-        case DrawingShape::Rectangle:
-        case DrawingShape::Ellipse:
-            // 简单图形使用设备缓存
-            setCacheMode(QGraphicsItem::DeviceCoordinateCache);
-            break;
-            
-        case DrawingShape::Path:
-            // 复杂路径使用项缓存
-            setCacheMode(QGraphicsItem::ItemCoordinateCache);
-            break;
-            
-        case DrawingShape::Group:
-            // 组合图形不使用缓存，因为子项会自己管理
-            setCacheMode(QGraphicsItem::NoCache);
-            break;
-            
-        default:
-            // 默认使用设备缓存
-            setCacheMode(QGraphicsItem::DeviceCoordinateCache);
-            break;
+    switch (shapeType())
+    {
+    case DrawingShape::Rectangle:
+    case DrawingShape::Ellipse:
+        // 简单图形使用设备缓存
+        setCacheMode(QGraphicsItem::DeviceCoordinateCache);
+        break;
+
+    case DrawingShape::Path:
+        // 复杂路径使用项缓存
+        setCacheMode(QGraphicsItem::ItemCoordinateCache);
+        break;
+
+    case DrawingShape::Group:
+        // 组合图形不使用缓存，因为子项会自己管理
+        setCacheMode(QGraphicsItem::NoCache);
+        break;
+
+    default:
+        // 默认使用设备缓存
+        setCacheMode(QGraphicsItem::DeviceCoordinateCache);
+        break;
     }
 }
 
 void DrawingShape::updateCacheMode()
 {
     // 清除当前缓存
-    if (cacheMode() != QGraphicsItem::NoCache) {
+    if (cacheMode() != QGraphicsItem::NoCache)
+    {
         setCacheMode(QGraphicsItem::NoCache);
         update();
     }
-    
+
     // 重新设置缓存模式
     setupCacheMode();
 }
@@ -171,7 +168,7 @@ void DrawingShape::rotateAroundAnchor(double angle, const QPointF &center)
     newTransform.translate(-center.x(), -center.y());
     m_transform = newTransform;
     update();
-    
+
     notifyObjectStateChanged();
 }
 
@@ -183,7 +180,7 @@ void DrawingShape::scaleAroundAnchor(double sx, double sy, const QPointF &center
     newTransform.translate(-center.x(), -center.y());
     m_transform = newTransform;
     update();
-    
+
     notifyObjectStateChanged();
 }
 
@@ -195,7 +192,7 @@ void DrawingShape::shearAroundAnchor(double sh, double sv, const QPointF &center
     newTransform.translate(-center.x(), -center.y());
     m_transform = newTransform;
     update();
-    
+
     notifyObjectStateChanged();
 }
 
@@ -211,16 +208,18 @@ QPainterPath DrawingShape::shape() const
 {
     // 使用transformedShape()方法，它已经正确处理了变换和填充规则
     QPainterPath path = transformedShape();
-    
+
     // 处理镜像变换的特殊情况
     // 检查变换矩阵的行列式，如果为负值说明有镜像
     qreal det = m_transform.determinant();
-    if (det < 0) {
+    if (det < 0)
+    {
         // 对于镜像变换，确保路径有正确的填充规则
         path.setFillRule(Qt::WindingFill);
-        
+
         // 额外检查：如果路径仍然有问题，使用边界框作为后备
-        if (path.isEmpty()) {
+        if (path.isEmpty())
+        {
             QRectF bounds = boundingRect();
             QPainterPath fallbackPath;
             fallbackPath.addRect(bounds);
@@ -228,7 +227,7 @@ QPainterPath DrawingShape::shape() const
             return fallbackPath;
         }
     }
-    
+
     return path;
 }
 
@@ -247,44 +246,45 @@ void DrawingShape::paint(QPainter *painter, const QStyleOptionGraphicsItem *opti
 {
     Q_UNUSED(option)
     Q_UNUSED(widget)
-    
+
     // 保存当前变换状态
     painter->save();
-    
+
     // 应用变换矩阵
     painter->setTransform(m_transform, true);
-    
+
     // 绘制填充
     painter->setBrush(m_fillBrush);
     painter->setPen(Qt::NoPen);
     paintShape(painter);
-    
+
     // 绘制描边，使用cosmetic画笔确保线宽不随缩放变化
     painter->setBrush(Qt::NoBrush);
     QPen cosmeticPen = m_strokePen;
-    cosmeticPen.setCosmetic(true);  // 设置为cosmetic画笔，线宽不受变换影响
+    cosmeticPen.setCosmetic(true); // 设置为cosmetic画笔，线宽不受变换影响
     painter->setPen(cosmeticPen);
     paintShape(painter);
-    
+
     // 恢复变换状态
     painter->restore();
-    
+
     // 绘制选择指示器（在场景坐标系中）
     // 只有当m_showSelectionIndicator为true且图形被选中时才绘制
-    if (isSelected() && m_showSelectionIndicator) {
+    if (isSelected() && m_showSelectionIndicator)
+    {
         // 使用更明显的选择指示器
         // painter->setPen(QPen(Qt::blue, 1, Qt::DashLine));
         // painter->setBrush(Qt::NoBrush);
-        
+
         // // 绘制边界框
         // QRectF bounds = boundingRect();
         // painter->drawRect(bounds);
-        
+
         // // 绘制选择手柄（角落的小方块）
         // qreal handleSize = 4.0;
         // painter->setPen(QPen(Qt::blue, 1));
         // painter->setBrush(QBrush(Qt::white));
-        
+
         // // 四个角的手柄
         // painter->drawRect(QRectF(bounds.left() - handleSize/2, bounds.top() - handleSize/2, handleSize, handleSize));
         // painter->drawRect(QRectF(bounds.right() - handleSize/2, bounds.top() - handleSize/2, handleSize, handleSize));
@@ -293,119 +293,135 @@ void DrawingShape::paint(QPainter *painter, const QStyleOptionGraphicsItem *opti
     }
 }
 
-
-
 QVariant DrawingShape::itemChange(GraphicsItemChange change, const QVariant &value)
 {
-    if (change == ItemPositionChange && scene()) {
+    if (change == ItemPositionChange && scene())
+    {
         // 🌟 在位置改变之前应用对象吸附（使用temp分支的方案）
         QPointF newPos = value.toPointF();
-        
-        DrawingScene *drawingScene = qobject_cast<DrawingScene*>(scene());
-        
-        if (drawingScene && drawingScene->snapManager() && drawingScene->snapManager()->isObjectSnapEnabled()) {
+
+        DrawingScene *drawingScene = qobject_cast<DrawingScene *>(scene());
+
+        if (drawingScene && drawingScene->snapManager() && drawingScene->snapManager()->isObjectSnapEnabled())
+        {
             // 使用SnapManager的alignToGrid方法，它会处理所有吸附逻辑
             bool isObjectSnap = false;
             QPointF alignedPos = drawingScene->snapManager()->alignToGrid(newPos, this, &isObjectSnap);
-            
+
             // 如果位置有变化，返回吸附后的位置
-            if (alignedPos != newPos) {
+            if (alignedPos != newPos)
+            {
                 // 只有对象吸附才显示指示器
-                if (isObjectSnap) {
+                if (isObjectSnap)
+                {
                     return alignedPos;
-                } else {
+                }
+                else
+                {
                     // 网格吸附，直接返回位置但不显示指示器
                     return alignedPos;
                 }
             }
         }
-    } else if (change == ItemTransformHasChanged || change == ItemPositionHasChanged) {
+    }
+    else if (change == ItemTransformHasChanged || change == ItemPositionHasChanged)
+    {
         // 通知对象状态已变化
         notifyObjectStateChanged();
-    } else if (change == ItemParentHasChanged) {
+    }
+    else if (change == ItemParentHasChanged)
+    {
         // 老的手柄系统已移除，不再需要更新手柄状态
     }
-    
+
     return QGraphicsItem::itemChange(change, value);
 }
 
 void DrawingShape::mousePressEvent(QGraphicsSceneMouseEvent *event)
 {
     // 安全检查：确保对象仍在有效的场景中
-    if (!scene()) {
-        qDebug() << "DrawingShape::mousePressEvent - shape not in any scene, ignoring event";
+    if (!scene())
+    {
+        // qDebug() << "DrawingShape::mousePressEvent - shape not in any scene, ignoring event";
         return;
     }
-    
-    if (event->button() == Qt::LeftButton && flags() & ItemIsMovable) {
+
+    if (event->button() == Qt::LeftButton && flags() & ItemIsMovable)
+    {
         m_isMoving = true;
         m_moveStartPos = pos();
         // 不在这里调用beginTransform，延迟到实际移动时
     }
-    
+
     QGraphicsItem::mousePressEvent(event);
 }
 
 void DrawingShape::mouseMoveEvent(QGraphicsSceneMouseEvent *event)
 {
     // 安全检查：确保对象仍在有效的场景中
-    if (!scene()) {
-        qDebug() << "DrawingShape::mouseMoveEvent - shape not in any scene, ignoring event";
+    if (!scene())
+    {
+        // qDebug() << "DrawingShape::mouseMoveEvent - shape not in any scene, ignoring event";
         return;
     }
-    
+
     // 检查是否正在拖动且尚未开始变换操作
-    if (m_isMoving && !m_transformStarted) {
+    if (m_isMoving && !m_transformStarted)
+    {
         QPointF currentPos = pos();
         // 如果有实际移动（超过阈值），开始变换操作
-        if (qAbs(currentPos.x() - m_moveStartPos.x()) > 1.0 || 
-            qAbs(currentPos.y() - m_moveStartPos.y()) > 1.0) {
-            if (DrawingScene *scene = qobject_cast<DrawingScene*>(this->scene())) {
+        if (qAbs(currentPos.x() - m_moveStartPos.x()) > 1.0 ||
+            qAbs(currentPos.y() - m_moveStartPos.y()) > 1.0)
+        {
+            if (DrawingScene *scene = qobject_cast<DrawingScene *>(this->scene()))
+            {
                 scene->beginTransform(DrawingScene::Move);
                 m_transformStarted = true;
             }
         }
     }
-    
+
     QGraphicsItem::mouseMoveEvent(event);
 }
 
 void DrawingShape::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
 {
     // 安全检查：确保对象仍在有效的场景中
-    if (!scene()) {
-        qDebug() << "DrawingShape::mouseReleaseEvent - shape not in any scene, ignoring event";
+    if (!scene())
+    {
+        // qDebug() << "DrawingShape::mouseReleaseEvent - shape not in any scene, ignoring event";
         // 重置移动状态以避免内存泄漏
         m_isMoving = false;
         m_transformStarted = false;
         return;
     }
-    
-    if (event->button() == Qt::LeftButton && m_isMoving) {
+
+    if (event->button() == Qt::LeftButton && m_isMoving)
+    {
         m_isMoving = false;
-        
+
         // 只有当变换操作已经开始时才结束它
-        if (m_transformStarted) {
-            if (DrawingScene *scene = qobject_cast<DrawingScene*>(this->scene())) {
+        if (m_transformStarted)
+        {
+            if (DrawingScene *scene = qobject_cast<DrawingScene *>(this->scene()))
+            {
                 scene->endTransform();
             }
             m_transformStarted = false;
         }
     }
-    
+
     QGraphicsItem::mouseReleaseEvent(event);
 }
 
 // DrawingRectangle
 DrawingRectangle::DrawingRectangle(QGraphicsItem *parent)
-    : DrawingShape(Rectangle, parent)
-    , m_rect(0, 0, 100, 100)
+    : DrawingShape(Rectangle, parent), m_rect(0, 0, 100, 100)
 {
 }
 
 DrawingRectangle::DrawingRectangle(const QRectF &rect, QGraphicsItem *parent)
-    : DrawingShape(Rectangle, parent)
-    , m_rect(rect)
+    : DrawingShape(Rectangle, parent), m_rect(rect)
 {
 }
 
@@ -417,51 +433,59 @@ QRectF DrawingRectangle::localBounds() const
 QPainterPath DrawingRectangle::shape() const
 {
     QPainterPath path;
-    if (m_cornerRadius > 0) {
+    if (m_cornerRadius > 0)
+    {
         // 创建圆角矩形路径
         path.addRoundedRect(m_rect, m_cornerRadius, m_cornerRadius);
-    } else {
+    }
+    else
+    {
         // 创建普通矩形路径
         path.addRect(m_rect);
     }
-    
+
     // 应用变换
     path = m_transform.map(path);
-    
+
     // 处理镜像变换的特殊情况
     qreal det = m_transform.determinant();
-    if (det < 0) {
+    if (det < 0)
+    {
         // 对于镜像变换，确保使用正确的填充规则
         path.setFillRule(Qt::WindingFill);
     }
-    
+
     return path;
 }
 
 QPainterPath DrawingRectangle::transformedShape() const
 {
     QPainterPath path;
-    if (m_cornerRadius > 0) {
+    if (m_cornerRadius > 0)
+    {
         // 创建圆角矩形路径
         path.addRoundedRect(m_rect, m_cornerRadius, m_cornerRadius);
-    } else {
+    }
+    else
+    {
         // 创建普通矩形路径
         path.addRect(m_rect);
     }
-    
+
     // 应用变换
     path = m_transform.map(path);
-    
+
     // 设置填充规则
     path.setFillRule(Qt::WindingFill);
-    
+
     return path;
 }
 
 void DrawingRectangle::setRectangle(const QRectF &rect)
 {
     // 只有当矩形真正发生变化时才更新
-    if (m_rect != rect) {
+    if (m_rect != rect)
+    {
         prepareGeometryChange();
         m_rect = rect;
         update(); // 直接赋值需要手动调用update()
@@ -471,7 +495,8 @@ void DrawingRectangle::setRectangle(const QRectF &rect)
 void DrawingRectangle::setCornerRadius(qreal radius)
 {
     // 只有当圆角半径真正发生变化时才更新
-    if (qAbs(m_cornerRadius - radius) > 0.001) {
+    if (qAbs(m_cornerRadius - radius) > 0.001)
+    {
         m_cornerRadius = radius;
         update(); // 直接赋值需要手动调用update()
     }
@@ -481,18 +506,18 @@ QVector<QPointF> DrawingRectangle::getNodePoints() const
 {
     QVector<QPointF> points;
     points.reserve(3);
-    
+
     // 1. 左上角 - 尺寸控制点
     points.append(m_rect.topLeft());
-    
+
     // 2. 右下角 - 尺寸控制点
     points.append(m_rect.bottomRight());
-    
+
     // 3. 上边右半部分 - X轴圆角控制点
     // 反转逻辑：圆角越大，手柄越靠近角落
     qreal xRadiusPos = m_rect.right() - (m_rect.width() / 2.0) * m_fRatioX;
     points.append(QPointF(xRadiusPos, m_rect.top()));
-    
+
     return points;
 }
 
@@ -502,52 +527,60 @@ void DrawingRectangle::setNodePoint(int index, const QPointF &pos)
     QPointF localPos = mapFromScene(pos);
     // 应用DrawingTransform的逆变换来获取真正的本地坐标
     localPos = m_transform.inverted().map(localPos);
-    
-    switch (index) {
-        case 0: {
-            // 左上角 - 尺寸控制
-            QRectF newRect = m_rect;
-            newRect.setLeft(localPos.x());
-            newRect.setTop(localPos.y());
-            
-            // 确保最小尺寸
-            if (newRect.width() < 20) newRect.setLeft(m_rect.right() - 20);
-            if (newRect.height() < 20) newRect.setTop(m_rect.bottom() - 20);
-            
-            setRectangle(newRect);
-            break;
-        }
-        case 1: {
-            // 右下角 - 尺寸控制
-            QRectF newRect = m_rect;
-            newRect.setRight(localPos.x());
-            newRect.setBottom(localPos.y());
-            
-            // 确保最小尺寸
-            if (newRect.width() < 20) newRect.setWidth(20);
-            if (newRect.height() < 20) newRect.setHeight(20);
-            
-            setRectangle(newRect);
-            break;
-        }
-        case 2: {
-            // 上边右半部分 - X轴圆角控制
-            // 反转逻辑：向角落移动增加圆角，向中心移动减小圆角
-            qreal centerX = m_rect.left() + m_rect.width() / 2.0;
-            qreal distance = m_rect.right() - localPos.x(); // 距离右边框的距离
-            qreal maxDistance = m_rect.width() / 2.0;
-            m_fRatioX = qBound(0.0, distance / maxDistance, 1.0);
-            
-            // 为了保持等比，同时更新Y轴比例
-            m_fRatioY = m_fRatioX;
-            
-            // 更新实际的圆角半径
-            m_cornerRadius = qMin(m_rect.width() * m_fRatioX, m_rect.height() * m_fRatioY);
-            update();
-            break;
-        }
-        default:
-            return;
+
+    switch (index)
+    {
+    case 0:
+    {
+        // 左上角 - 尺寸控制
+        QRectF newRect = m_rect;
+        newRect.setLeft(localPos.x());
+        newRect.setTop(localPos.y());
+
+        // 确保最小尺寸
+        if (newRect.width() < 20)
+            newRect.setLeft(m_rect.right() - 20);
+        if (newRect.height() < 20)
+            newRect.setTop(m_rect.bottom() - 20);
+
+        setRectangle(newRect);
+        break;
+    }
+    case 1:
+    {
+        // 右下角 - 尺寸控制
+        QRectF newRect = m_rect;
+        newRect.setRight(localPos.x());
+        newRect.setBottom(localPos.y());
+
+        // 确保最小尺寸
+        if (newRect.width() < 20)
+            newRect.setWidth(20);
+        if (newRect.height() < 20)
+            newRect.setHeight(20);
+
+        setRectangle(newRect);
+        break;
+    }
+    case 2:
+    {
+        // 上边右半部分 - X轴圆角控制
+        // 反转逻辑：向角落移动增加圆角，向中心移动减小圆角
+        qreal centerX = m_rect.left() + m_rect.width() / 2.0;
+        qreal distance = m_rect.right() - localPos.x(); // 距离右边框的距离
+        qreal maxDistance = m_rect.width() / 2.0;
+        m_fRatioX = qBound(0.0, distance / maxDistance, 1.0);
+
+        // 为了保持等比，同时更新Y轴比例
+        m_fRatioY = m_fRatioX;
+
+        // 更新实际的圆角半径
+        m_cornerRadius = qMin(m_rect.width() * m_fRatioX, m_rect.height() * m_fRatioY);
+        update();
+        break;
+    }
+    default:
+        return;
     }
 }
 
@@ -558,49 +591,56 @@ QPointF DrawingRectangle::constrainNodePoint(int index, const QPointF &pos) cons
     // 获取当前的旋转角度
     qreal rotation = qAtan2(m_transform.m21(), m_transform.m11());
     qreal rotationRad = rotation * M_PI / 180.0;
-    
+
     QPointF localPos = mapFromScene(pos);
-    
-    switch (index) {
-        case 0: {
-            // 左上角 - 尺寸控制：不限制，允许自由拖动
-            return pos;
-        }
-        case 1: {
-            // 右下角 - 尺寸控制：不限制，允许自由拖动
-            return pos;
-        }
-        case 2: {
-            // 上边右半部分 - X轴圆角控制：限制在旋转后的上边右半部分
-            // 将点转换到旋转前的坐标系
-            QPointF rotatedPos = localPos - m_rect.topLeft();
-            QPointF unrotatedPos;
-            unrotatedPos.setX(rotatedPos.x() * qCos(-rotationRad) - rotatedPos.y() * qSin(-rotationRad));
-            unrotatedPos.setY(rotatedPos.x() * qSin(-rotationRad) + rotatedPos.y() * qCos(-rotationRad));
-            
-            // 在未旋转坐标系中限制在上边的右半部分
-            unrotatedPos.setY(0);
-            qreal centerX = m_rect.width() / 2.0;
-            unrotatedPos.setX(qBound(centerX, unrotatedPos.x(), m_rect.width()));
-            
-            // 转换回旋转后的坐标系
-            QPointF finalPos;
-            finalPos.setX(unrotatedPos.x() * qCos(rotationRad) - unrotatedPos.y() * qSin(rotationRad));
-            finalPos.setY(unrotatedPos.x() * qSin(rotationRad) + unrotatedPos.y() * qCos(rotationRad));
-            finalPos += m_rect.topLeft();
-            
-            return mapToScene(finalPos);
-        }
-        default:
-            return pos;
+
+    switch (index)
+    {
+    case 0:
+    {
+        // 左上角 - 尺寸控制：不限制，允许自由拖动
+        return pos;
+    }
+    case 1:
+    {
+        // 右下角 - 尺寸控制：不限制，允许自由拖动
+        return pos;
+    }
+    case 2:
+    {
+        // 上边右半部分 - X轴圆角控制：限制在旋转后的上边右半部分
+        // 将点转换到旋转前的坐标系
+        QPointF rotatedPos = localPos - m_rect.topLeft();
+        QPointF unrotatedPos;
+        unrotatedPos.setX(rotatedPos.x() * qCos(-rotationRad) - rotatedPos.y() * qSin(-rotationRad));
+        unrotatedPos.setY(rotatedPos.x() * qSin(-rotationRad) + rotatedPos.y() * qCos(-rotationRad));
+
+        // 在未旋转坐标系中限制在上边的右半部分
+        unrotatedPos.setY(0);
+        qreal centerX = m_rect.width() / 2.0;
+        unrotatedPos.setX(qBound(centerX, unrotatedPos.x(), m_rect.width()));
+
+        // 转换回旋转后的坐标系
+        QPointF finalPos;
+        finalPos.setX(unrotatedPos.x() * qCos(rotationRad) - unrotatedPos.y() * qSin(rotationRad));
+        finalPos.setY(unrotatedPos.x() * qSin(rotationRad) + unrotatedPos.y() * qCos(rotationRad));
+        finalPos += m_rect.topLeft();
+
+        return mapToScene(finalPos);
+    }
+    default:
+        return pos;
     }
 }
 
 void DrawingRectangle::beginNodeDrag(int index)
 {
-    if (index == 0) {
+    if (index == 0)
+    {
         m_dragMode = 1; // 圆角控制
-    } else if (index == 1) {
+    }
+    else if (index == 1)
+    {
         m_dragMode = 2; // 尺寸控制
     }
 }
@@ -615,9 +655,12 @@ void DrawingRectangle::endNodeDrag(int index)
 void DrawingRectangle::paintShape(QPainter *painter)
 {
     // 简单的圆角绘制
-    if (m_cornerRadius > 0) {
+    if (m_cornerRadius > 0)
+    {
         painter->drawRoundedRect(m_rect, m_cornerRadius, m_cornerRadius);
-    } else {
+    }
+    else
+    {
         painter->drawRect(m_rect);
     }
 }
@@ -626,21 +669,22 @@ void DrawingRectangle::bakeTransform(const QTransform &transform)
 {
     // 先重置变换矩阵，避免重复应用
     setTransform(QTransform());
-    
+
     // 将变换应用到矩形的内部几何结构中
     QRectF newRect = transform.mapRect(m_rect);
-    
+
     // 更新几何结构
     m_rect = newRect;
-    
+
     // 同时更新圆角半径
-    if (m_cornerRadius > 0) {
+    if (m_cornerRadius > 0)
+    {
         // 计算变换后的圆角半径（取缩放因子的平均值）
         qreal scaleX = qSqrt(transform.m11() * transform.m11() + transform.m12() * transform.m12());
         qreal scaleY = qSqrt(transform.m21() * transform.m21() + transform.m22() * transform.m22());
         m_cornerRadius *= qAbs((scaleX + scaleY) / 2.0);
     }
-    
+
     // 更新显示
     update();
 }
@@ -649,30 +693,34 @@ void DrawingRectangle::bakeTransform(const QTransform &transform)
 QVector<NodeInfo> DrawingRectangle::getNodeInfo() const
 {
     QVector<NodeInfo> nodeInfos;
-    
+
     // 获取矩形的3个控制点：左上角、右下角、圆角控制
     QVector<QPointF> points = getNodePoints();
-    
-    for (int i = 0; i < points.size(); ++i) {
+
+    for (int i = 0; i < points.size(); ++i)
+    {
         NodeInfo node;
         node.position = points[i];
         node.elementIndex = i;
         node.isVisible = true;
         node.hasControlIn = false;
         node.hasControlOut = false;
-        
+
         // 根据索引设置节点类型
-        if (i == 0 || i == 1) {
+        if (i == 0 || i == 1)
+        {
             // 左上角和右下角 - 尺寸控制点
             node.type = NodeInfo::SizeControl;
-        } else if (i == 2) {
+        }
+        else if (i == 2)
+        {
             // 圆角控制点
             node.type = NodeInfo::RadiusControl;
         }
-        
+
         nodeInfos.append(node);
     }
-    
+
     return nodeInfos;
 }
 
@@ -681,16 +729,16 @@ QByteArray DrawingRectangle::serialize() const
 {
     QByteArray data = DrawingShape::serialize();
     QDataStream stream(&data, QIODevice::WriteOnly);
-    
+
     // 跳过基类已写入的数据
     stream.device()->seek(stream.device()->size());
-    
+
     // 写入矩形特定属性
     stream << m_rect;
     stream << m_cornerRadius;
     stream << m_fRatioX;
     stream << m_fRatioY;
-    
+
     return data;
 }
 
@@ -698,26 +746,24 @@ void DrawingRectangle::deserialize(const QByteArray &data)
 {
     // 先调用基类的deserialize来处理基类数据
     DrawingShape::deserialize(data);
-    
+
     // 然后读取矩形特定属性
     QDataStream stream(data);
-    
+
     // 跳过基类已读取的数据
     // 基类读取了：type, position, scale, rotation, transform, zValue, visible, enabled, fillBrush, strokePen, opacity, id
     stream.device()->seek(DrawingShape::serialize().size());
-    
+
     // 读取矩形特定属性
     stream >> m_rect;
     stream >> m_cornerRadius;
     stream >> m_fRatioX;
     stream >> m_fRatioY;
-    
-    
-    
+
     update();
 }
 
-DrawingShape* DrawingRectangle::clone() const
+DrawingShape *DrawingRectangle::clone() const
 {
     DrawingRectangle *copy = new DrawingRectangle();
     copy->deserialize(serialize());
@@ -726,14 +772,12 @@ DrawingShape* DrawingRectangle::clone() const
 
 // DrawingEllipse
 DrawingEllipse::DrawingEllipse(QGraphicsItem *parent)
-    : DrawingShape(Ellipse, parent)
-    , m_rect(0, 0, 100, 100)
+    : DrawingShape(Ellipse, parent), m_rect(0, 0, 100, 100)
 {
 }
 
 DrawingEllipse::DrawingEllipse(const QRectF &rect, QGraphicsItem *parent)
-    : DrawingShape(Ellipse, parent)
-    , m_rect(rect)
+    : DrawingShape(Ellipse, parent), m_rect(rect)
 {
 }
 
@@ -746,17 +790,18 @@ QPainterPath DrawingEllipse::shape() const
 {
     QPainterPath path;
     path.addEllipse(m_rect);
-    
+
     // 应用变换
     path = m_transform.map(path);
-    
+
     // 处理镜像变换的特殊情况
     qreal det = m_transform.determinant();
-    if (det < 0) {
+    if (det < 0)
+    {
         // 对于镜像变换，确保使用正确的填充规则
         path.setFillRule(Qt::WindingFill);
     }
-    
+
     return path;
 }
 
@@ -764,19 +809,20 @@ QPainterPath DrawingEllipse::transformedShape() const
 {
     QPainterPath path;
     path.addEllipse(m_rect);
-    
+
     // 应用变换
     path = m_transform.map(path);
-    
+
     // 设置填充规则
     path.setFillRule(Qt::WindingFill);
-    
+
     return path;
 }
 
 void DrawingEllipse::setEllipse(const QRectF &rect)
 {
-    if (m_rect != rect) {
+    if (m_rect != rect)
+    {
         prepareGeometryChange();
         m_rect = rect;
         update();
@@ -785,7 +831,8 @@ void DrawingEllipse::setEllipse(const QRectF &rect)
 
 void DrawingEllipse::setStartAngle(qreal angle)
 {
-    if (m_startAngle != angle) {
+    if (m_startAngle != angle)
+    {
         m_startAngle = angle;
         update();
         notifyObjectStateChanged();
@@ -794,7 +841,8 @@ void DrawingEllipse::setStartAngle(qreal angle)
 
 void DrawingEllipse::setSpanAngle(qreal angle)
 {
-    if (m_spanAngle != angle) {
+    if (m_spanAngle != angle)
+    {
         m_spanAngle = angle;
         update();
         notifyObjectStateChanged();
@@ -805,19 +853,19 @@ QVector<QPointF> DrawingEllipse::getNodePoints() const
 {
     QVector<QPointF> points;
     points.reserve(4);
-    
+
     // 添加4个控制点：
     // 0. 右边中点 - 控制水平半径
-    // 1. 下边中点 - 控制垂直半径  
+    // 1. 下边中点 - 控制垂直半径
     // 2. 左边中点 - 控制水平半径
     // 3. 上边中点 - 控制垂直半径
-    
+
     // 尺寸控制点 - 四个方向的中点
     points.append(QPointF(m_rect.right(), m_rect.center().y()));  // 右边中点
     points.append(QPointF(m_rect.center().x(), m_rect.bottom())); // 下边中点
     points.append(QPointF(m_rect.left(), m_rect.center().y()));   // 左边中点
     points.append(QPointF(m_rect.center().x(), m_rect.top()));    // 上边中点
-    
+
     return points;
 }
 
@@ -827,84 +875,100 @@ void DrawingEllipse::setNodePoint(int index, const QPointF &pos)
     QPointF localPos = mapFromScene(pos);
     // 应用DrawingTransform的逆变换来获取真正的本地坐标
     localPos = m_transform.inverted().map(localPos);
-    
-    switch (index) {
-        case 0: {
-            // 控制水平半径（右边中点）
-            QRectF newRect = m_rect;
-            newRect.setRight(localPos.x());
-            // 确保最小宽度
-            if (newRect.width() < 20) {
-                newRect.setRight(newRect.left() + 20);
-            }
-            setEllipse(newRect);
-            break;
+
+    switch (index)
+    {
+    case 0:
+    {
+        // 控制水平半径（右边中点）
+        QRectF newRect = m_rect;
+        newRect.setRight(localPos.x());
+        // 确保最小宽度
+        if (newRect.width() < 20)
+        {
+            newRect.setRight(newRect.left() + 20);
         }
-        case 1: {
-            // 控制垂直半径（下边中点）
-            QRectF newRect = m_rect;
-            newRect.setBottom(localPos.y());
-            // 确保最小高度
-            if (newRect.height() < 20) {
-                newRect.setBottom(newRect.top() + 20);
-            }
-            setEllipse(newRect);
-            break;
-        }
-        case 2:
-        case 3: {
-            // 控制角度（即使椭圆闭合也可以编辑）
-            // 如果椭圆是闭合的（spanAngle == 360），先将其转换为可编辑状态
-            if (m_spanAngle == 360) {
-                // 如果是第一次编辑闭合椭圆，设置一个小的起始角度和跨度
-                if (index == 2) {
-                    // 编辑起始角度时，设置起始角度为当前鼠标位置，跨度为270度
-                    m_startAngle = 0;
-                    m_spanAngle = 270;
-                } else {
-                    // 编辑结束角度时，保持起始角度为0，设置跨度为当前鼠标位置
-                    m_spanAngle = 270;
-                }
-            }
-            
-            qreal centerX = m_rect.center().x();
-            qreal centerY = m_rect.center().y();
-            qreal dx = localPos.x() - centerX;
-            qreal dy = localPos.y() - centerY;
-            // 使用与../qdraw相同的角度计算方式
-            qreal angle = -qAtan2(dy, dx) * 180.0 / M_PI;
-            
-            // 不进行角度范围限制，允许超过360度
-            
-            if (index == 2) {
-                // 控制起始角度
-                setStartAngle(angle);
-            } else if (index == 3) {
-                // 控制结束角度，直接设置跨度
-                setSpanAngle(angle);
-            }
-            
-            // 应用../qdraw的角度交换逻辑
-            if (m_startAngle > m_spanAngle) {
-                m_startAngle -= 360;
-            }
-            if (m_spanAngle < m_startAngle) {
-                qreal tmp = m_spanAngle;
-                m_spanAngle = m_startAngle;
-                m_startAngle = tmp;
-            }
-            
-            // 防止角度差值过大
-            if (qAbs(m_spanAngle - m_startAngle) > 360) {
-                m_startAngle = 40;
-                m_spanAngle = 400;
-            }
-            break;
-        }
-        default:
-            return;
+        setEllipse(newRect);
+        break;
     }
-    
+    case 1:
+    {
+        // 控制垂直半径（下边中点）
+        QRectF newRect = m_rect;
+        newRect.setBottom(localPos.y());
+        // 确保最小高度
+        if (newRect.height() < 20)
+        {
+            newRect.setBottom(newRect.top() + 20);
+        }
+        setEllipse(newRect);
+        break;
+    }
+    case 2:
+    case 3:
+    {
+        // 控制角度（即使椭圆闭合也可以编辑）
+        // 如果椭圆是闭合的（spanAngle == 360），先将其转换为可编辑状态
+        if (m_spanAngle == 360)
+        {
+            // 如果是第一次编辑闭合椭圆，设置一个小的起始角度和跨度
+            if (index == 2)
+            {
+                // 编辑起始角度时，设置起始角度为当前鼠标位置，跨度为270度
+                m_startAngle = 0;
+                m_spanAngle = 270;
+            }
+            else
+            {
+                // 编辑结束角度时，保持起始角度为0，设置跨度为当前鼠标位置
+                m_spanAngle = 270;
+            }
+        }
+
+        qreal centerX = m_rect.center().x();
+        qreal centerY = m_rect.center().y();
+        qreal dx = localPos.x() - centerX;
+        qreal dy = localPos.y() - centerY;
+        // 使用与../qdraw相同的角度计算方式
+        qreal angle = -qAtan2(dy, dx) * 180.0 / M_PI;
+
+        // 不进行角度范围限制，允许超过360度
+
+        if (index == 2)
+        {
+            // 控制起始角度
+            setStartAngle(angle);
+        }
+        else if (index == 3)
+        {
+            // 控制结束角度，直接设置跨度
+            setSpanAngle(angle);
+        }
+
+        // 应用../qdraw的角度交换逻辑
+        if (m_startAngle > m_spanAngle)
+        {
+            m_startAngle -= 360;
+        }
+        if (m_spanAngle < m_startAngle)
+        {
+            qreal tmp = m_spanAngle;
+            m_spanAngle = m_startAngle;
+            m_startAngle = tmp;
+        }
+
+        // 防止角度差值过大
+        if (qAbs(m_spanAngle - m_startAngle) > 360)
+        {
+            m_startAngle = 40;
+            m_spanAngle = 400;
+        }
+        break;
+    }
+    default:
+        return;
+    }
+
     // 通知对象状态已变化
     notifyObjectStateChanged();
 }
@@ -914,75 +978,82 @@ QPointF DrawingEllipse::constrainNodePoint(int index, const QPointF &pos) const
     // 获取当前的旋转角度
     qreal rotation = qAtan2(m_transform.m21(), m_transform.m11());
     qreal rotationRad = rotation * M_PI / 180.0;
-    
+
     QPointF localPos = mapFromScene(pos);
     QPointF center = m_rect.center();
-    
-    switch (index) {
-        case 0: {
-            // 水平半径控制：只限制在水平轴上，保持Y坐标不变
-            // 将点转换到旋转前的坐标系
-            QPointF rotatedPos = localPos - center;
-            QPointF unrotatedPos;
-            unrotatedPos.setX(rotatedPos.x() * qCos(-rotationRad) - rotatedPos.y() * qSin(-rotationRad));
-            unrotatedPos.setY(rotatedPos.x() * qSin(-rotationRad) + rotatedPos.y() * qCos(-rotationRad));
-            
-            // 只允许在水平方向移动，保持Y坐标为0
-            qreal x = unrotatedPos.x();
-            // 确保最小半径
-            qreal minRadius = 10.0; // 最小半径为10
-            if (qAbs(x) < minRadius) {
-                x = x >= 0 ? minRadius : -minRadius; // 保持方向，只限制最小半径
-            }
-            unrotatedPos.setY(0); // 保持Y坐标为0，只在X轴上移动
-            
-            // 转换回旋转后的坐标系
-            QPointF finalPos;
-            finalPos.setX(unrotatedPos.x() * qCos(rotationRad) - unrotatedPos.y() * qSin(rotationRad));
-            finalPos.setY(unrotatedPos.x() * qSin(rotationRad) + unrotatedPos.y() * qCos(rotationRad));
-            finalPos += center;
-            
-            return mapToScene(finalPos);
+
+    switch (index)
+    {
+    case 0:
+    {
+        // 水平半径控制：只限制在水平轴上，保持Y坐标不变
+        // 将点转换到旋转前的坐标系
+        QPointF rotatedPos = localPos - center;
+        QPointF unrotatedPos;
+        unrotatedPos.setX(rotatedPos.x() * qCos(-rotationRad) - rotatedPos.y() * qSin(-rotationRad));
+        unrotatedPos.setY(rotatedPos.x() * qSin(-rotationRad) + rotatedPos.y() * qCos(-rotationRad));
+
+        // 只允许在水平方向移动，保持Y坐标为0
+        qreal x = unrotatedPos.x();
+        // 确保最小半径
+        qreal minRadius = 10.0; // 最小半径为10
+        if (qAbs(x) < minRadius)
+        {
+            x = x >= 0 ? minRadius : -minRadius; // 保持方向，只限制最小半径
         }
-        case 1: {
-            // 垂直半径控制：限制在旋转后的垂直轴上
-            // 将点转换到旋转前的坐标系
-            QPointF rotatedPos = localPos - center;
-            QPointF unrotatedPos;
-            unrotatedPos.setX(rotatedPos.x() * qCos(-rotationRad) - rotatedPos.y() * qSin(-rotationRad));
-            unrotatedPos.setY(rotatedPos.x() * qSin(-rotationRad) + rotatedPos.y() * qCos(-rotationRad));
-            
-            // 在未旋转坐标系中限制在垂直轴上
-            // 允许向两个方向移动，只限制最小半径
-            qreal y = unrotatedPos.y();
-            if (qAbs(y) < 10.0) {
-                y = y >= 0 ? 10.0 : -10.0; // 保持方向，只限制最小半径
-            }
-            unrotatedPos.setX(0);
-            
-            // 转换回旋转后的坐标系
-            QPointF finalPos;
-            finalPos.setX(unrotatedPos.x() * qCos(rotationRad) - unrotatedPos.y() * qSin(rotationRad));
-            finalPos.setY(unrotatedPos.x() * qSin(rotationRad) + unrotatedPos.y() * qCos(rotationRad));
-            finalPos += center;
-            
-            return mapToScene(finalPos);
-        }
-        case 2:
-        case 3: {
-            // 角度控制：允许自由拖动
-            return pos;
-        }
-        default:
-            break;
+        unrotatedPos.setY(0); // 保持Y坐标为0，只在X轴上移动
+
+        // 转换回旋转后的坐标系
+        QPointF finalPos;
+        finalPos.setX(unrotatedPos.x() * qCos(rotationRad) - unrotatedPos.y() * qSin(rotationRad));
+        finalPos.setY(unrotatedPos.x() * qSin(rotationRad) + unrotatedPos.y() * qCos(rotationRad));
+        finalPos += center;
+
+        return mapToScene(finalPos);
     }
-    
+    case 1:
+    {
+        // 垂直半径控制：限制在旋转后的垂直轴上
+        // 将点转换到旋转前的坐标系
+        QPointF rotatedPos = localPos - center;
+        QPointF unrotatedPos;
+        unrotatedPos.setX(rotatedPos.x() * qCos(-rotationRad) - rotatedPos.y() * qSin(-rotationRad));
+        unrotatedPos.setY(rotatedPos.x() * qSin(-rotationRad) + rotatedPos.y() * qCos(-rotationRad));
+
+        // 在未旋转坐标系中限制在垂直轴上
+        // 允许向两个方向移动，只限制最小半径
+        qreal y = unrotatedPos.y();
+        if (qAbs(y) < 10.0)
+        {
+            y = y >= 0 ? 10.0 : -10.0; // 保持方向，只限制最小半径
+        }
+        unrotatedPos.setX(0);
+
+        // 转换回旋转后的坐标系
+        QPointF finalPos;
+        finalPos.setX(unrotatedPos.x() * qCos(rotationRad) - unrotatedPos.y() * qSin(rotationRad));
+        finalPos.setY(unrotatedPos.x() * qSin(rotationRad) + unrotatedPos.y() * qCos(rotationRad));
+        finalPos += center;
+
+        return mapToScene(finalPos);
+    }
+    case 2:
+    case 3:
+    {
+        // 角度控制：允许自由拖动
+        return pos;
+    }
+    default:
+        break;
+    }
+
     return pos;
 }
 
 void DrawingEllipse::beginNodeDrag(int index)
 {
-    if (index == 2 || index == 3) {
+    if (index == 2 || index == 3)
+    {
         // 记录拖动开始时的状态
         m_dragStartAngle = m_startAngle;
         m_dragStartSpan = m_spanAngle;
@@ -1004,15 +1075,19 @@ void DrawingEllipse::paintShape(QPainter *painter)
     // 应用../qdraw的角度处理逻辑
     qreal startAngle = m_startAngle <= m_spanAngle ? m_startAngle : m_spanAngle;
     qreal endAngle = m_startAngle >= m_spanAngle ? m_startAngle : m_spanAngle;
-    
-    if (endAngle - startAngle > 360) {
+
+    if (endAngle - startAngle > 360)
+    {
         endAngle = startAngle + 360;
     }
-    
-    if (qFuzzyCompare(qAbs(endAngle - startAngle), 360.0) || qFuzzyCompare(qAbs(endAngle - startAngle), 0.0)) {
+
+    if (qFuzzyCompare(qAbs(endAngle - startAngle), 360.0) || qFuzzyCompare(qAbs(endAngle - startAngle), 0.0))
+    {
         // 绘制完整椭圆
         painter->drawEllipse(m_rect);
-    } else {
+    }
+    else
+    {
         // 绘制椭圆弧
         painter->drawArc(m_rect, qRound(startAngle * 16), qRound((endAngle - startAngle) * 16));
     }
@@ -1022,13 +1097,13 @@ void DrawingEllipse::bakeTransform(const QTransform &transform)
 {
     // 先重置变换矩阵，避免重复应用
     setTransform(QTransform());
-    
+
     // 将变换应用到椭圆的内部几何结构中
     QRectF newRect = transform.mapRect(m_rect);
-    
+
     // 更新几何结构
     m_rect = newRect;
-    
+
     // 更新显示
     update();
 }
@@ -1037,30 +1112,34 @@ void DrawingEllipse::bakeTransform(const QTransform &transform)
 QVector<NodeInfo> DrawingEllipse::getNodeInfo() const
 {
     QVector<NodeInfo> nodeInfos;
-    
+
     // 获取椭圆的控制点
     QVector<QPointF> points = getNodePoints();
-    
-    for (int i = 0; i < points.size(); ++i) {
+
+    for (int i = 0; i < points.size(); ++i)
+    {
         NodeInfo node;
         node.position = points[i];
         node.elementIndex = i;
         node.isVisible = true;
         node.hasControlIn = false;
         node.hasControlOut = false;
-        
+
         // 根据索引设置节点类型
-        if (i == 0 || i == 1) {
+        if (i == 0 || i == 1)
+        {
             // 右边中点和下边中点 - 尺寸控制点
             node.type = NodeInfo::SizeControl;
-        } else if (i == 2 || i == 3) {
+        }
+        else if (i == 2 || i == 3)
+        {
             // 左边中点和上边中点 - 角度控制点（如果不是完整椭圆）
             node.type = NodeInfo::AngleControl;
         }
-        
+
         nodeInfos.append(node);
     }
-    
+
     return nodeInfos;
 }
 
@@ -1069,15 +1148,15 @@ QByteArray DrawingEllipse::serialize() const
 {
     QByteArray data = DrawingShape::serialize();
     QDataStream stream(&data, QIODevice::WriteOnly);
-    
+
     // 跳过基类已写入的数据
     stream.device()->seek(stream.device()->size());
-    
+
     // 写入椭圆特定属性
     stream << m_rect;
     stream << strokePen();
     stream << fillBrush();
-    
+
     return data;
 }
 
@@ -1085,29 +1164,29 @@ void DrawingEllipse::deserialize(const QByteArray &data)
 {
     // 先调用基类的deserialize来处理基类数据
     DrawingShape::deserialize(data);
-    
+
     // 然后读取椭圆特定属性
     QDataStream stream(data);
-    
+
     // 跳过基类已读取的数据
     // 基类读取了：type, position, scale, rotation, transform, zValue, visible, enabled, fillBrush, strokePen, opacity, id
     stream.device()->seek(DrawingShape::serialize().size());
-    
+
     // 读取椭圆特定属性
     stream >> m_rect;
-    
+
     QPen newPen;
     stream >> newPen;
     setStrokePen(newPen);
-    
+
     QBrush newBrush;
     stream >> newBrush;
     setFillBrush(newBrush);
-    
+
     update();
 }
 
-DrawingShape* DrawingEllipse::clone() const
+DrawingShape *DrawingEllipse::clone() const
 {
     DrawingEllipse *copy = new DrawingEllipse();
     copy->deserialize(serialize());
@@ -1116,8 +1195,7 @@ DrawingShape* DrawingEllipse::clone() const
 
 // DrawingPath
 DrawingPath::DrawingPath(QGraphicsItem *parent)
-    : DrawingShape(Path, parent)
-    , m_activeControlPoint(-1)
+    : DrawingShape(Path, parent), m_activeControlPoint(-1)
 {
 }
 
@@ -1132,14 +1210,15 @@ void DrawingPath::setMarker(const QString &markerId, const QPixmap &markerPixmap
 // 视觉反馈和高亮方法实现
 void DrawingPath::highlightNode(int index)
 {
-    if (index >= 0 && index < m_controlPoints.size()) {
+    if (index >= 0 && index < m_controlPoints.size())
+    {
         m_highlightedNode = index;
         m_highlightedPath = false;
         update();
     }
 }
 
-void DrawingPath::highlightPath(const QPointF& point)
+void DrawingPath::highlightPath(const QPointF &point)
 {
     m_highlightedPath = true;
     m_highlightedNode = -1;
@@ -1153,29 +1232,31 @@ void DrawingPath::clearHighlights()
     update();
 }
 
-int DrawingPath::findNodeAt(const QPointF& pos, qreal threshold) const
+int DrawingPath::findNodeAt(const QPointF &pos, qreal threshold) const
 {
     QPointF localPos = mapFromScene(pos);
-    
-    for (int i = 0; i < m_controlPoints.size(); ++i) {
+
+    for (int i = 0; i < m_controlPoints.size(); ++i)
+    {
         QPointF distance = localPos - m_controlPoints[i];
         qreal squaredDistance = distance.x() * distance.x() + distance.y() * distance.y();
-        if (squaredDistance <= threshold * threshold) {
+        if (squaredDistance <= threshold * threshold)
+        {
             return i;
         }
     }
     return -1;
 }
 
-bool DrawingPath::isPointOnPath(const QPointF& pos, qreal threshold) const
+bool DrawingPath::isPointOnPath(const QPointF &pos, qreal threshold) const
 {
     QPointF localPos = mapFromScene(pos);
-    
+
     // 创建一个稍大的路径来检测点击
     QPainterPathStroker stroker;
     stroker.setWidth(threshold * 2);
     QPainterPath widenedPath = stroker.createStroke(m_path);
-    
+
     return widenedPath.contains(localPos);
 }
 
@@ -1190,57 +1271,65 @@ QRectF DrawingPath::localBoundsWithControlPoints() const
 {
     // 获取路径本身的边界框
     QRectF pathBounds = m_path.boundingRect();
-    
+
     // 如果有控制点，需要扩展边界框以包含所有控制点
-    if (!m_controlPoints.isEmpty()) {
+    if (!m_controlPoints.isEmpty())
+    {
         QRectF controlBounds;
         bool firstPoint = true;
-        
-        for (const QPointF &point : m_controlPoints) {
-            if (firstPoint) {
+
+        for (const QPointF &point : m_controlPoints)
+        {
+            if (firstPoint)
+            {
                 controlBounds = QRectF(point, QSizeF(1, 1));
                 firstPoint = false;
-            } else {
+            }
+            else
+            {
                 controlBounds = controlBounds.united(QRectF(point, QSizeF(1, 1)));
             }
         }
-        
+
         // 为控制点添加一些边距，确保圆形控制点完全可见
         const qreal margin = 7.0; // 控制点半径4.0 + 额外边距
         controlBounds.adjust(-margin, -margin, margin, margin);
-        
+
         // 返回路径边界框和控制点边界框的并集
         return pathBounds.united(controlBounds);
     }
-    
+
     return pathBounds;
 }
 
 void DrawingPath::setPath(const QPainterPath &path)
 {
-    if (m_path != path) {
+    if (m_path != path)
+    {
         prepareGeometryChange();
         m_path = path;
-        
+
         // 保存原始路径元素信息，用于节点编辑
         m_pathElements.clear();
-        for (int i = 0; i < path.elementCount(); ++i) {
+        for (int i = 0; i < path.elementCount(); ++i)
+        {
             const QPainterPath::Element &elem = path.elementAt(i);
             m_pathElements.append(elem);
         }
-        
+
         // 提取所有类型的元素作为控制点，但标记它们的类型
         m_controlPoints.clear();
         m_controlPointTypes.clear();
-        for (int i = 0; i < path.elementCount(); ++i) {
+        for (int i = 0; i < path.elementCount(); ++i)
+        {
             const QPainterPath::Element &elem = path.elementAt(i);
             m_controlPoints.append(QPointF(elem.x, elem.y));
             m_controlPointTypes.append(elem.type);
         }
-        
+
         // 更新节点信息
         updateNodeInfo();
-        
+
         update();
     }
 }
@@ -1250,17 +1339,20 @@ QPainterPath DrawingPath::shape() const
     // 直接返回路径，应用变换
     QPainterPath path = m_path;
     path = m_transform.map(path);
-    
+
     // 处理镜像变换的特殊情况
     qreal det = m_transform.determinant();
-    if (det < 0) {
+    if (det < 0)
+    {
         // 对于镜像变换，确保使用正确的填充规则
         path.setFillRule(Qt::WindingFill);
-    } else {
+    }
+    else
+    {
         // 非镜像变换时也使用WindingFill确保一致性
         path.setFillRule(Qt::WindingFill);
     }
-    
+
     return path;
 }
 
@@ -1278,9 +1370,10 @@ QVector<QPointF> DrawingPath::getNodePoints() const
 QVector<NodeInfo> DrawingPath::getNodeInfo() const
 {
     // 如果节点信息为空或路径已更新，重新计算
-    if (m_nodeInfo.isEmpty() || m_nodeInfo.size() != m_pathElements.size()) {
+    if (m_nodeInfo.isEmpty() || m_nodeInfo.size() != m_pathElements.size())
+    {
         // const_cast是因为这是一个缓存优化方法
-        const_cast<DrawingPath*>(this)->updateNodeInfo();
+        const_cast<DrawingPath *>(this)->updateNodeInfo();
     }
     return m_nodeInfo;
 }
@@ -1289,60 +1382,68 @@ void DrawingPath::updateNodeInfo()
 {
     m_nodeInfo.clear();
     m_nodeInfo.reserve(m_pathElements.size());
-    
-    for (int i = 0; i < m_pathElements.size(); ++i) {
+
+    for (int i = 0; i < m_pathElements.size(); ++i)
+    {
         const QPainterPath::Element &element = m_pathElements[i];
-        
+
         NodeInfo node;
         node.position = QPointF(element.x, element.y);
         node.elementIndex = i;
         node.isVisible = true;
         node.hasControlIn = false;
         node.hasControlOut = false;
-        
-        switch (element.type) {
-            case QPainterPath::MoveToElement:
-                node.type = NodeInfo::Start;
-                break;
-            case QPainterPath::LineToElement:
-                node.type = NodeInfo::Corner;
-                break;
-            case QPainterPath::CurveToElement:
-                node.type = NodeInfo::Curve;
-                // 查找对应的控制点
-                // 曲线元素后面跟着两个控制点元素
-                if (i + 2 < m_pathElements.size()) {
-                    const QPainterPath::Element &cp1 = m_pathElements[i + 1];
-                    const QPainterPath::Element &cp2 = m_pathElements[i + 2];
-                    
-                    if (cp1.type == QPainterPath::CurveToDataElement && 
-                        cp2.type == QPainterPath::CurveToDataElement) {
-                        node.controlIn = QPointF(cp1.x, cp1.y);
-                        node.controlOut = QPointF(cp2.x, cp2.y);
-                        node.hasControlIn = true;
-                        node.hasControlOut = true;
-                    }
+
+        switch (element.type)
+        {
+        case QPainterPath::MoveToElement:
+            node.type = NodeInfo::Start;
+            break;
+        case QPainterPath::LineToElement:
+            node.type = NodeInfo::Corner;
+            break;
+        case QPainterPath::CurveToElement:
+            node.type = NodeInfo::Curve;
+            // 查找对应的控制点
+            // 曲线元素后面跟着两个控制点元素
+            if (i + 2 < m_pathElements.size())
+            {
+                const QPainterPath::Element &cp1 = m_pathElements[i + 1];
+                const QPainterPath::Element &cp2 = m_pathElements[i + 2];
+
+                if (cp1.type == QPainterPath::CurveToDataElement &&
+                    cp2.type == QPainterPath::CurveToDataElement)
+                {
+                    node.controlIn = QPointF(cp1.x, cp1.y);
+                    node.controlOut = QPointF(cp2.x, cp2.y);
+                    node.hasControlIn = true;
+                    node.hasControlOut = true;
                 }
-                break;
-            case QPainterPath::CurveToDataElement:
-                // 跳过控制点数据元素，它们由曲线元素处理
-                continue;
+            }
+            break;
+        case QPainterPath::CurveToDataElement:
+            // 跳过控制点数据元素，它们由曲线元素处理
+            continue;
         }
-        
+
         m_nodeInfo.append(node);
     }
-    
+
     // 处理最后一个节点
-    if (!m_nodeInfo.isEmpty()) {
-        if (m_nodeInfo.last().type == NodeInfo::Start && m_nodeInfo.size() > 1) {
+    if (!m_nodeInfo.isEmpty())
+    {
+        if (m_nodeInfo.last().type == NodeInfo::Start && m_nodeInfo.size() > 1)
+        {
             // 如果只有一个MoveTo，则它也是结束节点
             m_nodeInfo.last().type = NodeInfo::End;
-        } else if (m_nodeInfo.last().type != NodeInfo::End) {
+        }
+        else if (m_nodeInfo.last().type != NodeInfo::End)
+        {
             // 最后一个非End节点标记为End
             m_nodeInfo.last().type = NodeInfo::End;
         }
     }
-    
+
     // TODO: 智能节点类型检测暂时禁用，避免过度调用
     // 需要在合适的时机（如用户操作后）调用，而不是每次更新都调用
 }
@@ -1350,8 +1451,10 @@ void DrawingPath::updateNodeInfo()
 void DrawingPath::performSmartNodeTypeDetection()
 {
     qDebug() << "=== Starting smart node type detection (manual) ===";
-    for (NodeInfo &node : m_nodeInfo) {
-        if (node.type == NodeInfo::Curve) {
+    for (NodeInfo &node : m_nodeInfo)
+    {
+        if (node.type == NodeInfo::Curve)
+        {
             // 只对曲线节点进行智能检测
             node.detectAndUpdateNodeType();
             qDebug() << "Node" << &node - &m_nodeInfo[0] << "detected as type:" << node.type;
@@ -1362,20 +1465,22 @@ void DrawingPath::performSmartNodeTypeDetection()
 
 void DrawingPath::setNodePoint(int index, const QPointF &pos)
 {
-    if (index >= 0 && index < m_controlPoints.size()) {
+    if (index >= 0 && index < m_controlPoints.size())
+    {
         // setNodePoint接收场景坐标，需要转换为本地坐标
         QPointF localPos = mapFromScene(pos);
         // 应用DrawingTransform的逆变换来获取真正的本地坐标
         localPos = m_transform.inverted().map(localPos);
-        
+
         // 更新控制点
         m_controlPoints[index] = localPos;
-        
+
         // 如果有节点信息，同步更新节点信息中的位置
-        if (index < m_nodeInfo.size()) {
+        if (index < m_nodeInfo.size())
+        {
             m_nodeInfo[index].position = localPos;
         }
-        
+
         updatePathFromControlPoints(); // 更新路径
     }
 }
@@ -1401,10 +1506,12 @@ void DrawingPath::endNodeDrag(int index)
 
 void DrawingPath::mousePressEvent(QGraphicsSceneMouseEvent *event)
 {
-    if (event->button() == Qt::LeftButton && m_showControlPolygon) {
+    if (event->button() == Qt::LeftButton && m_showControlPolygon)
+    {
         // 查找最近的控制点
         int nearestPoint = findNearestControlPoint(event->scenePos());
-        if (nearestPoint != -1) {
+        if (nearestPoint != -1)
+        {
             m_activeControlPoint = nearestPoint;
             m_dragStartPos = event->scenePos();
             // 保存原始控制点位置
@@ -1413,70 +1520,79 @@ void DrawingPath::mousePressEvent(QGraphicsSceneMouseEvent *event)
             return;
         }
     }
-    
+
     // 如果没有点击控制点，传递给基类处理
     DrawingShape::mousePressEvent(event);
 }
 
 void DrawingPath::mouseMoveEvent(QGraphicsSceneMouseEvent *event)
 {
-    if (m_activeControlPoint != -1 && (event->buttons() & Qt::LeftButton)) {
+    if (m_activeControlPoint != -1 && (event->buttons() & Qt::LeftButton))
+    {
         // 拖动控制点
         QPointF newPos = event->scenePos();
-        
+
         // 更新控制点位置
-        if (m_activeControlPoint < m_controlPoints.size()) {
+        if (m_activeControlPoint < m_controlPoints.size())
+        {
             // 将场景坐标转换为本地坐标，考虑DrawingTransform
             // 首先使用Qt的内置方法转换为图形本地坐标
             QPointF localPos = mapFromScene(newPos);
             // 然后应用DrawingTransform的逆变换来获取真正的本地坐标
             localPos = m_transform.inverted().map(localPos);
-            
+
             m_controlPoints[m_activeControlPoint] = localPos;
-            
+
             // 更新路径
             updatePathFromControlPoints();
             update();
         }
-        
+
         event->accept();
         return;
     }
-    
+
     // 如果没有拖动控制点，传递给基类处理
     DrawingShape::mouseMoveEvent(event);
 }
 
 void DrawingPath::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
 {
-    if (event->button() == Qt::LeftButton && m_activeControlPoint != -1) {
+    if (event->button() == Qt::LeftButton && m_activeControlPoint != -1)
+    {
         // 创建撤销命令
-        if (m_activeControlPoint < m_controlPoints.size() && m_activeControlPoint < m_originalControlPoints.size()) {
+        if (m_activeControlPoint < m_controlPoints.size() && m_activeControlPoint < m_originalControlPoints.size())
+        {
             // 获取场景引用
-            DrawingScene *scene = qobject_cast<DrawingScene*>(this->scene());
-            if (scene) {
+            DrawingScene *scene = qobject_cast<DrawingScene *>(this->scene());
+            if (scene)
+            {
                 // 只有当位置真正发生变化时才创建撤销命令
-                if (m_controlPoints[m_activeControlPoint] != m_originalControlPoints[m_activeControlPoint]) {
+                if (m_controlPoints[m_activeControlPoint] != m_originalControlPoints[m_activeControlPoint])
+                {
                     BezierControlPointCommand *command = new BezierControlPointCommand(
-                        scene, this, m_activeControlPoint, 
-                        m_originalControlPoints[m_activeControlPoint], 
+                        scene, this, m_activeControlPoint,
+                        m_originalControlPoints[m_activeControlPoint],
                         m_controlPoints[m_activeControlPoint]);
-                    if (CommandManager::hasInstance()) {
-        CommandManager::instance()->pushCommand(command);
-    } else {
-        command->redo();
-        delete command;
-    }
+                    if (CommandManager::hasInstance())
+                    {
+                        CommandManager::instance()->pushCommand(command);
+                    }
+                    else
+                    {
+                        command->redo();
+                        delete command;
+                    }
                 }
             }
         }
-        
+
         // 结束拖动
         m_activeControlPoint = -1;
         event->accept();
         return;
     }
-    
+
     // 如果没有拖动控制点，传递给基类处理
     DrawingShape::mouseReleaseEvent(event);
 }
@@ -1485,21 +1601,23 @@ int DrawingPath::findNearestControlPoint(const QPointF &scenePos) const
 {
     int nearestIndex = -1;
     qreal minDistance = 10.0; // 阈值距离
-    
-    for (int i = 0; i < m_controlPoints.size(); ++i) {
+
+    for (int i = 0; i < m_controlPoints.size(); ++i)
+    {
         // 首先应用DrawingTransform变换
         QPointF transformedPoint = m_transform.map(m_controlPoints[i]);
         // 然后使用Qt的内置方法将结果转换为场景坐标
         QPointF controlScenePos = mapToScene(transformedPoint);
-        
+
         qreal distance = QLineF(scenePos, controlScenePos).length();
-        
-        if (distance < minDistance) {
+
+        if (distance < minDistance)
+        {
             minDistance = distance;
             nearestIndex = i;
         }
     }
-    
+
     return nearestIndex;
 }
 
@@ -1515,7 +1633,8 @@ void DrawingPath::updateFromNodePoints()
 
 void DrawingPath::setControlPoints(const QVector<QPointF> &points)
 {
-    if (m_controlPoints != points) {
+    if (m_controlPoints != points)
+    {
         m_controlPoints = points;
         updatePathFromControlPoints();
     }
@@ -1523,79 +1642,101 @@ void DrawingPath::setControlPoints(const QVector<QPointF> &points)
 
 void DrawingPath::updatePathFromControlPoints()
 {
-    if (m_controlPoints.isEmpty() || m_controlPointTypes.isEmpty()) {
+    if (m_controlPoints.isEmpty() || m_controlPointTypes.isEmpty())
+    {
         return;
     }
-    
+
     QPainterPath newPath;
-    
+
     // 根据控制点类型重建路径
-    for (int i = 0; i < m_controlPoints.size(); ) {
+    for (int i = 0; i < m_controlPoints.size();)
+    {
         // 确保索引在有效范围内
-        if (i >= m_controlPointTypes.size()) {
+        if (i >= m_controlPointTypes.size())
+        {
             break;
         }
-        
+
         QPainterPath::ElementType type = m_controlPointTypes[i];
         QPointF point = m_controlPoints[i];
-        
-        if (type == QPainterPath::MoveToElement) {
+
+        if (type == QPainterPath::MoveToElement)
+        {
             newPath.moveTo(point);
             i++;
-        } else if (type == QPainterPath::LineToElement) {
+        }
+        else if (type == QPainterPath::LineToElement)
+        {
             newPath.lineTo(point);
             i++;
-        } else if (type == QPainterPath::CurveToElement) {
+        }
+        else if (type == QPainterPath::CurveToElement)
+        {
             // 曲线需要3个点：当前点和接下来的两个点
-            if (i + 2 < m_controlPoints.size() && 
+            if (i + 2 < m_controlPoints.size() &&
                 i + 2 < m_controlPointTypes.size() &&
                 m_controlPointTypes[i + 1] == QPainterPath::CurveToDataElement &&
-                m_controlPointTypes[i + 2] == QPainterPath::CurveToDataElement) {
+                m_controlPointTypes[i + 2] == QPainterPath::CurveToDataElement)
+            {
                 newPath.cubicTo(point, m_controlPoints[i + 1], m_controlPoints[i + 2]);
                 i += 3; // 跳过已经处理的三个控制点
-            } else {
+            }
+            else
+            {
                 // 数据不完整，跳过当前点
                 i++;
             }
-        } else if (type == QPainterPath::CurveToDataElement) {
+        }
+        else if (type == QPainterPath::CurveToDataElement)
+        {
             // 检查是否是QuadTo（某些Qt版本中可能使用不同的枚举值）
-            if (i > 0 && i < m_controlPointTypes.size()) {
-                QPainterPath::ElementType prevType = m_controlPointTypes[i-1];
-                if (prevType == QPainterPath::LineToElement && 
-                    i + 1 < m_controlPointTypes.size()) {
+            if (i > 0 && i < m_controlPointTypes.size())
+            {
+                QPainterPath::ElementType prevType = m_controlPointTypes[i - 1];
+                if (prevType == QPainterPath::LineToElement &&
+                    i + 1 < m_controlPointTypes.size())
+                {
                     // 这可能是QuadTo的情况：LineTo + CurveToDataElement
                     QPointF endPoint = m_controlPoints[i];
                     QPointF nextPoint = m_controlPoints[i + 1];
                     newPath.quadTo(point, endPoint);
                     i += 2;
-                } else {
+                }
+                else
+                {
                     // 真正的CurveToDataElement，跳过
                     i++;
                 }
-            } else {
+            }
+            else
+            {
                 // 真正的CurveToDataElement，跳过
                 i++;
             }
-        } else {
+        }
+        else
+        {
             // 未知类型，跳过
             i++;
         }
     }
-    
+
     // 直接更新内部路径，不调用setPath避免无限循环
     prepareGeometryChange();
     m_path = newPath;
-    
+
     // 路径改变后，需要重新提取元素信息并更新节点信息
     m_pathElements.clear();
-    for (int i = 0; i < newPath.elementCount(); ++i) {
+    for (int i = 0; i < newPath.elementCount(); ++i)
+    {
         const QPainterPath::Element &elem = newPath.elementAt(i);
         m_pathElements.append(elem);
     }
-    
+
     // 更新节点信息以保持同步
     updateNodeInfo();
-    
+
     update();
 }
 
@@ -1613,7 +1754,8 @@ bool DrawingPath::showControlPolygon() const
 void DrawingPath::paintShape(QPainter *painter)
 {
     // 如果路径被高亮，使用高亮样式
-    if (m_highlightedPath) {
+    if (m_highlightedPath)
+    {
         QPen originalPen = painter->pen();
         QPen highlightPen = originalPen;
         highlightPen.setWidth(highlightPen.width() + 2);
@@ -1621,128 +1763,141 @@ void DrawingPath::paintShape(QPainter *painter)
         painter->setPen(highlightPen);
         painter->drawPath(m_path);
         painter->setPen(originalPen);
-    } else {
+    }
+    else
+    {
         // 绘制主路径
         painter->drawPath(m_path);
     }
-    
+
     // 绘制Marker（如果有）
-    if (hasMarker()) {
+    if (hasMarker())
+    {
         // 保存当前画家状态
         painter->save();
-        
+
         // 应用Marker变换
         painter->setTransform(m_markerTransform, true);
-        
+
         // 绘制Marker
         painter->drawPixmap(0, 0, m_markerPixmap);
-        
+
         // 恢复画家状态
         painter->restore();
     }
-    
+
     // 如果启用了控制点连线，则绘制连接线
-    if (m_showControlPolygon) {
+    if (m_showControlPolygon)
+    {
         QPen oldPen = painter->pen();
         QBrush oldBrush = painter->brush();
-        
+
         // 设置虚线样式
         QPen controlPen(Qt::DashLine);
         controlPen.setColor(QColor(100, 100, 255, 128)); // 半透明蓝色
         controlPen.setWidth(1);
         controlPen.setCosmetic(true); // 确保线宽不受变换影响
-        
+
         painter->setPen(controlPen);
-        painter->setBrush(Qt::NoBrush);  // 不填充
-        
+        painter->setBrush(Qt::NoBrush); // 不填充
+
         // 绘制控制点连线 - 按照贝塞尔曲线的规范连接起点和控制点
-        if (m_controlPoints.size() >= 2) {
+        if (m_controlPoints.size() >= 2)
+        {
             // 遍历所有贝塞尔段
-            for (int i = 0; i < m_controlPoints.size() - 1; ) {
+            for (int i = 0; i < m_controlPoints.size() - 1;)
+            {
                 // 检查是否可以形成一个三次贝塞尔曲线 (起点, 控制点1, 控制点2, 终点)
-                if (i + 3 < m_controlPoints.size()) {
+                if (i + 3 < m_controlPoints.size())
+                {
                     // 绘制起点到第一个控制点的连线
-                    painter->drawLine(m_controlPoints[i], m_controlPoints[i+1]);
+                    painter->drawLine(m_controlPoints[i], m_controlPoints[i + 1]);
                     // 绘制第二个控制点到终点的连线
-                    painter->drawLine(m_controlPoints[i+2], m_controlPoints[i+3]);
+                    painter->drawLine(m_controlPoints[i + 2], m_controlPoints[i + 3]);
                     i += 3; // 移动到下一个段的起点
-                } 
+                }
                 // 检查是否可以形成一个二次贝塞尔曲线 (起点, 控制点, 终点)
-                else if (i + 2 < m_controlPoints.size()) {
+                else if (i + 2 < m_controlPoints.size())
+                {
                     // 绘制起点到控制点的连线
-                    painter->drawLine(m_controlPoints[i], m_controlPoints[i+1]);
+                    painter->drawLine(m_controlPoints[i], m_controlPoints[i + 1]);
                     // 绘制控制点到终点的连线
-                    painter->drawLine(m_controlPoints[i+1], m_controlPoints[i+2]);
+                    painter->drawLine(m_controlPoints[i + 1], m_controlPoints[i + 2]);
                     i += 2; // 移动到下一个段的起点
                 }
                 // 否则，是直线段
-                else {
-                    painter->drawLine(m_controlPoints[i], m_controlPoints[i+1]);
+                else
+                {
+                    painter->drawLine(m_controlPoints[i], m_controlPoints[i + 1]);
                     i += 1;
                 }
             }
         }
-        
+
         // 绘制控制点（圆形，以区别于方形节点）
         QPen pointPen(Qt::SolidLine);
         pointPen.setColor(QColor(100, 100, 255, 200)); // 更不透明的蓝色
         pointPen.setWidth(1);
         pointPen.setCosmetic(true);
-        
+
         QBrush pointBrush(QColor(200, 200, 255, 180)); // 浅蓝色填充
-        
+
         painter->setPen(pointPen);
         painter->setBrush(pointBrush);
-        
+
         // 绘制所有控制点为圆形 - 使用固定大小，不受缩放影响
         const qreal pointRadius = 4.0; // 控制点半径
-        for (int i = 0; i < m_controlPoints.size(); ++i) {
+        for (int i = 0; i < m_controlPoints.size(); ++i)
+        {
             const QPointF &point = m_controlPoints[i];
-            
+
             // 如果是高亮的节点，使用高亮样式
-            if (i == m_highlightedNode) {
+            if (i == m_highlightedNode)
+            {
                 QPen highlightPen(Qt::SolidLine);
                 highlightPen.setColor(QColor(255, 100, 100, 255)); // 红色高亮
                 highlightPen.setWidth(2);
                 highlightPen.setCosmetic(true);
-                
+
                 QBrush highlightBrush(QColor(255, 200, 200, 200)); // 浅红色填充
-                
+
                 painter->setPen(highlightPen);
                 painter->setBrush(highlightBrush);
-            } else {
+            }
+            else
+            {
                 QPen pointPen(Qt::SolidLine);
                 pointPen.setColor(QColor(100, 100, 255, 200)); // 蓝色普通点
                 pointPen.setWidth(1);
                 pointPen.setCosmetic(true);
-                
+
                 QBrush pointBrush(QColor(200, 200, 255, 180)); // 浅蓝色填充
-                
+
                 painter->setPen(pointPen);
                 painter->setBrush(pointBrush);
             }
-            
+
             // 保存当前变换状态
             painter->save();
-            
+
             // 获取当前变换的缩放因子
             QTransform currentTransform = painter->transform();
-            
+
             // 计算缩放因子（使用变换矩阵的缩放部分）
             qreal scaleX = qSqrt(currentTransform.m11() * currentTransform.m11() + currentTransform.m21() * currentTransform.m21());
             qreal scaleY = qSqrt(currentTransform.m12() * currentTransform.m12() + currentTransform.m22() * currentTransform.m22());
-            
+
             // 移动到控制点位置并应用反向缩放
             painter->translate(point);
-            painter->scale(1.0/qMax(scaleX, 0.01), 1.0/qMax(scaleY, 0.01));
-            
+            painter->scale(1.0 / qMax(scaleX, 0.01), 1.0 / qMax(scaleY, 0.01));
+
             // 绘制固定大小的圆
             painter->drawEllipse(QPointF(0, 0), pointRadius, pointRadius);
-            
+
             // 恢复变换状态
             painter->restore();
         }
-        
+
         // 恢复原始画笔和画刷
         painter->setPen(oldPen);
         painter->setBrush(oldBrush);
@@ -1754,31 +1909,33 @@ QByteArray DrawingPath::serialize() const
 {
     QByteArray data = DrawingShape::serialize();
     QDataStream stream(&data, QIODevice::WriteOnly);
-    
+
     // 跳过基类已写入的数据
     stream.device()->seek(stream.device()->size());
-    
+
     // 写入路径特定属性
     stream << m_path;
-    
+
     // 手动序列化路径元素
     stream << static_cast<int>(m_pathElements.size());
-    for (const QPainterPath::Element &element : m_pathElements) {
+    for (const QPainterPath::Element &element : m_pathElements)
+    {
         stream << static_cast<int>(element.type);
         stream << element.x;
         stream << element.y;
     }
-    
+
     stream << m_markerId;
     stream << m_markerPixmap;
     stream << m_markerTransform;
     stream << m_showControlPolygon;
     stream << strokePen();
     stream << fillBrush();
-    
+
     // 序列化节点信息
     stream << static_cast<int>(m_nodeInfo.size());
-    for (const NodeInfo &node : m_nodeInfo) {
+    for (const NodeInfo &node : m_nodeInfo)
+    {
         stream << static_cast<int>(node.type);
         stream << node.position;
         stream << node.elementIndex;
@@ -1788,7 +1945,7 @@ QByteArray DrawingPath::serialize() const
         stream << node.controlOut;
         stream << node.isVisible;
     }
-    
+
     return data;
 }
 
@@ -1796,56 +1953,58 @@ void DrawingPath::deserialize(const QByteArray &data)
 {
     // 先调用基类的deserialize来处理基类数据
     DrawingShape::deserialize(data);
-    
+
     // 然后读取路径特定属性
     QDataStream stream(data);
-    
+
     // 跳过基类已读取的数据
     // 基类读取了：type, position, scale, rotation, transform, zValue, visible, enabled, fillBrush, strokePen, opacity, id
     stream.device()->seek(DrawingShape::serialize().size());
-    
+
     // 读取路径特定属性
     stream >> m_path;
-    
+
     // 手动反序列化路径元素
     int elementCount;
     stream >> elementCount;
     m_pathElements.clear();
-    for (int i = 0; i < elementCount; ++i) {
+    for (int i = 0; i < elementCount; ++i)
+    {
         int typeValue;
         qreal x, y;
         stream >> typeValue;
         stream >> x;
         stream >> y;
-        
+
         QPainterPath::Element element;
         element.type = static_cast<QPainterPath::ElementType>(typeValue);
         element.x = x;
         element.y = y;
         m_pathElements.append(element);
     }
-    
+
     // 读取控制点相关数据（控制点是动态的，不需要序列化）
     // 路径设置后会重新生成控制点
     stream >> m_markerId;
     stream >> m_markerPixmap;
     stream >> m_markerTransform;
     stream >> m_showControlPolygon;
-    
+
     // 读取画笔和画刷（在基类之后读取）
     QPen newPen;
     stream >> newPen;
     setStrokePen(newPen);
-    
+
     QBrush newBrush;
     stream >> newBrush;
     setFillBrush(newBrush);
-    
+
     // 读取节点信息
     int nodeInfoCount;
     stream >> nodeInfoCount;
     m_nodeInfo.clear();
-    for (int i = 0; i < nodeInfoCount; ++i) {
+    for (int i = 0; i < nodeInfoCount; ++i)
+    {
         NodeInfo node;
         int typeValue;
         stream >> typeValue;
@@ -1859,19 +2018,20 @@ void DrawingPath::deserialize(const QByteArray &data)
         stream >> node.isVisible;
         m_nodeInfo.append(node);
     }
-    
+
     // 路径设置后，重新生成控制点和类型信息
     m_controlPoints.clear();
     m_controlPointTypes.clear();
-    for (const QPainterPath::Element &element : m_pathElements) {
+    for (const QPainterPath::Element &element : m_pathElements)
+    {
         m_controlPoints.append(QPointF(element.x, element.y));
         m_controlPointTypes.append(element.type);
     }
-    
+
     update();
 }
 
-DrawingShape* DrawingPath::clone() const
+DrawingShape *DrawingPath::clone() const
 {
     DrawingPath *copy = new DrawingPath();
     copy->deserialize(serialize());
@@ -1880,12 +2040,7 @@ DrawingShape* DrawingPath::clone() const
 
 // DrawingText
 DrawingText::DrawingText(const QString &text, QGraphicsItem *parent)
-    : DrawingShape(Text, parent)
-    , m_text(text)
-    , m_font(QFont("Arial", 12))
-    , m_position(0, 0)
-    , m_fontSize(12.0)
-    , m_editing(false)
+    : DrawingShape(Text, parent), m_text(text), m_font(QFont("Arial", 12)), m_position(0, 0), m_fontSize(12.0), m_editing(false)
 {
     setFlag(QGraphicsItem::ItemIsSelectable, true);
     setFlag(QGraphicsItem::ItemIsMovable, true);
@@ -1894,10 +2049,11 @@ DrawingText::DrawingText(const QString &text, QGraphicsItem *parent)
 QRectF DrawingText::localBounds() const
 {
     // 安全检查：如果文本为空，返回小的默认边界框
-    if (m_text.isEmpty()) {
+    if (m_text.isEmpty())
+    {
         return QRectF(m_position.x(), m_position.y(), 1, 1);
     }
-    
+
     QFontMetricsF metrics(m_font);
     // 使用tightBoundingRect获得更准确的边界框
     QRectF textRect = metrics.tightBoundingRect(m_text);
@@ -1909,7 +2065,8 @@ QRectF DrawingText::localBounds() const
 
 void DrawingText::setText(const QString &text)
 {
-    if (m_text != text) {
+    if (m_text != text)
+    {
         prepareGeometryChange();
         m_text = text;
         update();
@@ -1918,7 +2075,8 @@ void DrawingText::setText(const QString &text)
 
 void DrawingText::setFont(const QFont &font)
 {
-    if (m_font != font) {
+    if (m_font != font)
+    {
         prepareGeometryChange();
         m_font = font;
         m_fontSize = font.pointSizeF();
@@ -1928,7 +2086,8 @@ void DrawingText::setFont(const QFont &font)
 
 void DrawingText::setPosition(const QPointF &pos)
 {
-    if (m_position != pos) {
+    if (m_position != pos)
+    {
         prepareGeometryChange();
         m_position = pos;
         update();
@@ -1946,15 +2105,15 @@ QVector<QPointF> DrawingText::getNodePoints() const
 {
     QVector<QPointF> points;
     points.reserve(2);
-    
+
     // 1. 位置控制点：文本左上角
     points.append(m_position);
-    
+
     // 2. 大小控制点：文本右下角
     QFontMetricsF metrics(m_font);
     QRectF textRect = metrics.boundingRect(m_text);
     points.append(m_position + QPointF(textRect.width(), textRect.height()));
-    
+
     return points;
 }
 
@@ -1962,51 +2121,58 @@ void DrawingText::setNodePoint(int index, const QPointF &pos)
 {
     // 将场景坐标转换为本地坐标
     QPointF localPos = mapFromScene(pos);
-    
-    switch (index) {
-        case 0: {
-            // 位置控制：移动文本位置
-            setPosition(localPos);
-            break;
+
+    switch (index)
+    {
+    case 0:
+    {
+        // 位置控制：移动文本位置
+        setPosition(localPos);
+        break;
+    }
+    case 1:
+    {
+        // 大小控制：调整字体大小
+        qreal deltaX = localPos.x() - m_position.x();
+        qreal deltaY = localPos.y() - m_position.y();
+
+        // 使用较大的变化值来调整字体大小
+        qreal delta = qMax(qAbs(deltaX), qAbs(deltaY));
+        if (delta > 5)
+        {                                                  // 最小字体大小
+            qreal newFontSize = qBound(8.0, delta, 200.0); // 8-200pt范围
+            QFont newFont = m_font;
+            newFont.setPointSizeF(newFontSize);
+            setFont(newFont);
         }
-        case 1: {
-            // 大小控制：调整字体大小
-            qreal deltaX = localPos.x() - m_position.x();
-            qreal deltaY = localPos.y() - m_position.y();
-            
-            // 使用较大的变化值来调整字体大小
-            qreal delta = qMax(qAbs(deltaX), qAbs(deltaY));
-            if (delta > 5) { // 最小字体大小
-                qreal newFontSize = qBound(8.0, delta, 200.0); // 8-200pt范围
-                QFont newFont = m_font;
-                newFont.setPointSizeF(newFontSize);
-                setFont(newFont);
-            }
-            break;
-        }
-        default:
-            return;
+        break;
+    }
+    default:
+        return;
     }
 }
 
 QPointF DrawingText::constrainNodePoint(int index, const QPointF &pos) const
 {
-    switch (index) {
-        case 0: {
-            // 位置控制：允许自由移动
-            return pos;
-        }
-        case 1: {
-            // 大小控制：限制在合理范围内
-            QPointF localPos = mapFromScene(pos);
-            qreal minX = m_position.x() + 10; // 最小宽度
-            qreal minY = m_position.y() + 10; // 最小高度
-            localPos.setX(qMax(minX, localPos.x()));
-            localPos.setY(qMax(minY, localPos.y()));
-            return mapToScene(localPos);
-        }
-        default:
-            return pos;
+    switch (index)
+    {
+    case 0:
+    {
+        // 位置控制：允许自由移动
+        return pos;
+    }
+    case 1:
+    {
+        // 大小控制：限制在合理范围内
+        QPointF localPos = mapFromScene(pos);
+        qreal minX = m_position.x() + 10; // 最小宽度
+        qreal minY = m_position.y() + 10; // 最小高度
+        localPos.setX(qMax(minX, localPos.x()));
+        localPos.setY(qMax(minY, localPos.y()));
+        return mapToScene(localPos);
+    }
+    default:
+        return pos;
     }
 }
 
@@ -2024,39 +2190,47 @@ void DrawingText::endNodeDrag(int index)
 
 void DrawingText::paintShape(QPainter *painter)
 {
-    if (!painter) {
+    if (!painter)
+    {
         return;
     }
-    
+
     // 安全检查：确保文本不为空
-    if (m_text.isEmpty()) {
+    if (m_text.isEmpty())
+    {
         return;
     }
-    
+
     painter->setFont(m_font);
-    
+
     // 文本颜色应该使用填充色而不是描边色
-    if (m_fillBrush != Qt::NoBrush) {
+    if (m_fillBrush != Qt::NoBrush)
+    {
         painter->setPen(QPen(m_fillBrush.color()));
-    } else if (m_strokePen.style() != Qt::NoPen) {
+    }
+    else if (m_strokePen.style() != Qt::NoPen)
+    {
         // 如果没有填充色，使用描边色
         painter->setPen(m_strokePen.color());
-    } else {
+    }
+    else
+    {
         // 默认使用黑色
         painter->setPen(QPen(Qt::black));
     }
     painter->setBrush(Qt::NoBrush);
-    
+
     // 使用正确的文本绘制位置
     painter->drawText(m_position, m_text);
-    
+
     // 如果正在编辑，显示编辑指示器
-    if (m_editing) {
+    if (m_editing)
+    {
         QFontMetricsF metrics(m_font);
         QRectF textRect = metrics.tightBoundingRect(m_text);
         // 调整编辑指示器位置，与边界框一致
         textRect.moveTopLeft(m_position + QPointF(0, -metrics.ascent()));
-        
+
         painter->setPen(QPen(Qt::blue, 1, Qt::DashLine));
         painter->setBrush(Qt::NoBrush);
         painter->drawRect(textRect);
@@ -2065,41 +2239,46 @@ void DrawingText::paintShape(QPainter *painter)
 
 void DrawingText::mousePressEvent(QGraphicsSceneMouseEvent *event)
 {
-    if (!event) {
+    if (!event)
+    {
         return;
     }
-    
-    if (event->button() == Qt::LeftButton) {
+
+    if (event->button() == Qt::LeftButton)
+    {
         // 安全检查：如果文本为空，调用基类方法
-        if (m_text.isEmpty()) {
+        if (m_text.isEmpty())
+        {
             QGraphicsItem::mousePressEvent(event);
             return;
         }
-        
+
         // 检查是否点击了文本区域，使用与边界框相同的计算方式
         QFontMetricsF metrics(m_font);
         QRectF textRect = metrics.tightBoundingRect(m_text);
         textRect.moveTopLeft(m_position + QPointF(0, -metrics.ascent()));
-        
-        if (textRect.contains(event->pos())) {
+
+        if (textRect.contains(event->pos()))
+        {
             event->accept();
             return;
         }
     }
-    
+
     DrawingShape::mousePressEvent(event);
 }
 
 void DrawingText::mouseDoubleClickEvent(QGraphicsSceneMouseEvent *event)
 {
-    if (event->button() == Qt::LeftButton) {
+    if (event->button() == Qt::LeftButton)
+    {
         // 双击进入编辑模式
         m_editing = !m_editing;
         update();
         event->accept();
         return;
     }
-    
+
     DrawingShape::mouseDoubleClickEvent(event);
 }
 
@@ -2107,30 +2286,34 @@ void DrawingText::mouseDoubleClickEvent(QGraphicsSceneMouseEvent *event)
 QVector<NodeInfo> DrawingText::getNodeInfo() const
 {
     QVector<NodeInfo> nodeInfos;
-    
+
     // 获取文本的控制点（位置和大小）
     QVector<QPointF> points = getNodePoints();
-    
-    for (int i = 0; i < points.size(); ++i) {
+
+    for (int i = 0; i < points.size(); ++i)
+    {
         NodeInfo node;
         node.position = points[i];
         node.elementIndex = i;
         node.isVisible = true;
         node.hasControlIn = false;
         node.hasControlOut = false;
-        
+
         // 根据索引设置节点类型
-        if (i == 0) {
+        if (i == 0)
+        {
             // 第一个点 - 位置控制
             node.type = NodeInfo::Start;
-        } else if (i == 1) {
+        }
+        else if (i == 1)
+        {
             // 第二个点 - 大小控制
             node.type = NodeInfo::SizeControl;
         }
-        
+
         nodeInfos.append(node);
     }
-    
+
     return nodeInfos;
 }
 
@@ -2139,17 +2322,17 @@ QByteArray DrawingText::serialize() const
 {
     QByteArray data = DrawingShape::serialize();
     QDataStream stream(&data, QIODevice::WriteOnly);
-    
+
     // 跳过基类已写入的数据
     stream.device()->seek(stream.device()->size());
-    
+
     // 写入文本特定属性
     stream << m_text;
     stream << m_font;
     stream << m_position;
     stream << m_fontSize;
     stream << m_editing;
-    
+
     return data;
 }
 
@@ -2157,91 +2340,98 @@ void DrawingText::deserialize(const QByteArray &data)
 {
     // 先调用基类的deserialize来处理基类数据
     DrawingShape::deserialize(data);
-    
+
     // 然后读取文本特定属性
     QDataStream stream(data);
-    
+
     // 跳过基类已读取的数据
     stream.device()->seek(DrawingShape::serialize().size());
-    
+
     // 读取文本特定属性
     stream >> m_text;
     stream >> m_font;
     stream >> m_position;
     stream >> m_fontSize;
     stream >> m_editing;
-    
+
     update();
 }
 
-DrawingShape* DrawingText::clone() const
+DrawingShape *DrawingText::clone() const
 {
     DrawingText *copy = new DrawingText();
     copy->deserialize(serialize());
     return copy;
 }
 
-DrawingPath* DrawingText::convertToPath() const
+DrawingPath *DrawingText::convertToPath() const
 {
     // 创建新的路径对象
     DrawingPath *path = new DrawingPath();
-    
+
     // 直接创建文本路径，不需要QPainter
     QPainterPath textPath;
     textPath.addText(m_position, m_font, m_text);
-    
+
     // 设置路径
     path->setPath(textPath);
-    
+
     // 复制变换和位置
     path->setTransform(transform());
     path->setPos(pos());
-    
+
     // 设置样式 - 文本应该有填充色
-    if (m_fillBrush != Qt::NoBrush) {
+    if (m_fillBrush != Qt::NoBrush)
+    {
         // 如果有填充色，使用填充色
         path->setFillBrush(m_fillBrush);
         path->setStrokePen(Qt::NoPen); // 移除描边
-    } else if (m_strokePen.style() != Qt::NoPen) {
+    }
+    else if (m_strokePen.style() != Qt::NoPen)
+    {
         // 如果没有填充色但有描边色，使用描边色作为填充
         path->setFillBrush(QBrush(m_strokePen.color()));
         path->setStrokePen(Qt::NoPen);
-    } else {
+    }
+    else
+    {
         // 默认使用黑色填充
         path->setFillBrush(QBrush(Qt::black));
         path->setStrokePen(Qt::NoPen);
     }
-    
+
     // 确保控制点正确初始化
     QVector<QPointF> controlPoints;
-    for (int i = 0; i < textPath.elementCount(); ++i) {
+    for (int i = 0; i < textPath.elementCount(); ++i)
+    {
         const QPainterPath::Element &element = textPath.elementAt(i);
-        if (element.type != QPainterPath::MoveToElement) {
+        if (element.type != QPainterPath::MoveToElement)
+        {
             controlPoints.append(QPointF(element.x, element.y));
         }
     }
     path->setControlPoints(controlPoints);
-    
+
     return path;
 }
 
 // DrawingLine implementation
 DrawingLine::DrawingLine(const QLineF &line, QGraphicsItem *parent)
-    : DrawingShape(Line, parent)
-    , m_line(line)
+    : DrawingShape(Line, parent), m_line(line)
 {
-    //setFlag(QGraphicsItem::ItemIsSelectable, true);
-    //setFlag(QGraphicsItem::ItemIsMovable, true);
+    // setFlag(QGraphicsItem::ItemIsSelectable, true);
+    // setFlag(QGraphicsItem::ItemIsMovable, true);
 }
 
 QRectF DrawingLine::localBounds() const
 {
-    return QRectF(m_line.p1(), m_line.p2()).normalized().adjusted(-m_lineWidth/2, -m_lineWidth/2, m_lineWidth/2, m_lineWidth/2);
+    return QRectF(m_line.p1(), m_line.p2()).normalized().adjusted(-m_lineWidth / 2, -m_lineWidth / 2, m_lineWidth / 2, m_lineWidth / 2);
 }
 
 void DrawingLine::setLine(const QLineF &line)
 {
-    if (m_line != line) {
+    if (m_line != line)
+    {
         prepareGeometryChange();
         m_line = line;
         update();
@@ -2255,9 +2445,12 @@ QVector<QPointF> DrawingLine::getNodePoints() const
 
 void DrawingLine::setNodePoint(int index, const QPointF &pos)
 {
-    if (index == 0) {
+    if (index == 0)
+    {
         setLine(QLineF(pos, m_line.p2()));
-    } else if (index == 1) {
+    }
+    else if (index == 1)
+    {
         setLine(QLineF(m_line.p1(), pos));
     }
 }
@@ -2292,31 +2485,35 @@ void DrawingLine::paintShape(QPainter *painter)
 QVector<NodeInfo> DrawingLine::getNodeInfo() const
 {
     QVector<NodeInfo> nodeInfos;
-    
+
     // 获取直线的两个端点
     QVector<QPointF> points = getNodePoints();
-    
-    for (int i = 0; i < points.size(); ++i) {
+
+    for (int i = 0; i < points.size(); ++i)
+    {
         NodeInfo node;
         node.position = points[i];
         node.elementIndex = i;
         node.isVisible = true;
         node.hasControlIn = false;
         node.hasControlOut = false;
-        
+
         // 直线的两个端点都设置为Corner类型
         node.type = NodeInfo::Corner;
-        
+
         // 第一个点标记为Start，最后一个点标记为End
-        if (i == 0) {
+        if (i == 0)
+        {
             node.type = NodeInfo::Start;
-        } else if (i == points.size() - 1) {
+        }
+        else if (i == points.size() - 1)
+        {
             node.type = NodeInfo::End;
         }
-        
+
         nodeInfos.append(node);
     }
-    
+
     return nodeInfos;
 }
 
@@ -2325,14 +2522,14 @@ QByteArray DrawingLine::serialize() const
 {
     QByteArray data = DrawingShape::serialize();
     QDataStream stream(&data, QIODevice::WriteOnly);
-    
+
     // 跳过基类已写入的数据
     stream.device()->seek(stream.device()->size());
-    
+
     // 写入直线特定属性
     stream << m_line;
     stream << m_lineWidth;
-    
+
     return data;
 }
 
@@ -2340,21 +2537,21 @@ void DrawingLine::deserialize(const QByteArray &data)
 {
     // 先调用基类的deserialize来处理基类数据
     DrawingShape::deserialize(data);
-    
+
     // 然后读取直线特定属性
     QDataStream stream(data);
-    
+
     // 跳过基类已读取的数据
     stream.device()->seek(DrawingShape::serialize().size());
-    
+
     // 读取直线特定属性
     stream >> m_line;
     stream >> m_lineWidth;
-    
+
     update();
 }
 
-DrawingShape* DrawingLine::clone() const
+DrawingShape *DrawingLine::clone() const
 {
     DrawingLine *copy = new DrawingLine();
     copy->deserialize(serialize());
@@ -2372,60 +2569,68 @@ DrawingPolyline::DrawingPolyline(QGraphicsItem *parent)
 
 QRectF DrawingPolyline::localBounds() const
 {
-    if (m_points.isEmpty()) {
+    if (m_points.isEmpty())
+    {
         return QRectF(0, 0, 0, 0);
     }
-    
+
     qreal minX = m_points[0].x();
     qreal minY = m_points[0].y();
     qreal maxX = m_points[0].x();
     qreal maxY = m_points[0].y();
-    
-    for (const QPointF &point : m_points) {
+
+    for (const QPointF &point : m_points)
+    {
         minX = qMin(minX, point.x());
         minY = qMin(minY, point.y());
         maxX = qMax(maxX, point.x());
         maxY = qMax(maxY, point.y());
     }
-    
+
     return QRectF(minX, minY, maxX - minX, maxY - minY);
 }
 
 QPainterPath DrawingPolyline::shape() const
 {
     QPainterPath path;
-    if (m_points.size() < 2) {
+    if (m_points.size() < 2)
+    {
         return path;
     }
-    
+
     // 创建一个稍宽的路径用于选择
     path.moveTo(m_points.first());
-    for (int i = 1; i < m_points.size(); ++i) {
+    for (int i = 1; i < m_points.size(); ++i)
+    {
         path.lineTo(m_points[i]);
     }
-    
-    if (m_closed) {
+
+    if (m_closed)
+    {
         path.closeSubpath();
     }
-    
+
     // 使用笔宽创建描边路径，以便更容易选择
     QPainterPathStroker stroker;
     stroker.setWidth(qMax(m_lineWidth + 5.0, 8.0)); // 至少8像素宽
     path = stroker.createStroke(path);
-    
+
     // 应用变换
     path = m_transform.map(path);
-    
+
     // 处理镜像变换的特殊情况
     qreal det = m_transform.determinant();
-    if (det < 0) {
+    if (det < 0)
+    {
         // 对于镜像变换，确保使用正确的填充规则
         path.setFillRule(Qt::WindingFill);
-    } else {
+    }
+    else
+    {
         // 非镜像变换时也使用WindingFill确保一致性
         path.setFillRule(Qt::WindingFill);
     }
-    
+
     return path;
 }
 
@@ -2445,7 +2650,8 @@ void DrawingPolyline::addPoint(const QPointF &point)
 
 void DrawingPolyline::insertPoint(int index, const QPointF &point)
 {
-    if (index >= 0 && index <= m_points.size()) {
+    if (index >= 0 && index <= m_points.size())
+    {
         m_points.insert(index, point);
         prepareGeometryChange();
         update();
@@ -2455,7 +2661,8 @@ void DrawingPolyline::insertPoint(int index, const QPointF &point)
 
 void DrawingPolyline::removePoint(int index)
 {
-    if (index >= 0 && index < m_points.size()) {
+    if (index >= 0 && index < m_points.size())
+    {
         m_points.removeAt(index);
         prepareGeometryChange();
         update();
@@ -2465,7 +2672,8 @@ void DrawingPolyline::removePoint(int index)
 
 void DrawingPolyline::setPoint(int index, const QPointF &point)
 {
-    if (index >= 0 && index < m_points.size()) {
+    if (index >= 0 && index < m_points.size())
+    {
         m_points[index] = point;
         prepareGeometryChange();
         update();
@@ -2475,7 +2683,8 @@ void DrawingPolyline::setPoint(int index, const QPointF &point)
 
 QPointF DrawingPolyline::point(int index) const
 {
-    if (index >= 0 && index < m_points.size()) {
+    if (index >= 0 && index < m_points.size())
+    {
         return m_points[index];
     }
     return QPointF();
@@ -2489,10 +2698,12 @@ QVector<QPointF> DrawingPolyline::getNodePoints() const
 void DrawingPolyline::setNodePoint(int index, const QPointF &pos)
 {
     // pos是场景坐标，需要转换为本地坐标
-    if (scene() && scene()->views().size() > 0) {
-        QGraphicsView* view = scene()->views().first();
-        DrawingView* drawingView = qobject_cast<DrawingView*>(view);
-        if (drawingView) {
+    if (scene() && scene()->views().size() > 0)
+    {
+        QGraphicsView *view = scene()->views().first();
+        DrawingView *drawingView = qobject_cast<DrawingView *>(view);
+        if (drawingView)
+        {
             // 将场景坐标转换为图形本地坐标
             QPointF localPos = mapFromScene(pos);
             // 应用变换的逆变换
@@ -2530,28 +2741,31 @@ void DrawingPolyline::updateFromNodePoints()
 
 void DrawingPolyline::paintShape(QPainter *painter)
 {
-    if (m_points.size() < 2) {
+    if (m_points.size() < 2)
+    {
         return;
     }
-    
+
     QPen pen = strokePen();
     pen.setWidthF(m_lineWidth);
     painter->setPen(pen);
     painter->setBrush(Qt::NoBrush);
-    
+
     // 直接绘制线段，不使用QPainterPath以避免意外的闭合
-    for (int i = 0; i < m_points.size() - 1; ++i) {
+    for (int i = 0; i < m_points.size() - 1; ++i)
+    {
         painter->drawLine(m_points[i], m_points[i + 1]);
     }
-    
+
     // 如果明确标记为闭合，则绘制闭合线
-    if (m_closed && m_points.size() > 2) {
+    if (m_closed && m_points.size() > 2)
+    {
         // qDebug() << "DrawingPolyline: Warning - polyline is marked as closed!";
         // qDebug() << "  Points count:" << m_points.size();
         // qDebug() << "  Is selected:" << isSelected();
-        // qDebug() << "  Current tool:" << (scene() && scene()->views().size() > 0 ? 
-        //     (qobject_cast<DrawingView*>(scene()->views().first()) ? 
-        //         QString::fromUtf8(qobject_cast<DrawingView*>(scene()->views().first())->currentTool()->metaObject()->className()) : 
+        // qDebug() << "  Current tool:" << (scene() && scene()->views().size() > 0 ?
+        //     (qobject_cast<DrawingView*>(scene()->views().first()) ?
+        //         QString::fromUtf8(qobject_cast<DrawingView*>(scene()->views().first())->currentTool()->metaObject()->className()) :
         //         "Unknown") : "No view");
         // 绘制闭合线
         painter->drawLine(m_points.last(), m_points.first());
@@ -2561,52 +2775,59 @@ void DrawingPolyline::paintShape(QPainter *painter)
 
 void DrawingPolyline::mousePressEvent(QGraphicsSceneMouseEvent *event)
 {
-    if (event->button() == Qt::LeftButton) {
+    if (event->button() == Qt::LeftButton)
+    {
         // 检查是否在节点编辑模式下
-        DrawingView* view = qobject_cast<DrawingView*>(scene()->views().first());
+        DrawingView *view = qobject_cast<DrawingView *>(scene()->views().first());
         bool isNodeEditMode = false;
-        if (view && view->currentTool()) {
+        if (view && view->currentTool())
+        {
             // 检查工具类型名称是否包含"node"
             QString toolName = QString::fromUtf8(view->currentTool()->metaObject()->className());
             isNodeEditMode = toolName.contains("NodeEdit", Qt::CaseInsensitive);
         }
-        
-        if (isNodeEditMode) {
+
+        if (isNodeEditMode)
+        {
             // 检查是否点击了现有的点
-            for (int i = 0; i < m_points.size(); ++i) {
-                if (QLineF(event->pos(), m_points[i]).length() < 5.0) {
+            for (int i = 0; i < m_points.size(); ++i)
+            {
+                if (QLineF(event->pos(), m_points[i]).length() < 5.0)
+                {
                     m_activePoint = i;
                     m_dragStartPos = event->pos();
                     return;
                 }
             }
-            
+
             // 节点编辑模式下，如果没有点击现有点，不添加新点
             // 只编辑现有点，不创建新点
             return;
         }
     }
-    
+
     DrawingShape::mousePressEvent(event);
 }
 
 void DrawingPolyline::mouseMoveEvent(QGraphicsSceneMouseEvent *event)
 {
-    if (m_activePoint >= 0 && (event->buttons() & Qt::LeftButton)) {
+    if (m_activePoint >= 0 && (event->buttons() & Qt::LeftButton))
+    {
         setPoint(m_activePoint, event->pos());
         return;
     }
-    
+
     DrawingShape::mouseMoveEvent(event);
 }
 
 void DrawingPolyline::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
 {
-    if (event->button() == Qt::LeftButton && m_activePoint >= 0) {
+    if (event->button() == Qt::LeftButton && m_activePoint >= 0)
+    {
         m_activePoint = -1;
         return;
     }
-    
+
     DrawingShape::mouseReleaseEvent(event);
 }
 
@@ -2614,31 +2835,35 @@ void DrawingPolyline::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
 QVector<NodeInfo> DrawingPolyline::getNodeInfo() const
 {
     QVector<NodeInfo> nodeInfos;
-    
+
     // 获取折线的所有顶点
     QVector<QPointF> points = getNodePoints();
-    
-    for (int i = 0; i < points.size(); ++i) {
+
+    for (int i = 0; i < points.size(); ++i)
+    {
         NodeInfo node;
         node.position = points[i];
         node.elementIndex = i;
         node.isVisible = true;
         node.hasControlIn = false;
         node.hasControlOut = false;
-        
+
         // 折线的顶点都是Corner类型（折线顶点）
         node.type = NodeInfo::Corner;
-        
+
         // 第一个点标记为Start，最后一个点标记为End
-        if (i == 0) {
+        if (i == 0)
+        {
             node.type = NodeInfo::Start;
-        } else if (i == points.size() - 1) {
+        }
+        else if (i == points.size() - 1)
+        {
             node.type = NodeInfo::End;
         }
-        
+
         nodeInfos.append(node);
     }
-    
+
     return nodeInfos;
 }
 
@@ -2647,15 +2872,15 @@ QByteArray DrawingPolyline::serialize() const
 {
     QByteArray data = DrawingShape::serialize();
     QDataStream stream(&data, QIODevice::WriteOnly);
-    
+
     // 跳过基类已写入的数据
     stream.device()->seek(stream.device()->size());
-    
+
     // 写入折线特定属性
     stream << m_points;
     stream << m_lineWidth;
     stream << m_closed;
-    
+
     return data;
 }
 
@@ -2663,22 +2888,22 @@ void DrawingPolyline::deserialize(const QByteArray &data)
 {
     // 先调用基类的deserialize来处理基类数据
     DrawingShape::deserialize(data);
-    
+
     // 然后读取折线特定属性
     QDataStream stream(data);
-    
+
     // 跳过基类已读取的数据
     stream.device()->seek(DrawingShape::serialize().size());
-    
+
     // 读取折线特定属性
     stream >> m_points;
     stream >> m_lineWidth;
     stream >> m_closed;
-    
+
     update();
 }
 
-DrawingShape* DrawingPolyline::clone() const
+DrawingShape *DrawingPolyline::clone() const
 {
     DrawingPolyline *copy = new DrawingPolyline();
     copy->deserialize(serialize());
@@ -2695,52 +2920,59 @@ DrawingPolygon::DrawingPolygon(QGraphicsItem *parent)
 
 QRectF DrawingPolygon::localBounds() const
 {
-    if (m_points.isEmpty()) {
+    if (m_points.isEmpty())
+    {
         return QRectF(0, 0, 0, 0);
     }
-    
+
     qreal minX = m_points[0].x();
     qreal minY = m_points[0].y();
     qreal maxX = m_points[0].x();
     qreal maxY = m_points[0].y();
-    
-    for (const QPointF &point : m_points) {
+
+    for (const QPointF &point : m_points)
+    {
         minX = qMin(minX, point.x());
         minY = qMin(minY, point.y());
         maxX = qMax(maxX, point.x());
         maxY = qMax(maxY, point.y());
     }
-    
+
     return QRectF(minX, minY, maxX - minX, maxY - minY);
 }
 
 QPainterPath DrawingPolygon::shape() const
 {
     QPainterPath path;
-    if (m_points.size() < 3) {
+    if (m_points.size() < 3)
+    {
         return path;
     }
-    
+
     // 创建多边形路径
     path.moveTo(m_points.first());
-    for (int i = 1; i < m_points.size(); ++i) {
+    for (int i = 1; i < m_points.size(); ++i)
+    {
         path.lineTo(m_points[i]);
     }
     path.closeSubpath(); // 多边形总是闭合的
-    
+
     // 应用变换
     path = m_transform.map(path);
-    
+
     // 处理镜像变换的特殊情况
     qreal det = m_transform.determinant();
-    if (det < 0) {
+    if (det < 0)
+    {
         // 对于镜像变换，确保使用正确的填充规则
         path.setFillRule(Qt::WindingFill);
-    } else {
+    }
+    else
+    {
         // 非镜像变换时也使用WindingFill确保一致性
         path.setFillRule(Qt::WindingFill);
     }
-    
+
     return path;
 }
 
@@ -2760,7 +2992,8 @@ void DrawingPolygon::addPoint(const QPointF &point)
 
 void DrawingPolygon::insertPoint(int index, const QPointF &point)
 {
-    if (index >= 0 && index <= m_points.size()) {
+    if (index >= 0 && index <= m_points.size())
+    {
         m_points.insert(index, point);
         prepareGeometryChange();
         update();
@@ -2770,7 +3003,8 @@ void DrawingPolygon::insertPoint(int index, const QPointF &point)
 
 void DrawingPolygon::removePoint(int index)
 {
-    if (index >= 0 && index < m_points.size() && m_points.size() > 3) {
+    if (index >= 0 && index < m_points.size() && m_points.size() > 3)
+    {
         m_points.removeAt(index);
         prepareGeometryChange();
         update();
@@ -2780,7 +3014,8 @@ void DrawingPolygon::removePoint(int index)
 
 void DrawingPolygon::setPoint(int index, const QPointF &point)
 {
-    if (index >= 0 && index < m_points.size()) {
+    if (index >= 0 && index < m_points.size())
+    {
         m_points[index] = point;
         prepareGeometryChange();
         update();
@@ -2790,7 +3025,8 @@ void DrawingPolygon::setPoint(int index, const QPointF &point)
 
 QPointF DrawingPolygon::point(int index) const
 {
-    if (index >= 0 && index < m_points.size()) {
+    if (index >= 0 && index < m_points.size())
+    {
         return m_points[index];
     }
     return QPointF();
@@ -2804,7 +3040,7 @@ void DrawingShape::smartUpdate()
     update();
 }
 
-void DrawingShape::smartUpdate(const QRectF& rect)
+void DrawingShape::smartUpdate(const QRectF &rect)
 {
     // 对于QGraphicsItem，我们直接调用update()
     // 但可以添加一些优化逻辑
@@ -2819,10 +3055,12 @@ QVector<QPointF> DrawingPolygon::getNodePoints() const
 void DrawingPolygon::setNodePoint(int index, const QPointF &pos)
 {
     // pos是场景坐标，需要转换为本地坐标
-    if (scene() && scene()->views().size() > 0) {
-        QGraphicsView* view = scene()->views().first();
-        DrawingView* drawingView = qobject_cast<DrawingView*>(view);
-        if (drawingView) {
+    if (scene() && scene()->views().size() > 0)
+    {
+        QGraphicsView *view = scene()->views().first();
+        DrawingView *drawingView = qobject_cast<DrawingView *>(view);
+        if (drawingView)
+        {
             // 将场景坐标转换为图形本地坐标
             QPointF localPos = mapFromScene(pos);
             // 应用变换的逆变换
@@ -2860,71 +3098,80 @@ void DrawingPolygon::updateFromNodePoints()
 
 void DrawingPolygon::paintShape(QPainter *painter)
 {
-    if (m_points.size() < 3) {
+    if (m_points.size() < 3)
+    {
         return;
     }
-    
+
     painter->setPen(strokePen());
     painter->setBrush(fillBrush());
-    
+
     QPainterPath path;
     path.moveTo(m_points.first());
-    for (int i = 1; i < m_points.size(); ++i) {
+    for (int i = 1; i < m_points.size(); ++i)
+    {
         path.lineTo(m_points[i]);
     }
     path.closeSubpath();
-    
+
     painter->drawPath(path);
 }
 
 void DrawingPolygon::mousePressEvent(QGraphicsSceneMouseEvent *event)
 {
-    if (event->button() == Qt::LeftButton) {
+    if (event->button() == Qt::LeftButton)
+    {
         // 检查是否在节点编辑模式下
-        DrawingView* view = qobject_cast<DrawingView*>(scene()->views().first());
+        DrawingView *view = qobject_cast<DrawingView *>(scene()->views().first());
         bool isNodeEditMode = false;
-        if (view && view->currentTool()) {
+        if (view && view->currentTool())
+        {
             // 检查工具类型名称是否包含"node"
             QString toolName = QString::fromUtf8(view->currentTool()->metaObject()->className());
             isNodeEditMode = toolName.contains("NodeEdit", Qt::CaseInsensitive);
         }
-        
-        if (isNodeEditMode) {
+
+        if (isNodeEditMode)
+        {
             // 检查是否点击了现有的点
-            for (int i = 0; i < m_points.size(); ++i) {
-                if (QLineF(event->pos(), m_points[i]).length() < 5.0) {
+            for (int i = 0; i < m_points.size(); ++i)
+            {
+                if (QLineF(event->pos(), m_points[i]).length() < 5.0)
+                {
                     m_activePoint = i;
                     m_dragStartPos = event->pos();
                     return;
                 }
             }
-            
+
             // 节点编辑模式下，如果没有点击现有点，不添加新点
             // 只编辑现有点，不创建新点
             return;
         }
     }
-    
+
     DrawingShape::mousePressEvent(event);
 }
 
 void DrawingPolygon::mouseMoveEvent(QGraphicsSceneMouseEvent *event)
 {
-    if (m_activePoint >= 0 && (event->buttons() & Qt::LeftButton)) {
+    if (m_activePoint >= 0 && (event->buttons() & Qt::LeftButton))
+    {
         setPoint(m_activePoint, event->pos());
         return;
     }
-    
+
     DrawingShape::mouseMoveEvent(event);
 }
 
 void DrawingPolygon::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
 {
-    if (event->button() == Qt::LeftButton && m_activePoint >= 0) {
+    if (event->button() == Qt::LeftButton && m_activePoint >= 0)
+    {
         m_activePoint = -1;
         return;
     }
-    
+
     DrawingShape::mouseReleaseEvent(event);
 }
 
@@ -2932,31 +3179,35 @@ void DrawingPolygon::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
 QVector<NodeInfo> DrawingPolygon::getNodeInfo() const
 {
     QVector<NodeInfo> nodeInfos;
-    
+
     // 获取多边形的所有顶点
     QVector<QPointF> points = getNodePoints();
-    
-    for (int i = 0; i < points.size(); ++i) {
+
+    for (int i = 0; i < points.size(); ++i)
+    {
         NodeInfo node;
         node.position = points[i];
         node.elementIndex = i;
         node.isVisible = true;
         node.hasControlIn = false;
         node.hasControlOut = false;
-        
+
         // 多边形的顶点都是Corner类型（折线顶点）
         node.type = NodeInfo::Corner;
-        
+
         // 第一个点标记为Start，最后一个点标记为End
-        if (i == 0) {
+        if (i == 0)
+        {
             node.type = NodeInfo::Start;
-        } else if (i == points.size() - 1) {
+        }
+        else if (i == points.size() - 1)
+        {
             node.type = NodeInfo::End;
         }
-        
+
         nodeInfos.append(node);
     }
-    
+
     return nodeInfos;
 }
 
@@ -2965,14 +3216,14 @@ QByteArray DrawingPolygon::serialize() const
 {
     QByteArray data = DrawingShape::serialize();
     QDataStream stream(&data, QIODevice::WriteOnly);
-    
+
     // 跳过基类已写入的数据
     stream.device()->seek(stream.device()->size());
-    
+
     // 写入多边形特定属性
     stream << m_points;
     stream << m_fillRule;
-    
+
     return data;
 }
 
@@ -2980,21 +3231,21 @@ void DrawingPolygon::deserialize(const QByteArray &data)
 {
     // 先调用基类的deserialize来处理基类数据
     DrawingShape::deserialize(data);
-    
+
     // 然后读取多边形特定属性
     QDataStream stream(data);
-    
+
     // 跳过基类已读取的数据
     stream.device()->seek(DrawingShape::serialize().size());
-    
+
     // 读取多边形特定属性
     stream >> m_points;
     stream >> m_fillRule;
-    
+
     update();
 }
 
-DrawingShape* DrawingPolygon::clone() const
+DrawingShape *DrawingPolygon::clone() const
 {
     DrawingPolygon *copy = new DrawingPolygon();
     copy->deserialize(serialize());
@@ -3027,90 +3278,90 @@ QByteArray DrawingShape::serialize() const
 {
     QByteArray data;
     QDataStream stream(&data, QIODevice::WriteOnly);
-    
+
     // 写入形状类型
     stream << static_cast<int>(m_type);
-    
+
     // 写入变换属性
     stream << pos();
     stream << scale();
     stream << rotation();
     stream << transform();
     stream << zValue();
-    
+
     // 写入视觉属性
     stream << isVisible();
     stream << isEnabled();
-    
+
     // 写入样式属性
     stream << m_fillBrush;
     stream << m_strokePen;
     stream << opacity();
-    
+
     // 写入对象ID
     stream << m_id;
-    
+
     return data;
 }
 
 void DrawingShape::deserialize(const QByteArray &data)
 {
     QDataStream stream(data);
-    
+
     // 读取形状类型（用于验证）
     int typeValue;
     stream >> typeValue;
-    
+
     // 读取变换属性
     QPointF position;
     stream >> position;
     setPos(position);
-    
+
     qreal scaleValue;
     stream >> scaleValue;
     setScale(scaleValue);
-    
+
     qreal rotationValue;
     stream >> rotationValue;
     setRotation(rotationValue);
-    
+
     QTransform transform;
     stream >> transform;
     setTransform(transform);
-    
+
     qreal zValue;
     stream >> zValue;
     setZValue(zValue);
-    
+
     // 读取视觉属性
     bool visible;
     stream >> visible;
     setVisible(visible);
-    
+
     bool enabled;
     stream >> enabled;
     setEnabled(enabled);
-    
+
     // 读取样式属性
     QBrush fillBrush;
     stream >> fillBrush;
     setFillBrush(fillBrush);
-    
+
     QPen strokePen;
     stream >> strokePen;
     setStrokePen(strokePen);
-    
+
     qreal opacity;
     stream >> opacity;
     setOpacity(opacity);
-    
+
     // 读取对象ID
     QString id;
     stream >> id;
     setId(id);
 }
 
-DrawingShape* DrawingShape::clone() const
+DrawingShape *DrawingShape::clone() const
 {
     // TODO: 实现基础克隆逻辑
     // 暂时返回nullptr，子类必须重写此方法
@@ -3129,87 +3380,99 @@ bool DrawingShape::hasFilter() const
     return graphicsEffect() != nullptr;
 }
 
-QGraphicsBlurEffect* DrawingShape::blurEffect() const
+QGraphicsBlurEffect *DrawingShape::blurEffect() const
 {
-    return qobject_cast<QGraphicsBlurEffect*>(graphicsEffect());
+    return qobject_cast<QGraphicsBlurEffect *>(graphicsEffect());
 }
 
-QGraphicsDropShadowEffect* DrawingShape::dropShadowEffect() const
+QGraphicsDropShadowEffect *DrawingShape::dropShadowEffect() const
 {
-    return qobject_cast<QGraphicsDropShadowEffect*>(graphicsEffect());
+    return qobject_cast<QGraphicsDropShadowEffect *>(graphicsEffect());
 }
 
 // NodeInfo 智能节点类型识别方法实现
 void NodeInfo::detectAndUpdateNodeType()
 {
     // 如果没有控制杆，则为尖角节点
-    if (!hasControlIn && !hasControlOut) {
+    if (!hasControlIn && !hasControlOut)
+    {
         type = Corner;
         return;
     }
-    
+
     // 计算控制杆长度
     qreal inLength = getInControlLength();
     qreal outLength = getOutControlLength();
-    
+
     // 计算控制杆角度
     qreal inAngle = getInControlAngle();
     qreal outAngle = getOutControlAngle();
-    
+
     // 计算角度差异
     qreal angleDiff = qAbs(inAngle - outAngle);
-    
+
     // 标准化角度差（考虑180度对称）
-    qreal normalizedDiff = (angleDiff > M_PI) ? (2*M_PI - angleDiff) : angleDiff;
-    
-    qDebug() << "Node type detection - inLength:" << inLength << "outLength:" << outLength 
+    qreal normalizedDiff = (angleDiff > M_PI) ? (2 * M_PI - angleDiff) : angleDiff;
+
+    qDebug() << "Node type detection - inLength:" << inLength << "outLength:" << outLength
              << "angleDiff:" << angleDiff << "normalizedDiff:" << normalizedDiff;
-    
+
     // 智能判断节点类型
-    if (normalizedDiff > 60 * M_PI/180) {
+    if (normalizedDiff > 60 * M_PI / 180)
+    {
         // 角度差异大于60度，认为是尖角节点
         type = Corner;
         qDebug() << "Detected: Corner node (angle diff > 60°)";
-    } else if (qAbs(inLength - outLength) < 2.0 && 
-               qAbs(normalizedDiff - M_PI) < 10 * M_PI/180) {
+    }
+    else if (qAbs(inLength - outLength) < 2.0 &&
+             qAbs(normalizedDiff - M_PI) < 10 * M_PI / 180)
+    {
         // 控制杆长度基本相等，且角度基本对称，认为是对称节点
         type = Symmetric;
         qDebug() << "Detected: Symmetric node (equal length, symmetric angle)";
-    } else if (normalizedDiff < 5 * M_PI/180) {
+    }
+    else if (normalizedDiff < 5 * M_PI / 180)
+    {
         // 角度差异小于5度，认为是平滑节点
         type = Smooth;
         qDebug() << "Detected: Smooth node (angle diff < 5°)";
-    } else {
+    }
+    else
+    {
         // 默认根据角度差异判断
-        type = (normalizedDiff > 20 * M_PI/180) ? Corner : Smooth;
+        type = (normalizedDiff > 20 * M_PI / 180) ? Corner : Smooth;
         qDebug() << "Detected: Default classification -" << (type == Corner ? "Corner" : "Smooth");
     }
 }
 
 qreal NodeInfo::getInControlLength() const
 {
-    if (!hasControlIn) return 0.0;
+    if (!hasControlIn)
+        return 0.0;
     QPointF diff = controlIn - position;
     return qSqrt(diff.x() * diff.x() + diff.y() * diff.y());
 }
 
 qreal NodeInfo::getOutControlLength() const
 {
-    if (!hasControlOut) return 0.0;
+    if (!hasControlOut)
+        return 0.0;
     QPointF diff = controlOut - position;
     return qSqrt(diff.x() * diff.x() + diff.y() * diff.y());
 }
 
 qreal NodeInfo::getInControlAngle() const
 {
-    if (!hasControlIn) return 0.0;
+    if (!hasControlIn)
+        return 0.0;
     QPointF diff = controlIn - position;
     return qAtan2(diff.y(), diff.x());
 }
 
 qreal NodeInfo::getOutControlAngle() const
 {
-    if (!hasControlOut) return 0.0;
+    if (!hasControlOut)
+        return 0.0;
     QPointF diff = controlOut - position;
     return qAtan2(diff.y(), diff.x());
 }
@@ -3218,26 +3481,27 @@ void NodeInfo::convertToNodeType(NodeType newType)
 {
     qDebug() << "Converting node from" << type << "to" << newType;
     type = newType;
-    
+
     // 智能调整控制杆
-    switch (newType) {
+    switch (newType)
+    {
     case Corner:
         // 尖角节点：保持当前控制杆独立状态
         qDebug() << "Converted to Corner node - control arms remain independent";
         break;
-        
+
     case Smooth:
         // 平滑节点：保持长度，调整角度使其在同一直线上
         alignControlArms(false);
         qDebug() << "Converted to Smooth node - control arms aligned";
         break;
-        
+
     case Symmetric:
         // 对称节点：统一长度和角度
         alignControlArms(true);
         qDebug() << "Converted to Symmetric node - control arms symmetric";
         break;
-        
+
     default:
         // 其他类型暂不处理
         break;
@@ -3246,54 +3510,65 @@ void NodeInfo::convertToNodeType(NodeType newType)
 
 void NodeInfo::alignControlArms(bool symmetric)
 {
-    if (!hasControlIn && !hasControlOut) return;
-    
-    if (hasControlIn && hasControlOut) {
+    if (!hasControlIn && !hasControlOut)
+        return;
+
+    if (hasControlIn && hasControlOut)
+    {
         // 两个控制杆都存在
         qreal inAngle = getInControlAngle();
         qreal outAngle = getOutControlAngle();
         qreal inLength = getInControlLength();
         qreal outLength = getOutControlLength();
-        
-        if (symmetric) {
+
+        if (symmetric)
+        {
             // 对称模式：使用平均长度，角度相反
             qreal avgLength = (inLength + outLength) / 2.0;
             qreal targetAngle = (inAngle + outAngle) / 2.0;
-            
+
             controlIn = position + QPointF(avgLength * qCos(targetAngle + M_PI),
-                                          avgLength * qSin(targetAngle + M_PI));
+                                           avgLength * qSin(targetAngle + M_PI));
             controlOut = position + QPointF(avgLength * qCos(targetAngle),
-                                           avgLength * qSin(targetAngle));
+                                            avgLength * qSin(targetAngle));
             qDebug() << "Aligned to symmetric - avgLength:" << avgLength << "targetAngle:" << targetAngle;
-        } else {
+        }
+        else
+        {
             // 平滑模式：保持各自长度，调整到同一直线
             qreal targetAngle = (inAngle + outAngle) / 2.0;
-            
+
             controlIn = position + QPointF(inLength * qCos(targetAngle + M_PI),
-                                          inLength * qSin(targetAngle + M_PI));
+                                           inLength * qSin(targetAngle + M_PI));
             controlOut = position + QPointF(outLength * qCos(targetAngle),
-                                           outLength * qSin(targetAngle));
+                                            outLength * qSin(targetAngle));
             qDebug() << "Aligned to smooth - targetAngle:" << targetAngle;
         }
-    } else if (hasControlIn) {
+    }
+    else if (hasControlIn)
+    {
         // 只有进入控制杆
-        if (symmetric) {
+        if (symmetric)
+        {
             // 创建对称的离开控制杆
             qreal inLength = getInControlLength();
             qreal inAngle = getInControlAngle();
             controlOut = position + QPointF(inLength * qCos(inAngle + M_PI),
-                                           inLength * qSin(inAngle + M_PI));
+                                            inLength * qSin(inAngle + M_PI));
             hasControlOut = true;
             qDebug() << "Created symmetric out control arm";
         }
-    } else if (hasControlOut) {
+    }
+    else if (hasControlOut)
+    {
         // 只有离开控制杆
-        if (symmetric) {
+        if (symmetric)
+        {
             // 创建对称的进入控制杆
             qreal outLength = getOutControlLength();
             qreal outAngle = getOutControlAngle();
             controlIn = position + QPointF(outLength * qCos(outAngle + M_PI),
-                                          outLength * qSin(outAngle + M_PI));
+                                           outLength * qSin(outAngle + M_PI));
             hasControlIn = true;
             qDebug() << "Created symmetric in control arm";
         }
@@ -3303,43 +3578,53 @@ void NodeInfo::alignControlArms(bool symmetric)
 void NodeInfo::handleSingleArmDrag(bool isInArm, const QPointF &newControlPos)
 {
     qDebug() << "Handling single arm drag - isInArm:" << isInArm << "newPos:" << newControlPos;
-    
-    switch (type) {
+
+    switch (type)
+    {
     case Corner:
         // 尖角节点：只有拖拽的控制杆移动
-        if (isInArm) {
+        if (isInArm)
+        {
             controlIn = newControlPos;
             qDebug() << "Corner node: moved in control arm";
-        } else {
+        }
+        else
+        {
             controlOut = newControlPos;
             qDebug() << "Corner node: moved out control arm";
         }
         break;
-        
+
     case Smooth:
         // 平滑节点：移动拖拽的杆，另一个杆保持同线但不同长度
-        if (isInArm) {
+        if (isInArm)
+        {
             controlIn = newControlPos;
             // 调整out控制杆到同一直线
             alignControlArms(false);
             qDebug() << "Smooth node: moved in arm, aligned out arm";
-        } else {
+        }
+        else
+        {
             controlOut = newControlPos;
             // 调整in控制杆到同一直线
             alignControlArms(false);
             qDebug() << "Smooth node: moved out arm, aligned in arm";
         }
         break;
-        
+
     case Symmetric:
         // 对称节点：另一个控制杆同步移动但方向相反
-        if (isInArm) {
+        if (isInArm)
+        {
             controlIn = newControlPos;
             // 计算对称位置
             QPointF diff = newControlPos - position;
             controlOut = position - diff;
             qDebug() << "Symmetric node: moved in arm, mirrored out arm";
-        } else {
+        }
+        else
+        {
             controlOut = newControlPos;
             // 计算对称位置
             QPointF diff = newControlPos - position;
@@ -3347,12 +3632,15 @@ void NodeInfo::handleSingleArmDrag(bool isInArm, const QPointF &newControlPos)
             qDebug() << "Symmetric node: moved out arm, mirrored in arm";
         }
         break;
-        
+
     default:
         // 其他类型：简单移动
-        if (isInArm) {
+        if (isInArm)
+        {
             controlIn = newControlPos;
-        } else {
+        }
+        else
+        {
             controlOut = newControlPos;
         }
         break;
@@ -3370,6 +3658,3 @@ void NodeInfo::debugPrint() const
     qDebug() << "InAngle:" << getInControlAngle() << "OutAngle:" << getOutControlAngle();
     qDebug() << "===================";
 }
-
-
-

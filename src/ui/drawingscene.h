@@ -9,7 +9,6 @@ class DrawingShape;
 class DrawingGroup;
 class QGraphicsSceneMouseEvent;
 class CommandManager;
-// class SelectionLayer; // 已移除 - 老的选择层系统
 class TransformCommand;
 class GroupCommand;
 class UngroupCommand;

@@ -6,7 +6,7 @@
 #include <QGraphicsScene>
 #include <QTranslator>
 #include <QLibraryInfo>
-#include "../ui/mainwindow.h"
+#include "mainwindow.h"
 #include "../core/memory-manager.h"
 
 int main(int argc, char *argv[])

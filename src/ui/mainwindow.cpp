@@ -254,6 +254,13 @@ MainWindow::~MainWindow()
         delete m_pathOperationsManager;
         m_pathOperationsManager = nullptr;
     }
+    
+    // 在销毁Scene之前先销毁Document
+    if (m_document) {
+        delete m_document;
+        m_document = nullptr;
+    }
+    
     // 清理场景
     if (m_scene) {
         delete m_scene;

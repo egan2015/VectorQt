@@ -1286,7 +1286,9 @@ void SvgHandler::parseTransformAttribute(DrawingShape *shape, const QString &tra
 {
     // 直接使用 parseTransform 方法，确保变换顺序一致
     QTransform transform = parseTransform(transformStr);
-    shape->setTransform(transform);
+    
+    // 所有 DrawingShape 都应该使用 applyTransform，因为我们有自己的变换系统
+    shape->applyTransform(transform);
 }
 
 QColor SvgHandler::parseColor(const QString &colorStr)

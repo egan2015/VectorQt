@@ -7,11 +7,11 @@
 ### 1. 代码质量问题
 
 #### 重复代码
-- **位置**: `/Users/firebolt/workspaces/VectorFlow/src/core/drawing-shape.cpp` (3376行)
+- **位置**: `src/core/drawing-shape.cpp` (3376行)
 - **问题**: 文件过长，包含多个类的实现（DrawingShape、DrawingRectangle、DrawingEllipse、DrawingPath等）
 - **修复建议**: 拆分为多个独立文件，每个类一个文件
 
-- **位置**: `/Users/firebolt/workspaces/VectorFlow/src/ui/mainwindow.cpp`
+- **位置**: `src/ui/mainwindow.cpp`
 - **问题**: include语句重复（第45行和第53行都include了drawing-tool-fill.h）
 - **修复建议**: 清理重复的include语句
 
@@ -25,14 +25,14 @@
 - **修复建议**: 定义常量或配置文件
 
 #### 过长函数
-- **位置**: `/Users/firebolt/workspaces/VectorFlow/src/core/drawing-shape.cpp`
+- **位置**: `src/core/drawing-shape.cpp`
 - **问题**: 多个函数超过100行，如paint()、setNodePoint()等
 - **修复建议**: 拆分为更小的专用函数
 
 ### 2. 架构问题
 
 #### 紧耦合模块
-- **位置**: `/Users/firebolt/workspaces/VectorFlow/src/tools/drawing-tool-node-edit.cpp`
+- **位置**: `src/tools/drawing-tool-node-edit.cpp`
 - **问题**: 直接依赖多个UI和核心模块，违反单一职责原则
 - **修复建议**: 引入接口层，减少直接依赖
 
@@ -44,12 +44,12 @@
 ### 3. 性能问题
 
 #### 潜在内存泄漏
-- **位置**: `/Users/firebolt/workspaces/VectorFlow/src/core/memory-manager.cpp`
+- **位置**: `src/core/memory-manager.cpp`
 - **问题**: 内存管理器实际上被禁用，使用系统默认分配器
 - **修复建议**: 重新实现或完全移除内存管理器
 
 #### 不必要的对象拷贝
-- **位置**: `/Users/firebolt/workspaces/VectorFlow/src/core/drawing-shape.cpp`
+- **位置**: `src/core/drawing-shape.cpp`
 - **问题**: 频繁的QPointF、QTransform对象拷贝
 - **修复建议**: 使用const引用和移动语义
 
@@ -66,19 +66,19 @@
 - **修复建议**: 统一代码风格规范
 
 #### 未使用的代码
-- **位置**: `/Users/firebolt/workspaces/VectorFlow/src/core/drawing-shape.cpp` (第106行)
+- **位置**: `src/core/drawing-shape.cpp` (第106行)
 - **问题**: `// TODO: 实现Document的setModified方法`
 - **修复建议**: 实现或移除未完成的功能
 
 ### 2. 安全问题
 
 #### 未验证的输入
-- **位置**: `/Users/firebolt/workspaces/VectorFlow/src/core/svghandler.cpp`
+- **位置**: `src/core/svghandler.cpp`
 - **问题**: SVG解析时缺少输入验证，可能导致恶意SVG文件攻击
 - **修复建议**: 添加输入验证和大小限制
 
 #### 资源管理问题
-- **位置**: `/Users/firebolt/workspaces/VectorFlow/src/ui/command-manager.cpp`
+- **位置**: `src/ui/command-manager.cpp`
 - **问题**: QUndoCommand对象的生命周期管理不够安全
 - **修复建议**: 使用智能指针管理命令对象
 

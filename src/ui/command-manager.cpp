@@ -1021,3 +1021,30 @@ void TextToPathCommand::undo()
     m_pathShapes.clear();
     emit m_commandManager->statusMessageChanged(QString("已恢复 %1 个文本对象").arg(m_textShapes.count()));
 }
+
+// TextEditCommand 实现
+TextEditCommand::TextEditCommand(CommandManager *manager, DrawingText *textShape, 
+                                const QString &oldText, const QString &newText,
+                                QUndoCommand *parent)
+    : BaseCommand(manager, "编辑文本", parent)
+    , m_textShape(textShape)
+    , m_oldText(oldText)
+    , m_newText(newText)
+{
+}
+
+void TextEditCommand::undo()
+{
+    if (m_textShape) {
+        m_textShape->setText(m_oldText);
+        emit m_commandManager->statusMessageChanged("已撤销文本编辑");
+    }
+}
+
+void TextEditCommand::redo()
+{
+    if (m_textShape) {
+        m_textShape->setText(m_newText);
+        emit m_commandManager->statusMessageChanged("已编辑文本");
+    }
+}

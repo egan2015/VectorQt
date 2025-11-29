@@ -30,6 +30,7 @@ public:
         FillCursor,          // 填充工具光标
         NodeEditCursor,      // 节点编辑光标
         PathEditCursor,      // 路径编辑光标
+        TextCursor,          // 文本工具光标
         DefaultCursor        // 默认光标
     };
     

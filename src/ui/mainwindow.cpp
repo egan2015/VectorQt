@@ -55,6 +55,7 @@
 #include "../tools/drawing-tool-polygon.h"
 #include "../tools/drawing-tool-gradient-fill.h"
 #include "../tools/drawing-tool-line.h"
+#include "../tools/drawing-tool-text.h"
 #include "../tools/drawing-tool-outline-preview.h"
 #include "../core/patheditor.h"
 #include "../core/svghandler.h"
@@ -438,6 +439,7 @@ void MainWindow::setupUI()
         m_toolManager->createAndRegisterTool<DrawingToolPen>(ToolType::Pen, this);
         m_toolManager->createAndRegisterTool<DrawingToolEraser>(ToolType::Eraser, this);
         m_toolManager->createAndRegisterTool<DrawingToolLine>(ToolType::Line, this);
+        m_toolManager->createAndRegisterTool<DrawingToolText>(ToolType::Text, this);
         
         // 连接状态栏更新信号（针对选择工具）
         auto selectTool = m_toolManager->getToolAs<OutlinePreviewTransformTool>(ToolType::Select);
@@ -587,7 +589,7 @@ void MainWindow::setupUI()
         m_shortcutManager->registerShortcut(ToolType::Pen, QKeySequence("P"), m_penToolAction);
         m_shortcutManager->registerShortcut(ToolType::Eraser, QKeySequence("Shift+E"), m_eraserToolAction);
         m_shortcutManager->registerShortcut(ToolType::Line, QKeySequence("L"), m_lineToolAction);
-        
+        m_shortcutManager->registerShortcut(ToolType::Text, QKeySequence("T"), m_textToolAction);
         
         // 注册临时快捷键（按住临时切换，松开恢复）
         // 使用不和永久快捷键冲突的按键
@@ -1865,9 +1867,10 @@ void MainWindow::lineTool()
 
 void MainWindow::textTool()
 {
-    // 暂时使用选择工具作为文本工具的基础
-    selectTool();
-    m_statusLabel->setText("文本工具已激活 - 选择文本对象后右键选择'文本转路径'");
+    if (m_toolManager) {
+        m_toolManager->switchTool(ToolType::Text);
+        m_statusLabel->setText("文本工具已激活");
+    }
 }
 
 // updateZoomLabel implementation is below

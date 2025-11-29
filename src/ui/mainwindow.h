@@ -23,6 +23,7 @@ class DrawingScene;
 class DrawingShape;
 class DrawingView;
 class DrawingCanvas;
+class DrawingDocument;
 class ToolBase;
 class OutlinePreviewTransformTool;
 class PropertyPanel;
@@ -68,7 +69,7 @@ private slots:
     void newFile();
     void openFile();
     void saveFile();
-    void saveFileAs();
+    bool saveFileAs();
     void exportFile();
     
     
@@ -267,6 +268,9 @@ private:
     
     // Scrollable toolbar
     ScrollableToolBar *m_scrollableToolBar;
+    
+    // Document management
+    DrawingDocument *m_document;
     
     // Tool management system
     ToolStateManager *m_toolStateManager;

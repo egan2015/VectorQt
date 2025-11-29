@@ -41,6 +41,7 @@
 #include "../tools/drawing-tool-brush.h"
 #include "../tools/drawing-tool-pen.h"
 #include "../core/drawing-canvas.h"
+#include "../core/drawing-document.h"
 #include "../core/toolbase.h"
 
 #include "../tools/drawing-tool-eraser.h"
@@ -68,7 +69,7 @@ MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent), m_scene(nullptr), m_canvas(nullptr), m_propertyPanel(nullptr), m_tabbedPropertyPanel(nullptr), m_undoView(nullptr), m_layerManager(nullptr), m_currentTool(nullptr),
       m_colorPalette(nullptr), m_scrollableToolBar(nullptr),
       m_horizontalRuler(nullptr), m_verticalRuler(nullptr), m_cornerWidget(nullptr),
-      m_uiUpdateTimer(nullptr), m_lastSelectedCount(0), m_toolStateManager(nullptr), m_toolManager(nullptr), m_shortcutManager(nullptr), m_effectManager(nullptr),
+      m_uiUpdateTimer(nullptr), m_lastSelectedCount(0), m_toolStateManager(nullptr), m_toolManager(nullptr), m_shortcutManager(nullptr), m_effectManager(nullptr), m_document(nullptr),
       m_isUntitled(true)
 {
     // 初始化工具管理系统
@@ -79,9 +80,9 @@ MainWindow::MainWindow(QWidget *parent)
     // 初始化快捷键管理器
     m_shortcutManager = new ShortcutManager(this);
     m_shortcutManager->setToolManager(m_toolManager);
-    // 场景将在newFile()后设置
     
-    
+    // 初始化文档管理器
+    m_document = new DrawingDocument(this);
     
     // 初始化效果管理器
     m_effectManager = new EffectManager(this);
@@ -268,6 +269,11 @@ void MainWindow::setupUI()
     m_scene->setSceneRect(0, 0, 1000, 800);
     m_scene->setGridVisible(true); // 确保网格初始可见
     m_scene->setGridAlignmentEnabled(true); // 默认启用网格对齐
+    
+    // 设置Document的Scene
+    if (m_document) {
+        m_document->setScene(m_scene);
+    }
     
     // 设置网格图标的初始状态（确保与场景状态同步）
     if (m_toggleGridAction) {
@@ -512,6 +518,20 @@ void MainWindow::setupUI()
     if (m_commandManager) {
         // CommandManager的信号已在构造函数中连接
     }
+    
+    // Connect Document signals
+    if (m_document) {
+        connect(m_document, &DrawingDocument::modificationChanged,
+                this, [this](bool modified) {
+                    m_isUntitled = m_document->isUntitled();
+                    updateWindowTitle();
+                });
+        connect(m_document, &DrawingDocument::filePathChanged,
+                this, [this](const QString &filePath) {
+                    m_currentFilePath = filePath;
+                    updateWindowTitle();
+                });
+    }
 
     DrawingView *drawingView = qobject_cast<DrawingView *>(m_canvas->view());
     if (drawingView)
@@ -609,6 +629,11 @@ void MainWindow::setupUI()
     }
     
     // 工具初始化移到了 QEvent::Polish 事件中，确保所有组件都准备好
+    
+    // 创建初始文档
+    if (m_document) {
+        m_document->createDocument();
+    }
     
     // 初始化UI更新定时器
 }
@@ -1695,13 +1720,14 @@ void MainWindow::newFile()
     if (!m_canvas) return;
     
     if (maybeSave()) {
-        if (DrawingScene* drawingScene = qobject_cast<DrawingScene*>(m_canvas->scene())) {
-            drawingScene->clearScene();
+        // 使用Document创建新文档
+        if (m_document) {
+            m_document->createDocument();
+            m_currentFilePath.clear();
+            m_isUntitled = true;
+            updateWindowTitle();
+            emit onStatusMessageChanged("新文档已创建");
         }
-        m_currentFilePath.clear();
-        m_isUntitled = true;
-        updateWindowTitle();
-        emit onStatusMessageChanged("新文档已创建");
     }
 }
 
@@ -1724,24 +1750,31 @@ void MainWindow::saveFile()
 {
     if (!m_canvas) return;
     
-    if (m_isUntitled) {
-        saveFileAs();
-    } else {
-        saveFile(m_currentFilePath);
+    // 使用Document保存
+    if (m_document) {
+        if (m_document->isUntitled() || m_document->filePath().isEmpty()) {
+            saveFileAs();
+        } else {
+            m_document->save();
+        }
     }
 }
 
-void MainWindow::saveFileAs()
+bool MainWindow::saveFileAs()
 {
-    if (!m_canvas) return;
+    if (!m_canvas) return false;
     
     QString fileName = QFileDialog::getSaveFileName(this,
         tr("保存文件"), m_currentFilePath,
         tr("SVG 文件 (*.svg);;所有文件 (*.*)"));
     
     if (!fileName.isEmpty()) {
-        saveFile(fileName);
+        // 使用Document保存
+        if (m_document) {
+            return m_document->saveAs(fileName);
+        }
     }
+    return false;
 }
 
 void MainWindow::exportFile()
@@ -2211,7 +2244,10 @@ void MainWindow::onObjectStateChanged(DrawingShape* shape)
 
 void MainWindow::onSceneChanged()
 {
-    // 现在由DrawingCanvas内部管理修改状态
+    // 同步Scene的修改状态到Document
+    if (m_scene && m_document) {
+        m_document->setModified(m_scene->isModified());
+    }
     updateUI(); // 更新窗口标题显示修改状态
 }
 
@@ -2622,14 +2658,18 @@ void MainWindow::togglePerformancePanel()
 // 文件操作辅助方法实现（从FileManager合并而来）
 bool MainWindow::maybeSave()
 {
-    DrawingScene* drawingScene = m_canvas ? qobject_cast<DrawingScene*>(m_canvas->scene()) : nullptr;
-    if (drawingScene && drawingScene->isModified()) {
+    // 使用Document的修改状态
+    if (m_document && m_document->isModified()) {
         QMessageBox::StandardButton reply = QMessageBox::question(this, "VectorQt",
                                                                   "文档已修改，是否保存？",
                                                                   QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
         
         if (reply == QMessageBox::Save) {
-            return saveFile(m_isUntitled ? QString() : m_currentFilePath);
+            if (m_document->isUntitled() || m_document->filePath().isEmpty()) {
+                return saveFileAs();
+            } else {
+                return m_document->save();
+            }
         } else if (reply == QMessageBox::Cancel) {
             return false;
         }
@@ -2641,14 +2681,14 @@ void MainWindow::loadFile(const QString &filePath)
 {
     if (!m_canvas) return;
     
-    DrawingScene* drawingScene = qobject_cast<DrawingScene*>(m_canvas->scene());
-    if (!drawingScene) return;
-    
-    if (SvgHandler::importFromSvg(drawingScene, filePath)) {
-        setCurrentFile(filePath);
-        emit onStatusMessageChanged(tr("文件已加载: %1").arg(filePath));
-    } else {
-        QMessageBox::warning(this, "VectorQt", tr("无法加载文件 %1").arg(filePath));
+    // 使用Document加载文件
+    if (m_document) {
+        if (m_document->load(filePath)) {
+            setCurrentFile(filePath);
+            emit onStatusMessageChanged(tr("文件已加载: %1").arg(filePath));
+        } else {
+            QMessageBox::warning(this, "VectorQt", tr("无法加载文件 %1").arg(filePath));
+        }
     }
 }
 
@@ -2656,18 +2696,18 @@ bool MainWindow::saveFile(const QString &filePath)
 {
     if (!m_canvas) return false;
     
-    DrawingScene* drawingScene = qobject_cast<DrawingScene*>(m_canvas->scene());
-    if (!drawingScene) return false;
-    
-    if (SvgHandler::exportToSvg(drawingScene, filePath)) {
-        setCurrentFile(filePath);
-        drawingScene->setModified(false);
-        emit onStatusMessageChanged(tr("文件已保存: %1").arg(filePath));
-        return true;
-    } else {
-        QMessageBox::warning(this, "VectorQt", tr("无法保存文件 %1").arg(filePath));
-        return false;
+    // 使用Document保存文件
+    if (m_document) {
+        if (m_document->saveAs(filePath)) {
+            setCurrentFile(filePath);
+            emit onStatusMessageChanged(tr("文件已保存: %1").arg(filePath));
+            return true;
+        } else {
+            QMessageBox::warning(this, "VectorQt", tr("无法保存文件 %1").arg(filePath));
+            return false;
+        }
     }
+    return false;
 }
 
 bool MainWindow::exportFile(const QString &filePath)

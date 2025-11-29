@@ -319,7 +319,8 @@ DrawingGroup *SvgHandler::parseGroupElement(DrawingScene *scene, const QDomEleme
                 DrawingGroup *nestedGroup = parseGroupElement(scene, element);
                 if (nestedGroup && group)
                 {
-                    // 将嵌套组添加到父组中
+                    // 直接将嵌套组添加到父组中
+                    // 嵌套组的变换会在 parseGroupElement 中处理
                     group->addItem(nestedGroup);
                 }
             }
@@ -348,8 +349,8 @@ DrawingGroup *SvgHandler::parseGroupElement(DrawingScene *scene, const QDomEleme
                         }
                         else if (group)
                         {
-                            // 直接添加到组合对象，不先添加到scene
-                            // 这样可以避免坐标转换问题
+                            // 暂时不考虑变换，只确保子元素在组里的相对位置正确
+                            // 直接添加到组合对象
                             group->addItem(shape);
                             // qDebug() << "添加形状到组合对象，元素:" << tagName;
                         }
@@ -388,7 +389,13 @@ DrawingGroup *SvgHandler::parseGroupElement(DrawingScene *scene, const QDomEleme
         }
     }
 
-    // 应用变换到组合
+    // 先将组合添加到场景
+    if (group)
+    {
+        scene->addItem(group);
+    }
+
+    // 然后应用变换到组合（确保组已经在场景中）
     if (group && groupElement.hasAttribute("transform"))
     {
         QString transform = groupElement.attribute("transform");
@@ -396,12 +403,6 @@ DrawingGroup *SvgHandler::parseGroupElement(DrawingScene *scene, const QDomEleme
         {
             parseTransformAttribute(group, transform);
         }
-    }
-
-    // 最后将组合添加到场景
-    if (group)
-    {
-        scene->addItem(group);
     }
 
     return group;
@@ -839,9 +840,7 @@ DrawingRectangle *SvgHandler::parseRectElement(const QDomElement &element)
     QString transform = element.attribute("transform");
     if (!transform.isEmpty())
     {
-        qDebug() << "矩形变换:" << transform;
         parseTransformAttribute(rect, transform);
-        qDebug() << "矩形变换后matrix:" << rect->transform();
     }
 
     return rect;
@@ -859,7 +858,8 @@ DrawingEllipse *SvgHandler::parseEllipseElement(const QDomElement &element)
         return nullptr;
     }
 
-    QRectF rect(0, 0, 2 * rx, 2 * ry);
+    // 创建椭圆边界框，以原点为中心
+    QRectF rect(-rx, -ry, 2 * rx, 2 * ry);
     DrawingEllipse *ellipse = new DrawingEllipse(rect);
 
     // 设置位置（椭圆的位置是中心点）
@@ -1198,27 +1198,37 @@ void SvgHandler::parseStyleAttributes(DrawingGroup *group, const QDomElement &el
     }
 }
 
-void SvgHandler::parseTransformAttribute(DrawingShape *shape, const QString &transformStr)
+QTransform SvgHandler::parseTransform(const QString &transformStr)
 {
     // 解析SVG变换字符串，如 "translate(10,20) rotate(45) scale(2,1)"
+    // 注意：SVG变换是按顺序应用的，但Qt的矩阵乘法是后乘的
+    // 所以我们需要反向构建变换矩阵
     QRegularExpression regex("(\\S+)\\s*\\(\\s*([^)]+)\\s*\\)");
     QRegularExpressionMatchIterator iter = regex.globalMatch(transformStr);
 
-    QTransform currentTransform = shape->transform();
-
+    // 先收集所有变换
+    QList<QPair<QString, QStringList>> transforms;
     while (iter.hasNext())
     {
         QRegularExpressionMatch match = iter.next();
         QString func = match.captured(1);
         QString paramsStr = match.captured(2);
-
         QStringList params = paramsStr.split(QRegularExpression("\\s*,\\s*|\\s+"), Qt::SkipEmptyParts);
+        transforms.append(qMakePair(func, params));
+    }
 
-        if (func == "translate" && params.size() >= 2)
+    // 反向应用变换以匹配SVG的变换顺序
+    QTransform transform;
+    for (int i = transforms.size() - 1; i >= 0; --i)
+    {
+        QString func = transforms[i].first;
+        QStringList params = transforms[i].second;
+
+        if (func == "translate" && params.size() >= 1)
         {
             qreal tx = params[0].toDouble();
             qreal ty = params.size() > 1 ? params[1].toDouble() : 0.0;
-            currentTransform.translate(tx, ty);
+            transform.translate(tx, ty);
         }
         else if (func == "rotate" && params.size() >= 1)
         {
@@ -1229,34 +1239,54 @@ void SvgHandler::parseTransformAttribute(DrawingShape *shape, const QString &tra
                 cx = params[1].toDouble();
                 cy = params[2].toDouble();
             }
-            currentTransform.translate(cx, cy);
-            currentTransform.rotate(angle);
-            currentTransform.translate(-cx, -cy);
+            
+            if (cx != 0 || cy != 0)
+            {
+                transform.translate(cx, cy);
+                transform.rotate(angle);
+                transform.translate(-cx, -cy);
+            }
+            else
+            {
+                transform.rotate(angle);
+            }
         }
         else if (func == "scale" && params.size() >= 1)
         {
             qreal sx = params[0].toDouble();
             qreal sy = params.size() > 1 ? params[1].toDouble() : sx;
-            // 缩放通常以原点为中心，除非特别指定
-            currentTransform.scale(sx, sy);
+            transform.scale(sx, sy);
+        }
+        else if (func == "skewX" && params.size() >= 1)
+        {
+            qreal angle = params[0].toDouble();
+            transform.shear(qTan(qDegreesToRadians(angle)), 0);
+        }
+        else if (func == "skewY" && params.size() >= 1)
+        {
+            qreal angle = params[0].toDouble();
+            transform.shear(0, qTan(qDegreesToRadians(angle)));
         }
         else if (func == "matrix" && params.size() >= 6)
         {
-            // 解析6参数仿射变换矩阵
             qreal a = params[0].toDouble();
             qreal b = params[1].toDouble();
             qreal c = params[2].toDouble();
             qreal d = params[3].toDouble();
             qreal e = params[4].toDouble();
             qreal f = params[5].toDouble();
-
-            QTransform qtTransform(a, b, c, d, e, f);
-            currentTransform = qtTransform;
+            transform = QTransform(a, b, c, d, e, f) * transform;
         }
     }
 
-    // 应用组合变换到形状
-    shape->applyTransform(currentTransform);
+    return transform;
+}
+
+void SvgHandler::parseTransformAttribute(DrawingShape *shape, const QString &transformStr)
+{
+    // 直接使用 parseTransform 方法，确保变换顺序一致
+    QTransform transform = parseTransform(transformStr);
+    shape->setTransform(transform);
 }
 
 QColor SvgHandler::parseColor(const QString &colorStr)

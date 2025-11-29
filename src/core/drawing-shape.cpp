@@ -2051,14 +2051,14 @@ QRectF DrawingText::localBounds() const
     // 安全检查：如果文本为空，返回小的默认边界框
     if (m_text.isEmpty())
     {
-        return QRectF(m_position.x(), m_position.y(), 1, 1);
+        return QRectF(0, 0, 1, 1);
     }
 
     QFontMetricsF metrics(m_font);
     // 使用tightBoundingRect获得更准确的边界框
     QRectF textRect = metrics.tightBoundingRect(m_text);
-    // 调整位置，考虑基线偏移
-    textRect.moveTopLeft(m_position + QPointF(0, -metrics.ascent()));
+    // 调整位置，考虑基线偏移（在本地坐标系中）
+    textRect.moveTopLeft(QPointF(0, -metrics.ascent()));
     // 增加更多边距，避免控制手柄遮挡文字，底部增加更多边距
     return textRect.adjusted(-8, -8, 8, 12); // 底部边距增加到12像素
 }
@@ -2106,13 +2106,13 @@ QVector<QPointF> DrawingText::getNodePoints() const
     QVector<QPointF> points;
     points.reserve(2);
 
-    // 1. 位置控制点：文本左上角
-    points.append(m_position);
+    // 1. 位置控制点：文本左上角（在本地坐标系中）
+    points.append(QPointF(0, 0));
 
     // 2. 大小控制点：文本右下角
     QFontMetricsF metrics(m_font);
     QRectF textRect = metrics.boundingRect(m_text);
-    points.append(m_position + QPointF(textRect.width(), textRect.height()));
+    points.append(QPointF(textRect.width(), textRect.height()));
 
     return points;
 }
@@ -2126,15 +2126,15 @@ void DrawingText::setNodePoint(int index, const QPointF &pos)
     {
     case 0:
     {
-        // 位置控制：移动文本位置
-        setPosition(localPos);
+        // 位置控制：移动文本位置（使用setPos而不是setPosition）
+        setPos(pos); // pos已经是场景坐标
         break;
     }
     case 1:
     {
         // 大小控制：调整字体大小
-        qreal deltaX = localPos.x() - m_position.x();
-        qreal deltaY = localPos.y() - m_position.y();
+        qreal deltaX = localPos.x(); // 相对于本地坐标系原点
+        qreal deltaY = localPos.y();
 
         // 使用较大的变化值来调整字体大小
         qreal delta = qMax(qAbs(deltaX), qAbs(deltaY));
@@ -2220,8 +2220,8 @@ void DrawingText::paintShape(QPainter *painter)
     }
     painter->setBrush(Qt::NoBrush);
 
-    // 使用正确的文本绘制位置
-    painter->drawText(m_position, m_text);
+    // 在本地坐标系中绘制文本（QGraphicsItem的位置已经由setPos处理）
+    painter->drawText(QPointF(0, 0), m_text);
 
     // 如果正在编辑，显示编辑指示器
     if (m_editing)
@@ -2229,7 +2229,7 @@ void DrawingText::paintShape(QPainter *painter)
         QFontMetricsF metrics(m_font);
         QRectF textRect = metrics.tightBoundingRect(m_text);
         // 调整编辑指示器位置，与边界框一致
-        textRect.moveTopLeft(m_position + QPointF(0, -metrics.ascent()));
+        textRect.moveTopLeft(QPointF(0, -metrics.ascent()));
 
         painter->setPen(QPen(Qt::blue, 1, Qt::DashLine));
         painter->setBrush(Qt::NoBrush);

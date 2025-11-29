@@ -531,6 +531,13 @@ void MainWindow::setupUI()
                     m_currentFilePath = filePath;
                     updateWindowTitle();
                 });
+        connect(m_document, &DrawingDocument::documentCreated,
+                this, [this]() {
+                    // 文档创建或加载后，重新激活选择工具以重建视觉组件
+                    if (m_toolManager) {
+                        m_toolManager->switchTool(ToolType::Select);
+                    }
+                });
     }
 
     DrawingView *drawingView = qobject_cast<DrawingView *>(m_canvas->view());

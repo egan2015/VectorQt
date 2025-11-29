@@ -348,9 +348,8 @@ DrawingGroup *SvgHandler::parseGroupElement(DrawingScene *scene, const QDomEleme
                         }
                         else if (group)
                         {
-                            // 先添加到场景以获得正确的场景坐标
-                            scene->addItem(shape);
-                            // 然后添加到组合对象（会自动转换为相对坐标）
+                            // 直接添加到组合对象，不先添加到scene
+                            // 这样可以避免坐标转换问题
                             group->addItem(shape);
                             // qDebug() << "添加形状到组合对象，元素:" << tagName;
                         }

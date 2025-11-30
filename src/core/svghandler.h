@@ -40,6 +40,22 @@ class DrawingPolygon;
 /**
  * SVG处理类 - 负责导入和导出SVG文件
  */
+/**
+ * SVG元数据结构
+ */
+struct SvgMetadata {
+    QSizeF size;                    // SVG的width/height
+    QRectF viewBox;                 // viewBox属性
+    QString preserveAspectRatio;    // preserveAspectRatio属性
+    bool hasViewBox;                // 是否有viewBox
+    bool hasSize;                   // 是否有明确的width/height
+    
+    SvgMetadata() : hasViewBox(false), hasSize(false) {}
+};
+
+/**
+ * SVG处理类 - 负责导入和导出SVG文件
+ */
 class SvgHandler
 {
 public:
@@ -48,6 +64,16 @@ public:
     
     // 导出到SVG文件
     static bool exportToSvg(DrawingScene *scene, const QString &fileName);
+    
+private:
+    // 解析SVG元数据
+    static SvgMetadata parseSvgMetadata(const QDomElement &svgElement);
+    
+    // 计算SVG到Scene的变换矩阵
+    static QTransform calculateSvgToSceneTransform(const SvgMetadata &metadata);
+    
+    // 应用SVG设置到Scene
+    static void applySvgSettingsToScene(DrawingScene *scene, const SvgMetadata &metadata);
     
     // 从QPainterPath创建DrawingPath对象
     static DrawingPath* createPathFromPainterPath(const QPainterPath &path, const QString &elementId = QString());

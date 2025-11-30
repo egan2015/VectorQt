@@ -130,10 +130,14 @@ bool SvgHandler::parseSvgDocument(DrawingScene *scene, const QDomDocument &doc)
         return false;
     }
 
+    // 解析SVG元数据（viewBox、size等）
+    SvgMetadata metadata = parseSvgMetadata(root);
     
-
-    // 清空之前存储的定义元素
-    s_definedElements.clear();
+    // 应用SVG设置到Scene（设置sceneRect等）
+    applySvgSettingsToScene(scene, metadata);
+    
+    // 计算SVG到Scene的变换矩阵
+    QTransform svgToSceneTransform = calculateSvgToSceneTransform(metadata);
 
     // 清空之前存储的定义元素
     s_definedElements.clear();
@@ -1120,18 +1124,13 @@ void SvgHandler::parseStyleAttributes(DrawingGroup *group, const QDomElement &el
 QTransform SvgHandler::parseTransform(const QString &transformStr)
 {
     // 解析SVG变换字符串，如 "translate(10,20) rotate(45) scale(2,1)"
-    // 注意：SVG变换是按顺序应用的，但Qt的矩阵乘法是后乘的
-    // 所以我们需要反向构建变换矩阵
+    // SVG变换按书写顺序应用，Qt的变换方法也是前乘，所以直接按顺序应用即可
     QRegularExpression regex("(\\S+)\\s*\\(\\s*([^)]+)\\s*\\)");
     QRegularExpressionMatchIterator iter = regex.globalMatch(transformStr);
 
     // 先收集所有变换
     QList<QPair<QString, QStringList>> transforms;
-    ////qDebug() << "=== parseTransform 开始处理变换:" << transformStr << "===";
-    static int callCount = 0;
-    callCount++;
-    ////qDebug() << "parseTransform 调用计数:" << callCount << "变换:" << transformStr;
-
+    
     while (iter.hasNext())
     {
         QRegularExpressionMatch match = iter.next();
@@ -1139,16 +1138,14 @@ QTransform SvgHandler::parseTransform(const QString &transformStr)
         QString paramsStr = match.captured(2);
         QStringList params = paramsStr.split(QRegularExpression("\\s*,\\s*|\\s+"), Qt::SkipEmptyParts);
         transforms.append(qMakePair(func, params));
-        ////qDebug() << "添加到transforms列表:" << func << params;
     }
-    ////qDebug() << "transforms列表大小:" << transforms.size();
 
-    // 反向应用变换以匹配SVG的变换顺序
+    // 按SVG顺序正向应用变换
     QTransform transform;
-    for (int i = transforms.size() - 1; i >= 0; --i)
+    for (const auto &transformPair : transforms)
     {
-        QString func = transforms[i].first;
-        QStringList params = transforms[i].second;
+        QString func = transformPair.first;
+        QStringList params = transformPair.second;
 
         if (func == "translate" && params.size() >= 1)
         {
@@ -1168,10 +1165,10 @@ QTransform SvgHandler::parseTransform(const QString &transformStr)
             
             if (cx != 0 || cy != 0)
             {
+                // 旋转中心变换：先平移到旋转中心，旋转，再平移回来
                 transform.translate(cx, cy);
                 transform.rotate(angle);
                 transform.translate(-cx, -cy);
-                //qDebug() << "旋转:" << angle << "(" << cx << "," << cy << ")";
             }
             else
             {
@@ -1183,7 +1180,6 @@ QTransform SvgHandler::parseTransform(const QString &transformStr)
             qreal sx = params[0].toDouble();
             qreal sy = params.size() > 1 ? params[1].toDouble() : sx;
             transform.scale(sx, sy);
-            //qDebug() << "缩放:" << sx << "," << sy;
         }
         else if (func == "skewX" && params.size() >= 1)
         {
@@ -1203,7 +1199,12 @@ QTransform SvgHandler::parseTransform(const QString &transformStr)
             qreal d = params[3].toDouble();
             qreal e = params[4].toDouble();
             qreal f = params[5].toDouble();
-            transform = QTransform(a, b, c, d, e, f) * transform;
+            // 直接使用矩阵值，注意Qt矩阵的格式是：
+            // [a c e]
+            // [b d f]
+            // [0 0 1]
+            QTransform matrixTransform(a, c, e, b, d, f);
+            transform *= matrixTransform; // 前乘保持一致性
         }
     }
 
@@ -3616,9 +3617,10 @@ QString SvgHandler::adjustTransformForUseElement(const QString &transformStr, qr
             qreal sx = params[0].toDouble();
             qreal sy = params.size() > 1 ? params[1].toDouble() : sx;
 
-            // 缩放变换不需要调整参数，直接使用原始变换
-            // 缩放总是围绕引用元素的左上角进行
-            result += func + "(" + paramsStr + ")";
+            // 对于use元素，缩放应该围绕use元素的位置进行
+            // 需要调整为：translate(x,y) scale(sx,sy) translate(-x,-y)
+            result += QString("translate(%1 %2) scale(%3 %4) translate(%5 %6)")
+                    .arg(x).arg(y).arg(sx).arg(sy).arg(-x).arg(-y);
         }
         else
         {
@@ -3631,5 +3633,148 @@ QString SvgHandler::adjustTransformForUseElement(const QString &transformStr, qr
 
     //qDebug() << "调整后变换字符串:" << result << "包含" << transformCount << "个变换";
     return result;
+}
+
+// 解析SVG元数据
+SvgMetadata SvgHandler::parseSvgMetadata(const QDomElement &svgElement)
+{
+    SvgMetadata metadata;
+    
+    // 解析width和height属性
+    QString widthStr = svgElement.attribute("width");
+    QString heightStr = svgElement.attribute("height");
+    
+    if (!widthStr.isEmpty() && !heightStr.isEmpty()) {
+        // 解析长度值，支持单位
+        metadata.size.setWidth(parseLength(widthStr));
+        metadata.size.setHeight(parseLength(heightStr));
+        metadata.hasSize = true;
+    }
+    
+    // 解析viewBox属性
+    QString viewBoxStr = svgElement.attribute("viewBox");
+    if (!viewBoxStr.isEmpty()) {
+        QStringList parts = viewBoxStr.split(QRegularExpression("[\\s,]+"));
+        if (parts.size() == 4) {
+            qreal x = parts[0].toDouble();
+            qreal y = parts[1].toDouble();
+            qreal width = parts[2].toDouble();
+            qreal height = parts[3].toDouble();
+            metadata.viewBox = QRectF(x, y, width, height);
+            metadata.hasViewBox = true;
+        }
+    }
+    
+    // 解析preserveAspectRatio属性
+    metadata.preserveAspectRatio = svgElement.attribute("preserveAspectRatio", "xMidYMid meet");
+    
+    // 如果没有viewBox但有size，使用size作为viewBox
+    if (!metadata.hasViewBox && metadata.hasSize) {
+        metadata.viewBox = QRectF(0, 0, metadata.size.width(), metadata.size.height());
+        metadata.hasViewBox = true;
+    }
+    
+    // 如果既没有viewBox也没有size，使用默认值
+    if (!metadata.hasViewBox) {
+        metadata.viewBox = QRectF(0, 0, 1000, 800);
+        metadata.size = QSizeF(1000, 800);
+        metadata.hasViewBox = true;
+        metadata.hasSize = true;
+    }
+    
+    return metadata;
+}
+
+// 计算SVG到Scene的变换矩阵
+QTransform SvgHandler::calculateSvgToSceneTransform(const SvgMetadata &metadata)
+{
+    QTransform transform;
+    
+    // 如果有viewBox，需要计算从viewBox到scene坐标的变换
+    if (metadata.hasViewBox && metadata.hasSize) {
+        QRectF viewBox = metadata.viewBox;
+        QSizeF svgSize = metadata.size;
+        
+        // 根据preserveAspectRatio计算缩放
+        qreal scaleX = svgSize.width() / viewBox.width();
+        qreal scaleY = svgSize.height() / viewBox.height();
+        
+        // 解析preserveAspectRatio
+        QString preserveAspect = metadata.preserveAspectRatio;
+        QStringList aspectParts = preserveAspect.split(QRegularExpression("\\s+"));
+        
+        QString align = "xMidYMid";  // 默认对齐方式
+        QString meetOrSlice = "meet"; // 默认meet模式
+        
+        if (aspectParts.size() >= 1) {
+            align = aspectParts[0];
+        }
+        if (aspectParts.size() >= 2) {
+            meetOrSlice = aspectParts[1];
+        }
+        
+        qreal scale = 1.0;
+        
+        if (meetOrSlice == "meet") {
+            // 保持宽高比，缩放到完全可见
+            scale = qMin(scaleX, scaleY);
+        } else if (meetOrSlice == "slice") {
+            // 保持宽高比，缩放到填满
+            scale = qMax(scaleX, scaleY);
+        } else if (meetOrSlice == "none") {
+            // 不保持宽高比，拉伸填满
+            scale = 1.0;
+            scaleX = scale;
+            scaleY = scale;
+        }
+        
+        // 计算平移以实现对齐
+        qreal scaledViewWidth = viewBox.width() * scale;
+        qreal scaledViewHeight = viewBox.height() * scale;
+        qreal translateX = 0;
+        qreal translateY = 0;
+        
+        // X对齐
+        if (align.startsWith("xMin")) {
+            translateX = 0;
+        } else if (align.startsWith("xMid")) {
+            translateX = (svgSize.width() - scaledViewWidth) / 2.0;
+        } else if (align.startsWith("xMax")) {
+            translateX = svgSize.width() - scaledViewWidth;
+        }
+        
+        // Y对齐
+        if (align.contains("YMin")) {
+            translateY = 0;
+        } else if (align.contains("YMid")) {
+            translateY = (svgSize.height() - scaledViewHeight) / 2.0;
+        } else if (align.contains("YMax")) {
+            translateY = svgSize.height() - scaledViewHeight;
+        }
+        
+        // 构建变换矩阵：先平移到原点，再缩放，再平移到目标位置
+        transform.translate(translateX, translateY);
+        transform.scale(scale, scale);
+        transform.translate(-viewBox.left(), -viewBox.top());
+    }
+    
+    return transform;
+}
+
+// 应用SVG设置到Scene
+void SvgHandler::applySvgSettingsToScene(DrawingScene *scene, const SvgMetadata &metadata)
+{
+    if (!scene) {
+        return;
+    }
+    
+    // 设置scene的边界为viewBox
+    scene->setSceneRect(metadata.viewBox);
+    
+    // 注意：网格大小是编辑器的属性，不应该被SVG导入改变
+    // 保持用户当前的网格设置
+    
+    // 如果需要，可以在这里设置其他scene属性
+    // 比如背景色等
 }
 

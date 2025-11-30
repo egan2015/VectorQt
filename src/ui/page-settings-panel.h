@@ -28,8 +28,16 @@ class PageSettingsPanel : public QWidget
 public:
     explicit PageSettingsPanel(QWidget *parent = nullptr);
     
-    // 设置场景和视图
+    // 设置场景
     void setScene(DrawingScene *scene);
+    
+    // 从场景更新设置
+    void updateFromScene();
+    
+    // 更新预设尺寸选择
+    void updatePresetSelection();
+    
+    // 设置视图
     void setView(DrawingView *view);
     
     // 获取页面设置

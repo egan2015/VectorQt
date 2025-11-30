@@ -663,13 +663,22 @@ void DrawingScene::drawBackground(QPainter *painter, const QRectF &rect)
     // 设置亮色背景
     painter->fillRect(rect, QColor(255, 255, 255)); // 白色背景
     
-    // 绘制网格，但限制在场景矩形范围内
-    if (m_gridVisible) {
-        QRectF sceneRect = QGraphicsScene::sceneRect();
-        QRectF limitedRect = rect.intersected(sceneRect);
-        if (!limitedRect.isEmpty()) {
-            drawGrid(painter, limitedRect);
-        }
+    // 绘制场景边界阴影
+    QRectF sceneRect = QGraphicsScene::sceneRect();
+    if (!sceneRect.isEmpty()) {
+        // 在场景边界外绘制阴影区域
+        QRectF shadowRect = sceneRect.adjusted(-20, -20, 20, 20);
+        
+        // 绘制阴影
+        QColor shadowColor(0, 0, 0, 30);
+        painter->fillRect(shadowRect, shadowColor);
+        
+        // 绘制场景边界
+        painter->setPen(QPen(QColor(100, 100, 100), 2));
+        painter->drawRect(sceneRect);
+        
+        // 绘制内部白色区域覆盖阴影
+        painter->fillRect(sceneRect, QColor(255, 255, 255));
     }
     
     // Draw guide lines
@@ -704,7 +713,9 @@ void DrawingScene::drawBackground(QPainter *painter, const QRectF &rect)
 
 void DrawingScene::drawGrid(QPainter *painter, const QRectF &rect)
 {
-    painter->setPen(QPen(m_gridColor, 1, Qt::DotLine));
+    QPen gridPen(m_gridColor, 2, Qt::DotLine);
+    gridPen.setCosmetic(true); // 关键：设置线条为cosmetic，不随缩放变化
+    painter->setPen(gridPen);
     
     // 网格以场景坐标(0,0)为原点，与标尺对齐
     // 计算网格起始位置（从0开始，对齐到网格大小）
@@ -721,9 +732,13 @@ void DrawingScene::drawGrid(QPainter *painter, const QRectF &rect)
     for (int x = startX; x <= endX; x += m_gridSize) {
         // 加粗原点线
         if (x == 0) {
-            painter->setPen(QPen(m_gridColor.darker(150), 1, Qt::SolidLine));
+            QPen axisPen(m_gridColor.darker(150), 2, Qt::SolidLine);
+            axisPen.setCosmetic(true);
+            painter->setPen(axisPen);
         } else {
-            painter->setPen(QPen(m_gridColor, 1, Qt::DotLine));
+            QPen gridPen(m_gridColor, 2, Qt::DotLine);
+            gridPen.setCosmetic(true);
+            painter->setPen(gridPen);
         }
         painter->drawLine(QPointF(x, startY), QPointF(x, endY));
     }
@@ -732,9 +747,13 @@ void DrawingScene::drawGrid(QPainter *painter, const QRectF &rect)
     for (int y = startY; y <= endY; y += m_gridSize) {
         // 加粗原点线
         if (y == 0) {
-            painter->setPen(QPen(m_gridColor.darker(150), 1, Qt::SolidLine));
+            QPen axisPen(m_gridColor.darker(150), 2, Qt::SolidLine);
+            axisPen.setCosmetic(true);
+            painter->setPen(axisPen);
         } else {
-            painter->setPen(QPen(m_gridColor, 1, Qt::DotLine));
+            QPen gridPen(m_gridColor, 2, Qt::DotLine);
+            gridPen.setCosmetic(true);
+            painter->setPen(gridPen);
         }
         painter->drawLine(QPointF(startX, y), QPointF(endX, y));
     }
@@ -840,6 +859,15 @@ void DrawingScene::onSelectionChanged()
 void DrawingScene::drawForeground(QPainter *painter, const QRectF &rect)
 {
     PERF_MONITOR_SCOPE("SceneDrawForeground");
+    
+    // 绘制网格在前景，确保不被内容遮挡
+    if (m_gridVisible) {
+        QRectF sceneRect = QGraphicsScene::sceneRect();
+        QRectF limitedRect = rect.intersected(sceneRect);
+        if (!limitedRect.isEmpty()) {
+            drawGrid(painter, limitedRect);
+        }
+    }
     
     // 吸附指示器已禁用
     // if (m_snapManager && m_snapManager->areSnapIndicatorsVisible()) {

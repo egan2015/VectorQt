@@ -72,6 +72,10 @@ void DrawingView::zoomOut()
 void DrawingView::resetZoom()
 {
     setZoomLevel(1.0);
+    // 重置缩放时，将视图中心重置到场景中心
+    if (scene()) {
+        centerOn(scene()->sceneRect().center());
+    }
 }
 
 void DrawingView::fitToWindow()

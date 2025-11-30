@@ -16,11 +16,11 @@
 #include <QGraphicsDropShadowEffect>
 #include <QHash>
 #include <QXmlStreamReader>
+#include "svgelementcollector.h"
 
 // 前向声明
 struct MarkerData;
 class FastPathParser;
-class SvgElementCollector;
 
 // 流式SVG解析器元素结构
 struct SvgStreamElement {
@@ -41,9 +41,13 @@ private:
 
 
 
-// Marker存储 - 声明为extern以便其他文件访问
+// 全局存储 - 声明为extern以便其他文件访问
+extern QHash<QString, QGradient> s_gradients;
+extern QHash<QString, QGraphicsEffect *> s_filters;
+extern QHash<QString, QBrush> s_patterns;
 extern QHash<QString, QDomElement> s_markers;
 extern QHash<QString, MarkerData> s_markerDataCache;
+extern QHash<QString, QDomElement> s_definedElements;
 
 class DrawingScene;
 class DrawingShape;
@@ -85,6 +89,24 @@ public:
     // 导出到SVG文件
     static bool exportToSvg(DrawingScene *scene, const QString &fileName);
     
+    // 公共的解析函数，供SvgStreamHandler使用
+    static DrawingPath* parsePathElement(const QDomElement &element);
+    static DrawingRectangle* parseRectElement(const QDomElement &element);
+    static DrawingEllipse* parseEllipseElement(const QDomElement &element);
+    static DrawingEllipse* parseCircleElement(const QDomElement &element);
+    static DrawingPath* parseLineElement(const QDomElement &element);
+    static DrawingPath* parsePolygonElement(const QDomElement &element);
+    static DrawingText* parseTextElement(const QDomElement &element);
+    static DrawingGroup* parseGroupElement(DrawingScene *scene, const QDomElement &groupElement);
+    static DrawingShape* parseUseElement(const QDomElement &element);
+    
+    static QLinearGradient parseLinearGradient(const QDomElement &element);
+    static QRadialGradient parseRadialGradient(const QDomElement &element);
+    static QGraphicsBlurEffect* parseGaussianBlurFilter(const QDomElement &element);
+    static QGraphicsDropShadowEffect* parseDropShadowFilter(const QDomElement &element);
+    static QBrush parsePatternBrush(const QDomElement &patternElement);
+    static MarkerData parseMarkerData(const QDomElement &markerElement);
+    
 private:
     // 解析SVG元数据
     static SvgMetadata parseSvgMetadata(const QDomElement &svgElement);
@@ -114,9 +136,6 @@ private:
     // 收集所有有id的元素（用于use元素）
     static void collectDefinedElements(const QDomElement &parent);
     
-    // 解析use元素
-    static DrawingShape* parseUseElement(const QDomElement &element);
-    
     // 调整use元素的变换，考虑位置偏移
     static QString adjustTransformForUseElement(const QString &transformStr, qreal x, qreal y);
     
@@ -126,9 +145,6 @@ private:
     
     // 应用样式到图形
     static void applyStyleToShape(DrawingShape *shape, const QString &style);
-    
-    // 解析路径元素
-    static DrawingPath* parsePathElement(const QDomElement &element);
     
     // 解析 Inkscape sodipodi:arc 元素
     static DrawingEllipse* parseSodipodiArcElement(const QDomElement &element);
@@ -146,30 +162,17 @@ private:
     static DrawingShape* parseUseElementFromStream(const SvgStreamElement &element);
     static void parseStyleAttributesFromStream(DrawingShape *shape, const SvgStreamElement &element);
     
-    // 解析矩形元素
-    static DrawingRectangle* parseRectElement(const QDomElement &element);
-    
-    // 解析椭圆元素
-    static DrawingEllipse* parseEllipseElement(const QDomElement &element);
-    
-    // 解析圆元素
-    static DrawingEllipse* parseCircleElement(const QDomElement &element);
-    
-    // 解析线元素
-    static DrawingPath* parseLineElement(const QDomElement &element);
-    
-    // 解析多边形元素
-    static DrawingPath* parsePolygonElement(const QDomElement &element);
-    
-    // 解析文本元素
-    static DrawingText* parseTextElement(const QDomElement &element);
-    
-    // 解析组元素（现在支持图层）
-    static DrawingGroup* parseGroupElement(DrawingScene *scene, const QDomElement &groupElement);
-    static DrawingLayer* parseLayerElement(const QDomElement &element);
+    // 流式解析辅助函数
+    static SvgElementCollector::CollectedElements collectElementsFromStream(const SvgStreamElement &rootElement);
+    static void collectElementsFromStreamRecursive(const SvgStreamElement &element, 
+                                                   SvgElementCollector::CollectedElements &collected, 
+                                                   bool isInDefs);
     
     // 解析多线元素
     static DrawingPath* parsePolylineElement(const QDomElement &element);
+    
+    // 解析组元素（现在支持图层）
+    static DrawingLayer* parseLayerElement(const QDomElement &element);
     
     // 解析样式属性
     static void parseStyleAttributes(DrawingShape *shape, const QDomElement &element);
@@ -185,29 +188,19 @@ private:
     // 解析defs元素中的渐变定义
     static void parseDefsElements(const QDomElement &root);
     
-    // 解析线性渐变
-    static QLinearGradient parseLinearGradient(const QDomElement &element);
-    
-    // 解析径向渐变
-    static QRadialGradient parseRadialGradient(const QDomElement &element);
-    
     // 解析渐变停止点
     static void parseGradientStops(QGradient *gradient, const QDomElement &element);
     
     // 解析滤镜效果
     static void parseFilterElements(const QDomElement &root);
-    static QGraphicsBlurEffect* parseGaussianBlurFilter(const QDomElement &element);
-    static QGraphicsDropShadowEffect* parseDropShadowFilter(const QDomElement &element);
     static void applyFilterToShape(DrawingShape *shape, const QString &filterId);
     static void applyFilterToShape(DrawingGroup *group, const QString &filterId);
     
     // 解析Pattern
     static void parsePatternElements(const QDomElement &root);
-    static QBrush parsePatternBrush(const QDomElement &patternElement);
     static QBrush parsePatternBrush(const QString &patternId);
     
     // 解析Marker
-    static MarkerData parseMarkerData(const QDomElement &markerElement);
     static void renderMarkerToCache(const QString &id, const QDomElement &markerElement);
     static QPainterPath createMarkerPath(const QString &markerId, const QPointF &startPoint, const QPointF &endPoint);
     // 应用Marker到路径

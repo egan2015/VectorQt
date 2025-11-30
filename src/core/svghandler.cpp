@@ -12,6 +12,7 @@
 #include <QTransform>
 #include <//QDebug>
 #include "svghandler.h"
+#include "svgstreamhandler.h"
 #include "fastpathparser.h"
 #include "svgelementcollector.h"
 #include "drawing-shape.h"
@@ -20,16 +21,10 @@
 #include "layer-manager.h"
 #include "../ui/drawingscene.h"
 
-// 渐变存储
-static QHash<QString, QGradient> s_gradients;
-
-// 滤镜存储
-static QHash<QString, QGraphicsEffect *> s_filters;
-
-// Pattern存储
-static QHash<QString, QBrush> s_patterns;
-
-// Marker存储 - 全局变量定义
+// 全局存储定义
+QHash<QString, QGradient> s_gradients;
+QHash<QString, QGraphicsEffect *> s_filters;
+QHash<QString, QBrush> s_patterns;
 QHash<QString, QDomElement> s_markers;
 QHash<QString, MarkerData> s_markerDataCache;
 QHash<QString, QDomElement> s_definedElements;
@@ -783,70 +778,7 @@ public:
     }
 };
 
-// SvgStreamParser类实现
-bool SvgStreamParser::parseSvgFile(const QString &fileName, SvgStreamElement &rootElement)
-{
-    QFile file(fileName);
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
-    {
-        return false;
-    }
 
-    QXmlStreamReader reader(&file);
-    
-    if (!reader.readNextStartElement())
-    {
-        return false;
-    }
-
-    if (reader.name() != "svg")
-    {
-        return false;
-    }
-
-    rootElement = parseElement(reader);
-    
-    if (reader.hasError())
-    {
-        return false;
-    }
-
-    return true;
-}
-
-SvgStreamElement SvgStreamParser::parseElement(QXmlStreamReader &reader)
-{
-    SvgStreamElement element;
-    element.tagName = reader.name().toString();
-    
-    // 解析属性
-    QXmlStreamAttributes attributes = reader.attributes();
-    for (const QXmlStreamAttribute &attr : attributes)
-    {
-        element.attributes[attr.name().toString()] = attr.value().toString();
-    }
-    
-    // 解析子元素和文本内容
-    while (reader.readNext())
-    {
-        if (reader.isEndElement())
-        {
-            break;
-        }
-        
-        if (reader.isStartElement())
-        {
-            SvgStreamElement childElement = parseElement(reader);
-            element.children.append(childElement);
-        }
-        else if (reader.isCharacters())
-        {
-            element.text += reader.text().toString();
-        }
-    }
-    
-    return element;
-}
 
 // 辅助函数：计算marker边界框
 static QRectF calculateMarkerBounds(const MarkerData &markerData)
@@ -923,16 +855,8 @@ bool SvgHandler::importFromSvg(DrawingScene *scene, const QString &fileName)
     if (useStreamParser)
     {
         file.close();
-        SvgStreamElement rootElement;
-        if (!SvgStreamParser::parseSvgFile(fileName, rootElement))
-        {
-            //qDebug() << "流式解析SVG文件失败:" << fileName;
-            LayerManager::instance()->setSvgImporting(false);
-            return false;
-        }
-        
-        bool result = parseSvgDocumentFromElement(scene, rootElement);
-        LayerManager::instance()->setSvgImporting(false);
+        // 使用SvgStreamHandler进行流式解析
+        bool result = SvgStreamHandler::importFromSvg(scene, fileName);
         return result;
     }
     else
@@ -1182,48 +1106,167 @@ bool SvgHandler::parseSvgDocumentFromElement(DrawingScene *scene, const SvgStrea
     s_definedElements.clear();
 
     // 使用优化的元素收集器，单次遍历收集所有元素
-    // 元素收集在parseSvgDocumentFromElement中进行
+    SvgElementCollector::CollectedElements collected = collectElementsFromStream(rootElement);
     
     // 更新全局定义元素缓存
-    // TODO: 实现元素收集逻辑
+    s_definedElements = collected.definedElements;
 
     // 清理之前的渐变定义
     s_gradients.clear();
 
     // 批量处理渐变定义
-    // TODO: 从流式解析的结果中提取渐变
+    for (const QDomElement &gradient : collected.linearGradients) {
+        QString id = gradient.attribute("id");
+        if (!id.isEmpty()) {
+            QLinearGradient linearGradient = parseLinearGradient(gradient);
+            s_gradients[id] = linearGradient;
+        }
+    }
+    for (const QDomElement &gradient : collected.radialGradients) {
+        QString id = gradient.attribute("id");
+        if (!id.isEmpty()) {
+            QRadialGradient radialGradient = parseRadialGradient(gradient);
+            s_gradients[id] = radialGradient;
+        }
+    }
 
     // 清理之前的滤镜定义
     s_filters.clear();
 
     // 批量处理滤镜定义
-    // TODO: 从流式解析的结果中提取滤镜
+    for (const QDomElement &filter : collected.gaussianBlurFilters) {
+        QString id = filter.attribute("filter-id"); // 使用我们设置的filter-id属性
+        if (!id.isEmpty()) {
+            QGraphicsBlurEffect *blurEffect = parseGaussianBlurFilter(filter);
+            if (blurEffect) {
+                s_filters[id] = blurEffect;
+            }
+        }
+    }
+    for (const QDomElement &filter : collected.dropShadowFilters) {
+        QString id = filter.attribute("filter-id"); // 使用我们设置的filter-id属性
+        if (!id.isEmpty()) {
+            QGraphicsDropShadowEffect *shadowEffect = parseDropShadowFilter(filter);
+            if (shadowEffect) {
+                s_filters[id] = shadowEffect;
+            }
+        }
+    }
 
     // 清理之前的图案定义
     s_patterns.clear();
 
     // 批量处理图案定义
-    // TODO: 从流式解析的结果中提取图案
+    for (const QDomElement &pattern : collected.patterns) {
+        QString id = pattern.attribute("id");
+        if (!id.isEmpty()) {
+            QBrush patternBrush = parsePatternBrush(pattern);
+            s_patterns[id] = patternBrush;
+        }
+    }
 
     // 清理之前的标记定义
     s_markers.clear();
     s_markerDataCache.clear();
 
     // 批量处理标记定义
-    // TODO: 从流式解析的结果中提取标记
+    for (const QDomElement &marker : collected.markers) {
+        QString id = marker.attribute("id");
+        if (!id.isEmpty()) {
+            s_markers[id] = marker;
+            MarkerData markerData = parseMarkerData(marker);
+            s_markerDataCache[id] = markerData;
+        }
+    }
 
     // 使用收集到的元素创建图形对象
     int elementCount = 0;
     
-    // 处理所有子元素
-    for (const SvgStreamElement &element : rootElement.children)
-    {
-        DrawingShape *shape = parseSvgElementFromStream(element);
-        if (shape)
-        {
+    // 处理所有顶级图形元素
+    for (const QDomElement &element : collected.paths) {
+        DrawingPath *shape = parsePathElement(element);
+        if (shape) {
             scene->addItem(shape);
-            // 设置Z值，确保按照SVG文档顺序显示
-            shape->setZValue(elementCount);
+            shape->setZValue(elementCount++);
+        }
+    }
+    
+    for (const QDomElement &element : collected.rectangles) {
+        DrawingRectangle *shape = parseRectElement(element);
+        if (shape) {
+            scene->addItem(shape);
+            shape->setZValue(elementCount++);
+        }
+    }
+    
+    for (const QDomElement &element : collected.circles) {
+        DrawingEllipse *shape = parseCircleElement(element);
+        if (shape) {
+            scene->addItem(shape);
+            shape->setZValue(elementCount++);
+        }
+    }
+    
+    for (const QDomElement &element : collected.ellipses) {
+        DrawingEllipse *shape = parseEllipseElement(element);
+        if (shape) {
+            scene->addItem(shape);
+            shape->setZValue(elementCount++);
+        }
+    }
+    
+    for (const QDomElement &element : collected.lines) {
+        DrawingPath *shape = parseLineElement(element);
+        if (shape) {
+            scene->addItem(shape);
+            shape->setZValue(elementCount++);
+        }
+    }
+    
+    for (const QDomElement &element : collected.polylines) {
+        DrawingPath *shape = parsePolygonElement(element);
+        if (shape) {
+            scene->addItem(shape);
+            shape->setZValue(elementCount++);
+        }
+    }
+    
+    for (const QDomElement &element : collected.polygons) {
+        DrawingPath *shape = parsePolygonElement(element);
+        if (shape) {
+            scene->addItem(shape);
+            shape->setZValue(elementCount++);
+        }
+    }
+    
+    for (const QDomElement &element : collected.texts) {
+        DrawingText *shape = parseTextElement(element);
+        if (shape) {
+            scene->addItem(shape);
+            shape->setZValue(elementCount++);
+        }
+    }
+    
+    for (const QDomElement &element : collected.useElements) {
+        DrawingShape *shape = parseUseElement(element);
+        if (shape) {
+            scene->addItem(shape);
+            shape->setZValue(elementCount++);
+        }
+    }
+    
+    for (const QDomElement &element : collected.groups) {
+        DrawingGroup *shape = parseGroupElement(scene, element);
+        if (shape) {
+            scene->addItem(shape);
+            shape->setZValue(elementCount++);
+        }
+    }
+    
+    // 处理图层元素（包括嵌套的处理）
+    for (const QDomElement &element : collected.layers) {
+        DrawingGroup *group = parseGroupElement(scene, element);
+        if (group) {
             elementCount++;
         }
     }
@@ -1703,9 +1746,67 @@ DrawingGroup *SvgHandler::parseGroupElementFromStream(const SvgStreamElement &el
 // 从流式解析元素创建use元素
 DrawingShape *SvgHandler::parseUseElementFromStream(const SvgStreamElement &element)
 {
-    // TODO: 实现use元素的流式解析
-    // 这需要访问s_definedElements，需要特殊处理
-    return nullptr;
+    // 获取href属性（引用的元素ID）
+    QString href = element.attributes.value("href");
+    if (href.startsWith("#")) {
+        href = href.mid(1); // 去掉#号
+    }
+    
+    // 查找被引用的元素
+    if (!s_definedElements.contains(href)) {
+        return nullptr;
+    }
+    
+    QDomElement referencedElement = s_definedElements[href];
+    
+    // 获取use元素的位置
+    qreal x = element.attributes.value("x", "0").toDouble();
+    qreal y = element.attributes.value("y", "0").toDouble();
+    
+    // 克隆被引用的元素
+    QDomDocument tempDoc;
+    QDomElement clonedElement = referencedElement.cloneNode().toElement();
+    
+    // 调整变换：考虑use元素的位置偏移
+    QString originalTransform = clonedElement.attribute("transform", "");
+    QString adjustedTransform = adjustTransformForUseElement(originalTransform, x, y);
+    
+    if (!adjustedTransform.isEmpty()) {
+        clonedElement.setAttribute("transform", adjustedTransform);
+    }
+    
+    // 如果被引用的元素没有位置属性，需要调整位置
+    if (clonedElement.tagName() == "rect" || clonedElement.tagName() == "circle" || 
+        clonedElement.tagName() == "ellipse" || clonedElement.tagName() == "text") {
+        
+        if (clonedElement.hasAttribute("x")) {
+            qreal origX = clonedElement.attribute("x").toDouble();
+            clonedElement.setAttribute("x", QString::number(origX + x));
+        } else if (clonedElement.tagName() == "circle") {
+            qreal cx = clonedElement.attribute("cx", "0").toDouble();
+            clonedElement.setAttribute("cx", QString::number(cx + x));
+        } else if (clonedElement.tagName() == "ellipse") {
+            qreal cx = clonedElement.attribute("cx", "0").toDouble();
+            clonedElement.setAttribute("cx", QString::number(cx + x));
+        }
+        
+        if (clonedElement.hasAttribute("y")) {
+            qreal origY = clonedElement.attribute("y").toDouble();
+            clonedElement.setAttribute("y", QString::number(origY + y));
+        } else if (clonedElement.tagName() == "circle") {
+            qreal cy = clonedElement.attribute("cy", "0").toDouble();
+            clonedElement.setAttribute("cy", QString::number(cy + y));
+        } else if (clonedElement.tagName() == "ellipse") {
+            qreal cy = clonedElement.attribute("cy", "0").toDouble();
+            clonedElement.setAttribute("cy", QString::number(cy + y));
+        }
+    }
+    
+    // 合并样式：use元素的样式优先级更高
+    // 这里简化处理，直接使用现有的DOM解析函数
+    DrawingShape *shape = parseSvgElement(clonedElement);
+    
+    return shape;
 }
 
 // 从流式解析元素解析样式属性
@@ -1808,6 +1909,256 @@ void SvgHandler::parseStyleAttributesFromStream(DrawingShape *shape, const SvgSt
 
             shape->setOpacity(opacityValue);
         }
+    }
+}
+
+
+
+// 从流式解析结果收集元素，返回与DOM版本相同的数据结构
+SvgElementCollector::CollectedElements SvgHandler::collectElementsFromStream(const SvgStreamElement &rootElement)
+{
+    SvgElementCollector::CollectedElements collected;
+    collectElementsFromStreamRecursive(rootElement, collected, false);
+    return collected;
+}
+
+void SvgHandler::collectElementsFromStreamRecursive(const SvgStreamElement &element, 
+                                                   SvgElementCollector::CollectedElements &collected, 
+                                                   bool isInDefs)
+{
+    QString tagName = element.tagName;
+    
+    // 处理defs元素
+    if (tagName == "defs") {
+        isInDefs = true;
+    }
+    
+    // 收集有id的元素（用于use元素引用）
+    if (element.attributes.contains("id")) {
+        QString id = element.attributes.value("id");
+        // 创建一个临时的QDomElement来存储在s_definedElements中
+        QDomDocument tempDoc;
+        QDomElement tempElement = tempDoc.createElement(tagName);
+        for (auto it = element.attributes.begin(); it != element.attributes.end(); ++it) {
+            tempElement.setAttribute(it.key(), it.value());
+        }
+        if (!element.text.trimmed().isEmpty()) {
+            tempElement.appendChild(tempDoc.createTextNode(element.text));
+        }
+        collected.definedElements[id] = tempElement;
+    }
+    
+    // 根据元素类型分类收集
+    if (tagName == "linearGradient") {
+        QDomDocument tempDoc;
+        QDomElement tempElement = tempDoc.createElement(tagName);
+        for (auto it = element.attributes.begin(); it != element.attributes.end(); ++it) {
+            tempElement.setAttribute(it.key(), it.value());
+        }
+        // 添加子元素
+        for (const SvgStreamElement &child : element.children) {
+            QDomElement childElement = tempDoc.createElement(child.tagName);
+            for (auto it = child.attributes.begin(); it != child.attributes.end(); ++it) {
+                childElement.setAttribute(it.key(), it.value());
+            }
+            if (!child.text.trimmed().isEmpty()) {
+                childElement.appendChild(tempDoc.createTextNode(child.text));
+            }
+            tempElement.appendChild(childElement);
+        }
+        collected.linearGradients.append(tempElement);
+    } else if (tagName == "radialGradient") {
+        QDomDocument tempDoc;
+        QDomElement tempElement = tempDoc.createElement(tagName);
+        for (auto it = element.attributes.begin(); it != element.attributes.end(); ++it) {
+            tempElement.setAttribute(it.key(), it.value());
+        }
+        // 添加子元素
+        for (const SvgStreamElement &child : element.children) {
+            QDomElement childElement = tempDoc.createElement(child.tagName);
+            for (auto it = child.attributes.begin(); it != child.attributes.end(); ++it) {
+                childElement.setAttribute(it.key(), it.value());
+            }
+            if (!child.text.trimmed().isEmpty()) {
+                childElement.appendChild(tempDoc.createTextNode(child.text));
+            }
+            tempElement.appendChild(childElement);
+        }
+        collected.radialGradients.append(tempElement);
+    } else if (tagName == "pattern") {
+        QDomDocument tempDoc;
+        QDomElement tempElement = tempDoc.createElement(tagName);
+        for (auto it = element.attributes.begin(); it != element.attributes.end(); ++it) {
+            tempElement.setAttribute(it.key(), it.value());
+        }
+        // 添加子元素
+        for (const SvgStreamElement &child : element.children) {
+            QDomElement childElement = tempDoc.createElement(child.tagName);
+            for (auto it = child.attributes.begin(); it != child.attributes.end(); ++it) {
+                childElement.setAttribute(it.key(), it.value());
+            }
+            if (!child.text.trimmed().isEmpty()) {
+                childElement.appendChild(tempDoc.createTextNode(child.text));
+            }
+            tempElement.appendChild(childElement);
+        }
+        collected.patterns.append(tempElement);
+    } else if (tagName == "marker") {
+        QDomDocument tempDoc;
+        QDomElement tempElement = tempDoc.createElement(tagName);
+        for (auto it = element.attributes.begin(); it != element.attributes.end(); ++it) {
+            tempElement.setAttribute(it.key(), it.value());
+        }
+        // 添加子元素
+        for (const SvgStreamElement &child : element.children) {
+            QDomElement childElement = tempDoc.createElement(child.tagName);
+            for (auto it = child.attributes.begin(); it != child.attributes.end(); ++it) {
+                childElement.setAttribute(it.key(), it.value());
+            }
+            if (!child.text.trimmed().isEmpty()) {
+                childElement.appendChild(tempDoc.createTextNode(child.text));
+            }
+            tempElement.appendChild(childElement);
+        }
+        collected.markers.append(tempElement);
+    } else if (tagName == "filter") {
+        // 处理滤镜元素，收集其子元素并传递父元素的ID
+        QString filterId = element.attributes.value("id");
+        
+        for (const SvgStreamElement &child : element.children) {
+            QString childTagName = child.tagName;
+            
+            QDomDocument tempDoc;
+            QDomElement childElement = tempDoc.createElement(childTagName);
+            for (auto it = child.attributes.begin(); it != child.attributes.end(); ++it) {
+                childElement.setAttribute(it.key(), it.value());
+            }
+            // 将父滤镜的ID设置到子元素上，便于后续处理
+            if (!filterId.isEmpty()) {
+                childElement.setAttribute("filter-id", filterId);
+            }
+            
+            if (childTagName == "feGaussianBlur") {
+                collected.gaussianBlurFilters.append(childElement);
+            } else if (childTagName == "feDropShadow") {
+                collected.dropShadowFilters.append(childElement);
+            }
+        }
+    } else if (tagName == "path") {
+        if (!isInDefs) {
+            QDomDocument tempDoc;
+            QDomElement tempElement = tempDoc.createElement(tagName);
+            for (auto it = element.attributes.begin(); it != element.attributes.end(); ++it) {
+                tempElement.setAttribute(it.key(), it.value());
+            }
+            collected.paths.append(tempElement);
+        }
+    } else if (tagName == "rect") {
+        if (!isInDefs) {
+            QDomDocument tempDoc;
+            QDomElement tempElement = tempDoc.createElement(tagName);
+            for (auto it = element.attributes.begin(); it != element.attributes.end(); ++it) {
+                tempElement.setAttribute(it.key(), it.value());
+            }
+            collected.rectangles.append(tempElement);
+        }
+    } else if (tagName == "ellipse") {
+        if (!isInDefs) {
+            QDomDocument tempDoc;
+            QDomElement tempElement = tempDoc.createElement(tagName);
+            for (auto it = element.attributes.begin(); it != element.attributes.end(); ++it) {
+                tempElement.setAttribute(it.key(), it.value());
+            }
+            collected.ellipses.append(tempElement);
+        }
+    } else if (tagName == "circle") {
+        if (!isInDefs) {
+            QDomDocument tempDoc;
+            QDomElement tempElement = tempDoc.createElement(tagName);
+            for (auto it = element.attributes.begin(); it != element.attributes.end(); ++it) {
+                tempElement.setAttribute(it.key(), it.value());
+            }
+            collected.circles.append(tempElement);
+        }
+    } else if (tagName == "line") {
+        if (!isInDefs) {
+            QDomDocument tempDoc;
+            QDomElement tempElement = tempDoc.createElement(tagName);
+            for (auto it = element.attributes.begin(); it != element.attributes.end(); ++it) {
+                tempElement.setAttribute(it.key(), it.value());
+            }
+            collected.lines.append(tempElement);
+        }
+    } else if (tagName == "polyline") {
+        if (!isInDefs) {
+            QDomDocument tempDoc;
+            QDomElement tempElement = tempDoc.createElement(tagName);
+            for (auto it = element.attributes.begin(); it != element.attributes.end(); ++it) {
+                tempElement.setAttribute(it.key(), it.value());
+            }
+            collected.polylines.append(tempElement);
+        }
+    } else if (tagName == "polygon") {
+        if (!isInDefs) {
+            QDomDocument tempDoc;
+            QDomElement tempElement = tempDoc.createElement(tagName);
+            for (auto it = element.attributes.begin(); it != element.attributes.end(); ++it) {
+                tempElement.setAttribute(it.key(), it.value());
+            }
+            collected.polygons.append(tempElement);
+        }
+    } else if (tagName == "text") {
+        if (!isInDefs) {
+            QDomDocument tempDoc;
+            QDomElement tempElement = tempDoc.createElement(tagName);
+            for (auto it = element.attributes.begin(); it != element.attributes.end(); ++it) {
+                tempElement.setAttribute(it.key(), it.value());
+            }
+            if (!element.text.trimmed().isEmpty()) {
+                tempElement.appendChild(tempDoc.createTextNode(element.text));
+            }
+            collected.texts.append(tempElement);
+        }
+    } else if (tagName == "g") {
+        QDomDocument tempDoc;
+        QDomElement tempElement = tempDoc.createElement(tagName);
+        for (auto it = element.attributes.begin(); it != element.attributes.end(); ++it) {
+            tempElement.setAttribute(it.key(), it.value());
+        }
+        
+        // 检查是否为Inkscape图层
+        QString inkscapeLabel = tempElement.attribute("inkscape:label");
+        QString inkscapeGroupmode = tempElement.attribute("inkscape:groupmode");
+        
+        // 检查是否为普通图层（有groupmode属性且值为layer）
+        bool isLayer = false;
+        if (!inkscapeGroupmode.isEmpty() && inkscapeGroupmode == "layer") {
+            isLayer = true;
+        }
+        // 检查是否为命名图层（有label属性且不为空）
+        else if (!inkscapeLabel.isEmpty()) {
+            isLayer = true;
+        }
+        
+        if (isLayer) {
+            if (!isInDefs) collected.layers.append(tempElement);
+        } else {
+            if (!isInDefs) collected.groups.append(tempElement);
+        }
+    } else if (tagName == "use") {
+        if (!isInDefs) {
+            QDomDocument tempDoc;
+            QDomElement tempElement = tempDoc.createElement(tagName);
+            for (auto it = element.attributes.begin(); it != element.attributes.end(); ++it) {
+                tempElement.setAttribute(it.key(), it.value());
+            }
+            collected.useElements.append(tempElement);
+        }
+    }
+    
+    // 递归处理子元素
+    for (const SvgStreamElement &childElement : element.children) {
+        collectElementsFromStreamRecursive(childElement, collected, isInDefs);
     }
 }
 

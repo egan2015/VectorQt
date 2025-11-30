@@ -2,6 +2,8 @@
 #include <QDomDocument>
 #include <QDomElement>
 #include <QDomNodeList>
+#include <QXmlStreamReader>
+#include <QXmlStreamWriter>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPainterPathStroker>
@@ -671,7 +673,7 @@ public:
     }
 };
 
-// SvgStringUtils类定义 - 提供简单的字符串分割功能，避免正则表达式
+// SvgUseTransformParser类定义 - 专门用于解析和调整use元素的变换
 class SvgUseTransformParser
 {
 public:
@@ -781,6 +783,71 @@ public:
     }
 };
 
+// SvgStreamParser类实现
+bool SvgStreamParser::parseSvgFile(const QString &fileName, SvgStreamElement &rootElement)
+{
+    QFile file(fileName);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+    {
+        return false;
+    }
+
+    QXmlStreamReader reader(&file);
+    
+    if (!reader.readNextStartElement())
+    {
+        return false;
+    }
+
+    if (reader.name() != "svg")
+    {
+        return false;
+    }
+
+    rootElement = parseElement(reader);
+    
+    if (reader.hasError())
+    {
+        return false;
+    }
+
+    return true;
+}
+
+SvgStreamElement SvgStreamParser::parseElement(QXmlStreamReader &reader)
+{
+    SvgStreamElement element;
+    element.tagName = reader.name().toString();
+    
+    // 解析属性
+    QXmlStreamAttributes attributes = reader.attributes();
+    for (const QXmlStreamAttribute &attr : attributes)
+    {
+        element.attributes[attr.name().toString()] = attr.value().toString();
+    }
+    
+    // 解析子元素和文本内容
+    while (reader.readNext())
+    {
+        if (reader.isEndElement())
+        {
+            break;
+        }
+        
+        if (reader.isStartElement())
+        {
+            SvgStreamElement childElement = parseElement(reader);
+            element.children.append(childElement);
+        }
+        else if (reader.isCharacters())
+        {
+            element.text += reader.text().toString();
+        }
+    }
+    
+    return element;
+}
+
 // 辅助函数：计算marker边界框
 static QRectF calculateMarkerBounds(const MarkerData &markerData)
 {
@@ -837,10 +904,10 @@ static QRectF calculateMarkerBounds(const MarkerData &markerData)
 
 bool SvgHandler::importFromSvg(DrawingScene *scene, const QString &fileName)
 {
-    
-    
     // 设置SVG导入标志，防止创建默认图层
     LayerManager::instance()->setSvgImporting(true);
+    
+    // 优先使用流式解析器处理大文件
     QFile file(fileName);
     if (!file.open(QIODevice::ReadOnly))
     {
@@ -849,23 +916,45 @@ bool SvgHandler::importFromSvg(DrawingScene *scene, const QString &fileName)
         return false;
     }
 
-    QDomDocument doc;
-    QString errorMsg;
-    int errorLine, errorCol;
-
-    if (!doc.setContent(&file, &errorMsg, &errorLine, &errorCol))
-    {
-        //qDebug() << "解析SVG文件失败:" << errorMsg << "行:" << errorLine << "列:" << errorCol;
-        LayerManager::instance()->setSvgImporting(false);
-        return false;
-    }
-
-    file.close();
-
-    bool result = parseSvgDocument(scene, doc);
+    // 检查文件大小，大于100KB使用流式解析
+    qint64 fileSize = file.size();
+    bool useStreamParser = fileSize > 100 * 1024; // 100KB threshold
     
-    LayerManager::instance()->setSvgImporting(false);
-    return result;
+    if (useStreamParser)
+    {
+        file.close();
+        SvgStreamElement rootElement;
+        if (!SvgStreamParser::parseSvgFile(fileName, rootElement))
+        {
+            //qDebug() << "流式解析SVG文件失败:" << fileName;
+            LayerManager::instance()->setSvgImporting(false);
+            return false;
+        }
+        
+        bool result = parseSvgDocumentFromElement(scene, rootElement);
+        LayerManager::instance()->setSvgImporting(false);
+        return result;
+    }
+    else
+    {
+        // 小文件继续使用DOM解析
+        QDomDocument doc;
+        QString errorMsg;
+        int errorLine, errorCol;
+
+        if (!doc.setContent(&file, &errorMsg, &errorLine, &errorCol))
+        {
+            //qDebug() << "解析SVG文件失败:" << errorMsg << "行:" << errorLine << "列:" << errorCol;
+            LayerManager::instance()->setSvgImporting(false);
+            return false;
+        }
+
+        file.close();
+
+        bool result = parseSvgDocument(scene, doc);
+        LayerManager::instance()->setSvgImporting(false);
+        return result;
+    }
 }
 
 bool SvgHandler::parseSvgDocument(DrawingScene *scene, const QDomDocument &doc)
@@ -1070,6 +1159,656 @@ bool SvgHandler::parseSvgDocument(DrawingScene *scene, const QDomDocument &doc)
 
     
     return elementCount > 0;
+}
+
+bool SvgHandler::parseSvgDocumentFromElement(DrawingScene *scene, const SvgStreamElement &rootElement)
+{
+    if (rootElement.tagName != "svg")
+    {
+        //qDebug() << "不是有效的SVG文档，标签名:" << rootElement.tagName;
+        return false;
+    }
+
+    // 解析SVG元数据（viewBox、size等）
+    SvgMetadata metadata = parseSvgMetadataFromElement(rootElement);
+    
+    // 应用SVG设置到Scene（设置sceneRect等）
+    applySvgSettingsToScene(scene, metadata);
+    
+    // 计算SVG到Scene的变换矩阵
+    QTransform svgToSceneTransform = calculateSvgToSceneTransform(metadata);
+
+    // 清空之前存储的定义元素
+    s_definedElements.clear();
+
+    // 使用优化的元素收集器，单次遍历收集所有元素
+    // 元素收集在parseSvgDocumentFromElement中进行
+    
+    // 更新全局定义元素缓存
+    // TODO: 实现元素收集逻辑
+
+    // 清理之前的渐变定义
+    s_gradients.clear();
+
+    // 批量处理渐变定义
+    // TODO: 从流式解析的结果中提取渐变
+
+    // 清理之前的滤镜定义
+    s_filters.clear();
+
+    // 批量处理滤镜定义
+    // TODO: 从流式解析的结果中提取滤镜
+
+    // 清理之前的图案定义
+    s_patterns.clear();
+
+    // 批量处理图案定义
+    // TODO: 从流式解析的结果中提取图案
+
+    // 清理之前的标记定义
+    s_markers.clear();
+    s_markerDataCache.clear();
+
+    // 批量处理标记定义
+    // TODO: 从流式解析的结果中提取标记
+
+    // 使用收集到的元素创建图形对象
+    int elementCount = 0;
+    
+    // 处理所有子元素
+    for (const SvgStreamElement &element : rootElement.children)
+    {
+        DrawingShape *shape = parseSvgElementFromStream(element);
+        if (shape)
+        {
+            scene->addItem(shape);
+            // 设置Z值，确保按照SVG文档顺序显示
+            shape->setZValue(elementCount);
+            elementCount++;
+        }
+    }
+
+    // SVG导入完成后，只删除现有的背景图层，保持导入图层的原始名称
+    LayerManager *layerManager = LayerManager::instance();
+    if (layerManager->layerCount() > 0)
+    {
+        // 删除现有的背景图层
+        QList<DrawingLayer *> layersToDelete;
+        for (DrawingLayer *layer : layerManager->layers())
+        {
+            if (layer->name() == "背景图层")
+            {
+                layersToDelete.append(layer);
+            }
+        }
+
+        for (DrawingLayer *layer : layersToDelete)
+        {
+            layerManager->deleteLayer(layer);
+        }
+
+        // 设置第一个导入图层为活动图层
+        if (layerManager->layerCount() > 0)
+        {
+            DrawingLayer *firstLayer = layerManager->layer(0);
+            layerManager->setActiveLayer(firstLayer);
+        }
+    }
+
+    // 重置SVG导入标志
+    LayerManager::instance()->setSvgImporting(false);
+
+    
+    return elementCount > 0;
+}
+
+// 从流式解析的元素解析SVG元数据
+SvgMetadata SvgHandler::parseSvgMetadataFromElement(const SvgStreamElement &svgElement)
+{
+    SvgMetadata metadata;
+    
+    // 解析width和height属性
+    if (svgElement.attributes.contains("width"))
+    {
+        QString widthStr = svgElement.attributes.value("width");
+        metadata.size.setWidth(parseLength(widthStr));
+        metadata.hasSize = true;
+    }
+    
+    if (svgElement.attributes.contains("height"))
+    {
+        QString heightStr = svgElement.attributes.value("height");
+        metadata.size.setHeight(parseLength(heightStr));
+        metadata.hasSize = true;
+    }
+    
+    // 解析viewBox属性
+    if (svgElement.attributes.contains("viewBox"))
+    {
+        QString viewBoxStr = svgElement.attributes.value("viewBox");
+        QStringList parts = SvgStringUtils::splitOnWhitespaceOrComma(viewBoxStr);
+        if (parts.size() == 4) {
+            qreal x = parts[0].toDouble();
+            qreal y = parts[1].toDouble();
+            qreal width = parts[2].toDouble();
+            qreal height = parts[3].toDouble();
+            metadata.viewBox = QRectF(x, y, width, height);
+            metadata.hasViewBox = true;
+        }
+    }
+    
+    // 解析preserveAspectRatio属性
+    metadata.preserveAspectRatio = svgElement.attributes.value("preserveAspectRatio", "xMidYMid meet");
+    
+    // 如果没有viewBox但有size，使用size作为viewBox
+    if (!metadata.hasViewBox && metadata.hasSize) {
+        metadata.viewBox = QRectF(0, 0, metadata.size.width(), metadata.size.height());
+        metadata.hasViewBox = true;
+    }
+    
+    return metadata;
+}
+
+// 从流式解析的元素创建图形对象
+DrawingShape *SvgHandler::parseSvgElementFromStream(const SvgStreamElement &element)
+{
+    QString tagName = element.tagName;
+    
+    try
+    {
+        if (tagName == "path")
+        {
+            return parsePathElementFromStream(element);
+        }
+        else if (tagName == "rect")
+        {
+            return parseRectElementFromStream(element);
+        }
+        else if (tagName == "circle")
+        {
+            return parseCircleElementFromStream(element);
+        }
+        else if (tagName == "ellipse")
+        {
+            return parseEllipseElementFromStream(element);
+        }
+        else if (tagName == "line")
+        {
+            return parseLineElementFromStream(element);
+        }
+        else if (tagName == "polyline" || tagName == "polygon")
+        {
+            return parsePolygonElementFromStream(element);
+        }
+        else if (tagName == "text")
+        {
+            return parseTextElementFromStream(element);
+        }
+        else if (tagName == "g")
+        {
+            return parseGroupElementFromStream(element);
+        }
+        else if (tagName == "defs" || tagName == "pattern" ||
+                 tagName == "filter" || tagName == "marker" ||
+                 tagName == "linearGradient" || tagName == "radialGradient" ||
+                 tagName == "stop" || tagName == "metadata" ||
+                 tagName == "namedview" || tagName == "rdf:RDF")
+        {
+            // 这些是定义元素，不创建图形
+            return nullptr;
+        }
+        else if (tagName == "use")
+        {
+            return parseUseElementFromStream(element);
+        }
+        else if (tagName == "image")
+        {
+            // TODO: 实现image元素支持
+            // //qDebug() << "暂不支持的元素:" << tagName;
+            return nullptr;
+        }
+        else if (tagName == "clipPath" || tagName == "mask")
+        {
+            // TODO: 实现裁剪路径和蒙版支持
+            // //qDebug() << "暂不支持的元素:" << tagName;
+            return nullptr;
+        }
+        else
+        {
+            // 记录未知的元素类型，但不崩溃
+            // //qDebug() << "未知的SVG元素:" << tagName;
+            return nullptr;
+        }
+    }
+    catch (...)
+    {
+        // //qDebug() << "解析元素时发生异常:" << tagName;
+        return nullptr;
+    }
+}
+
+// 从流式解析元素创建路径
+DrawingPath *SvgHandler::parsePathElementFromStream(const SvgStreamElement &element)
+{
+    if (!element.attributes.contains("d"))
+    {
+        return nullptr;
+    }
+
+    QString d = element.attributes.value("d");
+    if (d.isEmpty())
+    {
+        return nullptr;
+    }
+
+    QPainterPath path;
+    parseSvgPathData(d, path);
+
+    DrawingPath *drawingPath = new DrawingPath();
+    drawingPath->setPath(path);
+
+    // 自动生成控制点用于节点编辑
+    QVector<QPointF> controlPoints;
+    QVector<QPainterPath::ElementType> controlPointTypes;
+
+    for (int i = 0; i < path.elementCount(); ++i)
+    {
+        QPainterPath::Element pathElement = path.elementAt(i);
+        controlPoints.append(QPointF(pathElement.x, pathElement.y));
+        controlPointTypes.append(pathElement.type);
+    }
+
+    drawingPath->setControlPoints(controlPoints);
+    drawingPath->setControlPointTypes(controlPointTypes);
+
+    // 解析样式属性
+    parseStyleAttributesFromStream(drawingPath, element);
+
+    // 解析变换属性
+    if (element.attributes.contains("transform"))
+    {
+        QString transform = element.attributes.value("transform");
+        parseTransformAttribute(drawingPath, transform);
+    }
+
+    // 解析Marker属性
+    QString markerStart = element.attributes.value("marker-start");
+    QString markerMid = element.attributes.value("marker-mid");
+    QString markerEnd = element.attributes.value("marker-end");
+
+    // 应用Marker
+    applyMarkers(drawingPath, markerStart, markerMid, markerEnd);
+
+    return drawingPath;
+}
+
+// 从流式解析元素创建矩形
+DrawingRectangle *SvgHandler::parseRectElementFromStream(const SvgStreamElement &element)
+{
+    qreal x = element.attributes.value("x", "0").toDouble();
+    qreal y = element.attributes.value("y", "0").toDouble();
+    qreal width = element.attributes.value("width", "0").toDouble();
+    qreal height = element.attributes.value("height", "0").toDouble();
+
+    if (width <= 0 || height <= 0)
+    {
+        return nullptr;
+    }
+
+    DrawingRectangle *rect = new DrawingRectangle(QRectF(0, 0, width, height));
+    rect->setPos(x, y);
+
+    // 解析样式属性
+    parseStyleAttributesFromStream(rect, element);
+
+    // 解析变换属性
+    if (element.attributes.contains("transform"))
+    {
+        QString transform = element.attributes.value("transform");
+        parseTransformAttribute(rect, transform);
+    }
+
+    return rect;
+}
+
+// 从流式解析元素创建圆形
+DrawingEllipse *SvgHandler::parseCircleElementFromStream(const SvgStreamElement &element)
+{
+    qreal cx = element.attributes.value("cx", "0").toDouble();
+    qreal cy = element.attributes.value("cy", "0").toDouble();
+    qreal r = element.attributes.value("r", "0").toDouble();
+
+    if (r <= 0)
+    {
+        return nullptr;
+    }
+
+    QRectF rect(0, 0, 2 * r, 2 * r);
+    DrawingEllipse *circle = new DrawingEllipse(rect);
+    circle->setPos(cx - r, cy - r);
+
+    // 解析样式属性
+    parseStyleAttributesFromStream(circle, element);
+
+    // 解析变换属性
+    if (element.attributes.contains("transform"))
+    {
+        QString transform = element.attributes.value("transform");
+        parseTransformAttribute(circle, transform);
+    }
+
+    return circle;
+}
+
+// 从流式解析元素创建椭圆
+DrawingEllipse *SvgHandler::parseEllipseElementFromStream(const SvgStreamElement &element)
+{
+    qreal cx = element.attributes.value("cx", "0").toDouble();
+    qreal cy = element.attributes.value("cy", "0").toDouble();
+    qreal rx = element.attributes.value("rx", "0").toDouble();
+    qreal ry = element.attributes.value("ry", "0").toDouble();
+
+    if (rx <= 0 || ry <= 0)
+    {
+        return nullptr;
+    }
+
+    QRectF rect(-rx, -ry, 2 * rx, 2 * ry);
+    DrawingEllipse *ellipse = new DrawingEllipse(rect);
+    ellipse->setPos(cx, cy);
+
+    // 解析样式属性
+    parseStyleAttributesFromStream(ellipse, element);
+
+    // 解析变换属性
+    if (element.attributes.contains("transform"))
+    {
+        QString transform = element.attributes.value("transform");
+        parseTransformAttribute(ellipse, transform);
+    }
+
+    return ellipse;
+}
+
+// 从流式解析元素创建线条
+DrawingPath *SvgHandler::parseLineElementFromStream(const SvgStreamElement &element)
+{
+    qreal x1 = element.attributes.value("x1", "0").toDouble();
+    qreal y1 = element.attributes.value("y1", "0").toDouble();
+    qreal x2 = element.attributes.value("x2", "0").toDouble();
+    qreal y2 = element.attributes.value("y2", "0").toDouble();
+
+    QPainterPath path;
+    path.moveTo(x1, y1);
+    path.lineTo(x2, y2);
+
+    DrawingPath *line = new DrawingPath();
+    line->setPath(path);
+
+    // 解析样式属性
+    parseStyleAttributesFromStream(line, element);
+
+    // 解析变换属性
+    if (element.attributes.contains("transform"))
+    {
+        QString transform = element.attributes.value("transform");
+        parseTransformAttribute(line, transform);
+    }
+
+    // 解析Marker属性
+    QString markerStart = element.attributes.value("marker-start");
+    QString markerMid = element.attributes.value("marker-mid");
+    QString markerEnd = element.attributes.value("marker-end");
+
+    // 应用Marker
+    applyMarkers(line, markerStart, markerMid, markerEnd);
+
+    return line;
+}
+
+// 从流式解析元素创建多边形
+DrawingPath *SvgHandler::parsePolygonElementFromStream(const SvgStreamElement &element)
+{
+    if (!element.attributes.contains("points"))
+    {
+        return nullptr;
+    }
+
+    QString pointsStr = element.attributes.value("points");
+    if (pointsStr.isEmpty())
+    {
+        return nullptr;
+    }
+
+    QPainterPath path;
+    SvgPointParser::parsePoints(pointsStr, path);
+
+    if (element.tagName == "polygon")
+    {
+        path.closeSubpath();
+    }
+
+    DrawingPath *shape = new DrawingPath();
+    shape->setPath(path);
+
+    // 解析样式属性
+    parseStyleAttributesFromStream(shape, element);
+
+    // 解析变换属性
+    if (element.attributes.contains("transform"))
+    {
+        QString transform = element.attributes.value("transform");
+        QTransform transformMatrix = parseTransform(transform);
+        shape->applyTransform(transformMatrix);
+    }
+
+    // 解析Marker属性
+    QString markerStart = element.attributes.value("marker-start");
+    QString markerMid = element.attributes.value("marker-mid");
+    QString markerEnd = element.attributes.value("marker-end");
+
+    // 应用Marker
+    applyMarkers(shape, markerStart, markerMid, markerEnd);
+
+    return shape;
+}
+
+// 从流式解析元素创建文本
+DrawingText *SvgHandler::parseTextElementFromStream(const SvgStreamElement &element)
+{
+    QString text = element.text.trimmed();
+    if (text.isEmpty())
+    {
+        return nullptr;
+    }
+
+    qreal x = element.attributes.value("x", "0").toDouble();
+    qreal y = element.attributes.value("y", "0").toDouble();
+    QPointF position(x, y);
+
+    DrawingText *shape = new DrawingText(text);
+    shape->setPos(position);
+
+    // 解析字体属性
+    QString fontFamily = element.attributes.value("font-family", "Arial");
+    qreal fontSize = element.attributes.value("font-size", "12").toDouble();
+    QString fontWeight = element.attributes.value("font-weight", "normal");
+    QString fontStyle = element.attributes.value("font-style", "normal");
+
+    QFont font(fontFamily);
+    font.setPointSizeF(fontSize);
+
+    if (fontWeight == "bold")
+    {
+        font.setBold(true);
+    }
+
+    if (fontStyle == "italic")
+    {
+        font.setItalic(true);
+    }
+
+    shape->setFont(font);
+
+    // 解析文本锚点属性
+    QString textAnchor = element.attributes.value("text-anchor", "start");
+    
+    if (textAnchor == "middle") {
+        QFontMetricsF metrics(font);
+        qreal textWidth = metrics.horizontalAdvance(text);
+        QPointF adjustedPos = position - QPointF(textWidth / 2, 0);
+        shape->setPos(adjustedPos);
+    } else if (textAnchor == "end") {
+        QFontMetricsF metrics(font);
+        qreal textWidth = metrics.horizontalAdvance(text);
+        QPointF adjustedPos = position - QPointF(textWidth, 0);
+        shape->setPos(adjustedPos);
+    }
+
+    // 解析样式属性
+    parseStyleAttributesFromStream(shape, element);
+
+    // 解析变换属性
+    if (element.attributes.contains("transform"))
+    {
+        QString transform = element.attributes.value("transform");
+        QTransform transformMatrix = parseTransform(transform);
+        shape->applyTransform(transformMatrix);
+    }
+
+    return shape;
+}
+
+// 从流式解析元素创建组
+DrawingGroup *SvgHandler::parseGroupElementFromStream(const SvgStreamElement &element)
+{
+    DrawingGroup *group = new DrawingGroup();
+
+    // 解析组的样式属性
+    parseStyleAttributesFromStream(group, element);
+
+    // 处理所有子元素
+    for (const SvgStreamElement &childElement : element.children)
+    {
+        DrawingShape *shape = parseSvgElementFromStream(childElement);
+        if (shape)
+        {
+            group->addItem(shape);
+        }
+    }
+
+    return group;
+}
+
+// 从流式解析元素创建use元素
+DrawingShape *SvgHandler::parseUseElementFromStream(const SvgStreamElement &element)
+{
+    // TODO: 实现use元素的流式解析
+    // 这需要访问s_definedElements，需要特殊处理
+    return nullptr;
+}
+
+// 从流式解析元素解析样式属性
+void SvgHandler::parseStyleAttributesFromStream(DrawingShape *shape, const SvgStreamElement &element)
+{
+    // 解析stroke属性
+    if (element.attributes.contains("stroke"))
+    {
+        QString stroke = element.attributes.value("stroke");
+        if (!stroke.isEmpty())
+        {
+            if (stroke == "none")
+            {
+                shape->setStrokePen(Qt::NoPen);
+            }
+            else
+            {
+                QColor strokeColor = parseColor(stroke);
+                if (strokeColor.isValid())
+                {
+                    QPen pen = shape->strokePen();
+                    pen.setColor(strokeColor);
+                    shape->setStrokePen(pen);
+                }
+            }
+        }
+    }
+
+    // 解析stroke-width属性
+    if (element.attributes.contains("stroke-width"))
+    {
+        QString strokeWidth = element.attributes.value("stroke-width");
+        if (!strokeWidth.isEmpty())
+        {
+            qreal width = parseLength(strokeWidth);
+            if (width > 0)
+            {
+                QPen pen = shape->strokePen();
+                pen.setWidthF(width);
+                shape->setStrokePen(pen);
+            }
+        }
+    }
+
+    // 解析fill属性
+    if (element.attributes.contains("fill"))
+    {
+        QString fill = element.attributes.value("fill");
+        if (!fill.isEmpty())
+        {
+            if (fill == "none")
+            {
+                shape->setFillBrush(Qt::NoBrush);
+            }
+            else if (fill.startsWith("url(#"))
+            {
+                QString refId = fill.mid(5, fill.length() - 6);
+                if (s_gradients.contains(refId))
+                {
+                    QGradient gradient = s_gradients[refId];
+                    gradient.setCoordinateMode(QGradient::ObjectBoundingMode);
+                    QBrush brush(gradient);
+                    shape->setFillBrush(brush);
+                }
+                else if (s_patterns.contains(refId))
+                {
+                    QBrush patternBrush = s_patterns[refId];
+                    shape->setFillBrush(patternBrush);
+                }
+            }
+            else
+            {
+                QColor fillColor = parseColor(fill);
+                if (fillColor.isValid())
+                {
+                    shape->setFillBrush(QBrush(fillColor));
+                }
+            }
+        }
+    }
+
+    // 解析opacity属性
+    if (element.attributes.contains("opacity"))
+    {
+        QString opacity = element.attributes.value("opacity");
+        if (!opacity.isEmpty())
+        {
+            qreal opacityValue = opacity.toDouble();
+            QPen pen = shape->strokePen();
+            QColor strokeColor = pen.color();
+            strokeColor.setAlphaF(opacityValue);
+            pen.setColor(strokeColor);
+            shape->setStrokePen(pen);
+
+            QBrush brush = shape->fillBrush();
+            QColor fillColor = brush.color();
+            fillColor.setAlphaF(opacityValue);
+            brush.setColor(fillColor);
+            shape->setFillBrush(brush);
+
+            shape->setOpacity(opacityValue);
+        }
+    }
 }
 
 DrawingShape *SvgHandler::parseSvgElement(const QDomElement &element)

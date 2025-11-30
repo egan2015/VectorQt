@@ -15,11 +15,31 @@
 #include <QGraphicsBlurEffect>
 #include <QGraphicsDropShadowEffect>
 #include <QHash>
+#include <QXmlStreamReader>
 
 // 前向声明
 struct MarkerData;
 class FastPathParser;
 class SvgElementCollector;
+
+// 流式SVG解析器元素结构
+struct SvgStreamElement {
+    QString tagName;
+    QHash<QString, QString> attributes;
+    QString text;
+    QList<SvgStreamElement> children;
+};
+
+// 流式SVG解析器类
+class SvgStreamParser
+{
+public:
+    static bool parseSvgFile(const QString &fileName, SvgStreamElement &rootElement);
+private:
+    static SvgStreamElement parseElement(QXmlStreamReader &reader);
+};
+
+
 
 // Marker存储 - 声明为extern以便其他文件访问
 extern QHash<QString, QDomElement> s_markers;
@@ -69,6 +89,9 @@ private:
     // 解析SVG元数据
     static SvgMetadata parseSvgMetadata(const QDomElement &svgElement);
     
+    // 从流式解析的元素解析SVG元数据
+    static SvgMetadata parseSvgMetadataFromElement(const SvgStreamElement &svgElement);
+    
     // 计算SVG到Scene的变换矩阵
     static QTransform calculateSvgToSceneTransform(const SvgMetadata &metadata);
     
@@ -81,6 +104,9 @@ private:
 private:
     // 解析SVG文档
     static bool parseSvgDocument(DrawingScene *scene, const QDomDocument &doc);
+    
+    // 从流式解析的元素解析SVG文档
+    static bool parseSvgDocumentFromElement(DrawingScene *scene, const SvgStreamElement &rootElement);
     
     // 解析SVG元素
     static DrawingShape* parseSvgElement(const QDomElement &element);
@@ -106,6 +132,19 @@ private:
     
     // 解析 Inkscape sodipodi:arc 元素
     static DrawingEllipse* parseSodipodiArcElement(const QDomElement &element);
+    
+    // 流式解析相关函数
+    static DrawingShape* parseSvgElementFromStream(const SvgStreamElement &element);
+    static DrawingPath* parsePathElementFromStream(const SvgStreamElement &element);
+    static DrawingRectangle* parseRectElementFromStream(const SvgStreamElement &element);
+    static DrawingEllipse* parseCircleElementFromStream(const SvgStreamElement &element);
+    static DrawingEllipse* parseEllipseElementFromStream(const SvgStreamElement &element);
+    static DrawingPath* parseLineElementFromStream(const SvgStreamElement &element);
+    static DrawingPath* parsePolygonElementFromStream(const SvgStreamElement &element);
+    static DrawingText* parseTextElementFromStream(const SvgStreamElement &element);
+    static DrawingGroup* parseGroupElementFromStream(const SvgStreamElement &element);
+    static DrawingShape* parseUseElementFromStream(const SvgStreamElement &element);
+    static void parseStyleAttributesFromStream(DrawingShape *shape, const SvgStreamElement &element);
     
     // 解析矩形元素
     static DrawingRectangle* parseRectElement(const QDomElement &element);

@@ -1018,9 +1018,6 @@ void PathOperationCommand::redo() {
                 originalPath = pathShape->path();
             } else {
                 originalPath = shape->transformedShape();
-                QTransform transform;
-                transform.translate(shape->pos().x(), shape->pos().y());
-                originalPath = transform.map(originalPath);
             }
             
             // 执行路径操作
@@ -1050,16 +1047,16 @@ void PathOperationCommand::redo() {
                 // 创建新的路径对象
                 DrawingPath *newPathShape = new DrawingPath();
                 
-                // 调整路径为相对于原点的路径
-                QRectF bounds = newPath.boundingRect();
-                QTransform offsetTransform;
-                offsetTransform.translate(-bounds.left(), -bounds.top());
-                QPainterPath adjustedPath = offsetTransform.map(newPath);
-                
-                newPathShape->setPath(adjustedPath);
+                // 保持原始位置，不调整路径坐标
+                newPathShape->setPath(newPath);
                 newPathShape->setStrokePen(shape->strokePen());
                 newPathShape->setFillBrush(shape->fillBrush());
-                newPathShape->setPos(bounds.topLeft());
+                newPathShape->setPos(shape->pos());
+                
+                // 对于Path类型，需要应用变换；对于其他类型，变换已经在路径中了
+                if (shape->shapeType() == DrawingShape::Path) {
+                    newPathShape->applyTransform(shape->transform());
+                }
                 
                 if (shape->document()) {
                     newPathShape->setDocument(shape->document());
@@ -1141,9 +1138,6 @@ void PathOperationsManager::executePathOperationSteps(PathOperation op)
         } else {
             // 对于其他图形类型，获取其变换后的路径
             originalPath = shape->transformedShape();
-            QTransform transform;
-            transform.translate(shape->pos().x(), shape->pos().y());
-            originalPath = transform.map(originalPath);
         }
         
         // 执行路径操作
@@ -1174,16 +1168,16 @@ void PathOperationsManager::executePathOperationSteps(PathOperation op)
             // 创建新的路径对象
             DrawingPath *newPathShape = new DrawingPath();
             
-            // 调整路径为相对于原点的路径
-            QRectF bounds = newPath.boundingRect();
-            QTransform offsetTransform;
-            offsetTransform.translate(-bounds.left(), -bounds.top());
-            QPainterPath adjustedPath = offsetTransform.map(newPath);
-            
-            newPathShape->setPath(adjustedPath);
+            // 保持原始位置，不调整路径坐标
+            newPathShape->setPath(newPath);
             newPathShape->setStrokePen(shape->strokePen());
             newPathShape->setFillBrush(shape->fillBrush());
-            newPathShape->setPos(bounds.topLeft());
+            newPathShape->setPos(shape->pos());
+            
+            // 对于Path类型，需要应用变换；对于其他类型，变换已经在路径中了
+            if (shape->shapeType() == DrawingShape::Path) {
+                newPathShape->applyTransform(shape->transform());
+            }
             
             // 使用分解式命令创建新路径
             CommandManager::instance()->pushCommand(new CreatePathCommand(m_scene, newPathShape));

@@ -269,16 +269,10 @@ bool SvgHandler::parseSvgDocument(DrawingScene *scene, const QDomDocument &doc)
             if (!isInGroup) {
                 DrawingShape *shape = parseSvgElement(element);
                 if (shape) {
-                    // 对于use元素，不在这里应用变换，避免双重处理
-                    // use元素的变换在parseUseElement函数中处理
-                    if (element.tagName() != "use" && element.hasAttribute("transform")) {
-                        QString transform = element.attribute("transform");
-                        if (!transform.isEmpty()) {
-                            QTransform transformMatrix = parseTransform(transform);
-                            shape->applyTransform(transformMatrix);
-                        }
-                    }
+                    // 所有元素的变换都在各自的解析函数中处理，避免重复处理
                     scene->addItem(shape);
+                    // 设置Z值，确保按照SVG文档顺序显示
+                    shape->setZValue(elementCount);
                     elementCount++;
                 }
             }
@@ -627,8 +621,7 @@ DrawingEllipse *SvgHandler::parseSodipodiArcElement(const QDomElement &element)
     {
         QString transform = element.attribute("transform");
         //qDebug() << "parseEllipseElement 处理变换:" << transform;
-        // 临时禁用椭圆变换处理以查找问题源头
-        // parseTransformAttribute(ellipse, transform);
+        parseTransformAttribute(ellipse, transform);
     }
 
     return ellipse;
@@ -672,8 +665,7 @@ DrawingPath *SvgHandler::parsePathElement(const QDomElement &element)
     QString transform = element.attribute("transform");
     if (!transform.isEmpty())
     {
-        // 临时禁用路径变换处理以查找问题源头
-        // parseTransformAttribute(drawingPath, transform);
+        parseTransformAttribute(drawingPath, transform);
     }
 
     // 解析Marker属性
@@ -719,7 +711,7 @@ DrawingRectangle *SvgHandler::parseRectElement(const QDomElement &element)
     {
         //qDebug() << "parseRectElement 处理变换:" << transform;
         // 对于引用元素，禁用变换处理，避免重复处理
-        // parseTransformAttribute(rect, transform);
+        parseTransformAttribute(rect, transform);
     } else {
         //qDebug() << "parseRectElement 没有变换属性";
     }
@@ -784,9 +776,7 @@ DrawingEllipse *SvgHandler::parseCircleElement(const QDomElement &element)
     QString transform = element.attribute("transform");
     if (!transform.isEmpty())
     {
-        //qDebug() << "parseCircleElement 处理变换:" << transform;
-        // 临时禁用圆形变换处理以查找问题源头
-        // parseTransformAttribute(circle, transform);
+        parseTransformAttribute(circle, transform);
     }
 
     return circle;
@@ -1121,6 +1111,73 @@ void SvgHandler::parseStyleAttributes(DrawingGroup *group, const QDomElement &el
     }
 }
 
+QTransform SvgHandler::parseAdjustedTransform(const QString &transformStr, const QPointF &shapePos)
+{
+    // 解析SVG变换字符串，但调整旋转中心为相对于图形位置的坐标
+    QRegularExpression regex("(\\S+)\\s*\\(\\s*([^)]+)\\s*\\)");
+    QRegularExpressionMatchIterator iter = regex.globalMatch(transformStr);
+
+    QTransform transform;
+    
+    while (iter.hasNext())
+    {
+        QRegularExpressionMatch match = iter.next();
+        QString func = match.captured(1);
+        QString paramsStr = match.captured(2);
+        QStringList params = paramsStr.split(QRegularExpression("\\s*,\\s*|\\s+"), Qt::SkipEmptyParts);
+
+        if (func == "translate" && params.size() >= 1)
+        {
+            qreal tx = params[0].toDouble();
+            qreal ty = params.size() > 1 ? params[1].toDouble() : 0.0;
+            transform.translate(tx, ty);
+        }
+        else if (func == "rotate" && params.size() >= 1)
+        {
+            qreal angle = params[0].toDouble();
+            qreal cx = 0, cy = 0;
+            if (params.size() >= 3)
+            {
+                cx = params[1].toDouble();
+                cy = params[2].toDouble();
+                // 将旋转中心转换为相对于图形位置的坐标
+                cx -= shapePos.x();
+                cy -= shapePos.y();
+            }
+            
+            if (cx != 0 || cy != 0)
+            {
+                // 旋转中心变换：先平移到旋转中心，旋转，再平移回来
+                transform.translate(cx, cy);
+                transform.rotate(angle);
+                transform.translate(-cx, -cy);
+            }
+            else
+            {
+                transform.rotate(angle);
+            }
+        }
+        else if (func == "scale" && params.size() >= 1)
+        {
+            qreal sx = params[0].toDouble();
+            qreal sy = params.size() > 1 ? params[1].toDouble() : sx;
+            transform.scale(sx, sy);
+        }
+        else if (func == "skewX" && params.size() >= 1)
+        {
+            qreal angle = params[0].toDouble();
+            transform.shear(qTan(qDegreesToRadians(angle)), 0);
+        }
+        else if (func == "skewY" && params.size() >= 1)
+        {
+            qreal angle = params[0].toDouble();
+            transform.shear(0, qTan(qDegreesToRadians(angle)));
+        }
+    }
+
+    return transform;
+}
+
 QTransform SvgHandler::parseTransform(const QString &transformStr)
 {
     // 解析SVG变换字符串，如 "translate(10,20) rotate(45) scale(2,1)"
@@ -1213,84 +1270,25 @@ QTransform SvgHandler::parseTransform(const QString &transformStr)
 
 void SvgHandler::parseTransformAttribute(DrawingShape *shape, const QString &transformStr)
 {
-    //qDebug() << "=== parseTransformAttribute 被调用 ===";
-    //qDebug() << "变换字符串:" << transformStr;
-   // //qDebug() << "shape类型:" << shape->metaObject()->className();
-    
-    // 解析变换字符串，分离平移和其他变换
-    QRegularExpression regex("(\\S+)\\s*\\(\\s*([^)]+)\\s*\\)");
-    QRegularExpressionMatchIterator iter = regex.globalMatch(transformStr);
-    
-    QPointF translation(0, 0);
-    QTransform otherTransform;
-
-    bool hasTranslate = false;
-    
-    // 收集所有变换
-    QList<QPair<QString, QStringList>> transforms;
-    while (iter.hasNext())
-    {
-        QRegularExpressionMatch match = iter.next();
-        QString func = match.captured(1);
-        QString paramsStr = match.captured(2);
-        QStringList params = paramsStr.split(QRegularExpression("\\s*,\\s*|\\s+"), Qt::SkipEmptyParts);
-        transforms.append(qMakePair(func, params));
+    // 如果变换字符串为空，直接返回
+    if (transformStr.isEmpty()) {
+        return;
     }
     
-    // 正向应用变换以分离平移
-    for (const auto &transformPair : transforms)
-    {
-        QString func = transformPair.first;
-        QStringList params = transformPair.second;
-        
-        if (func == "translate" && params.size() >= 1)
-        {
-            qreal tx = params[0].toDouble();
-            qreal ty = params.size() > 1 ? params[1].toDouble() : 0.0;
-            translation += QPointF(tx, ty);
-            hasTranslate = true;
-        }
-        else if (func == "rotate" && params.size() >= 1)
-        {
-            qreal angle = params[0].toDouble();
-            qreal cx = 0, cy = 0;
-            if (params.size() >= 3)
-            {
-                cx = params[1].toDouble();
-                cy = params[2].toDouble();
-            }
-            
-            if (cx != 0 || cy != 0)
-            {
-                otherTransform.translate(cx, cy);
-                otherTransform.rotate(angle);
-                otherTransform.translate(-cx, -cy);
-                //qDebug() << "parseTransformAttribute Rotated by" << angle << "around" << QPointF(cx, cy);
-            }
-            else
-            {
-                otherTransform.rotate(angle);
-            }
-        }
-        else if (func == "scale" && params.size() >= 1)
-        {
-            qreal sx = params[0].toDouble();
-            qreal sy = params.size() > 1 ? params[1].toDouble() : sx;
-            otherTransform.scale(sx, sy);
-        }
-        // 可以添加其他变换类型...
+    // 使用符合SVG标准的变换处理（与use元素一致）
+    QPointF pos = shape->pos();
+    QString adjustedTransform = adjustTransformForUseElement(transformStr, -pos.x(), -pos.y());
+    
+    // 检查调整后的变换是否为空
+    if (adjustedTransform.isEmpty()) {
+        return;
     }
     
-    // 应用位置和变换
-    if (hasTranslate)
-    {
-        shape->setPos(shape->pos() + translation);
-        //qDebug() << "Translated to" << translation;
-    }
+    QTransform transformMatrix = parseTransform(adjustedTransform);
     
-    if (!otherTransform.isIdentity())
+    if (!transformMatrix.isIdentity())
     {
-        shape->applyTransform(otherTransform);
+        shape->applyTransform(transformMatrix);
     }
 }
 
@@ -1351,6 +1349,12 @@ QColor SvgHandler::parseColor(const QString &colorStr)
     QColor color(colorStr);
     if (color.isValid())
     {
+        // 检查是否是透明颜色，如果是透明的不透明颜色，设置为不透明
+        if (color.alpha() == 0 && colorStr != "transparent" && colorStr != "none")
+        {
+            qDebug() << "颜色" << colorStr << "被解析为透明，设置为不透明";
+            color.setAlpha(255);
+        }
         return color;
     }
 
@@ -3520,54 +3524,67 @@ DrawingShape *SvgHandler::parseUseElement(const QDomElement &element)
         shape->setPos(shape->pos() + QPointF(x, y));
     }
 
-    // 解析样式属性（use元素的样式会覆盖引用元素的样式）
+    // 解析样式属性：use元素的样式会覆盖引用元素的样式
+    // 但如果use元素没有某个样式属性，应该继承引用元素的样式
     parseStyleAttributes(shape, element);
-
-    // 处理特定属性的覆盖（例如fill、stroke等）
-    if (element.hasAttribute("fill"))
+    
+    // 如果use元素没有fill属性，继承引用元素的fill
+    if (!element.hasAttribute("fill") && referencedElement.hasAttribute("fill"))
     {
-        QString fill = element.attribute("fill");
-        if (fill == "none")
+        QString fill = referencedElement.attribute("fill");
+        if (!fill.isEmpty())
         {
-            shape->setFillBrush(Qt::NoBrush);
-        }
-        else
-        {
-            QColor fillColor = parseColor(fill);
-            if (fillColor.isValid())
+            if (fill == "none")
             {
-                shape->setFillBrush(fillColor);
+                shape->setFillBrush(Qt::NoBrush);
+            }
+            else
+            {
+                QColor fillColor = parseColor(fill);
+                if (fillColor.isValid())
+                {
+                    shape->setFillBrush(fillColor);
+                }
             }
         }
     }
-
-    if (element.hasAttribute("stroke"))
+    
+    // 如果use元素没有stroke属性，继承引用元素的stroke
+    if (!element.hasAttribute("stroke") && referencedElement.hasAttribute("stroke"))
     {
-        QString stroke = element.attribute("stroke");
-        if (stroke == "none")
+        QString stroke = referencedElement.attribute("stroke");
+        if (!stroke.isEmpty())
         {
-            shape->setStrokePen(Qt::NoPen);
+            if (stroke == "none")
+            {
+                shape->setStrokePen(Qt::NoPen);
+            }
+            else
+            {
+                QColor strokeColor = parseColor(stroke);
+                if (strokeColor.isValid())
+                {
+                    QPen pen = shape->strokePen();
+                    pen.setColor(strokeColor);
+                    shape->setStrokePen(pen);
+                }
+            }
         }
-        else
+    }
+    
+    // 如果use元素没有stroke-width属性，继承引用元素的stroke-width
+    if (!element.hasAttribute("stroke-width") && referencedElement.hasAttribute("stroke-width"))
+    {
+        QString strokeWidth = referencedElement.attribute("stroke-width");
+        if (!strokeWidth.isEmpty())
         {
-            QColor strokeColor = parseColor(stroke);
-            if (strokeColor.isValid())
+            qreal width = parseLength(strokeWidth);
+            if (width > 0)
             {
                 QPen pen = shape->strokePen();
-                pen.setColor(strokeColor);
+                pen.setWidthF(width);
                 shape->setStrokePen(pen);
             }
-        }
-    }
-
-    if (element.hasAttribute("stroke-width"))
-    {
-        qreal width = parseLength(element.attribute("stroke-width"));
-        if (width > 0)
-        {
-            QPen pen = shape->strokePen();
-            pen.setWidthF(width);
-            shape->setStrokePen(pen);
         }
     }
 

@@ -324,11 +324,10 @@ void FastPathParser::parseArcCommand(const QVector<qreal> &numbers, bool isRelat
                                    QPainterPath &path, QPointF &currentPoint, 
                                    QPointF &pathStart, QPointF &lastControlPoint)
 {
-    // 简化的椭圆弧实现，实际应该使用更复杂的算法
-    // 这里暂时用直线段近似
     const int numCount = numbers.size();
+    if (numCount < 7) return; // A命令至少需要7个参数
+    
     int numIndex = 0;
-
     while (numIndex + 6 < numCount) {
         qreal rx = numbers[numIndex];
         qreal ry = numbers[numIndex + 1];
@@ -343,11 +342,64 @@ void FastPathParser::parseArcCommand(const QVector<qreal> &numbers, bool isRelat
             y += currentPoint.y();
         }
 
-        // 简化实现：用直线连接
-        // TODO: 实现完整的椭圆弧到贝塞尔曲线的转换
-        path.lineTo(x, y);
-        currentPoint = QPointF(x, y);
+        // 使用Qt内置的arcTo方法，简化实现
+        QRectF boundingRect(currentPoint.x() - rx, currentPoint.y() - ry, rx * 2, ry * 2);
+        
+        // 计算椭圆弧的参数
+        qreal startAngle = 0;
+        qreal spanAngle = 360.0;
+        
+        // 通过计算起点和终点来确定角度
+        QPointF startPoint = currentPoint;
+        QPointF endPoint = QPointF(x, y);
+        
+        // 将椭圆中心移动到原点进行计算
+        QPointF center = startPoint + QPointF(rx, ry);
+        QPointF startPointFromCenter = startPoint - center;
+        QPointF endPointFromCenter = endPoint - center;
+        
+        // 计算起点角度
+        startAngle = qAtan2(startPointFromCenter.y() / ry, startPointFromCenter.x() / rx) * 180.0 / M_PI;
+        
+        // 计算终点角度
+        qreal endAngle = qAtan2(endPointFromCenter.y() / ry, endPointFromCenter.x() / rx) * 180.0 / M_PI;
+        
+        // 计算角度差
+        spanAngle = endAngle - startAngle;
+        
+        // 处理large-arc-flag
+        if (largeArcFlag) {
+            if (qAbs(spanAngle) < 180) {
+                spanAngle = spanAngle < 0 ? spanAngle + 360 : spanAngle - 360;
+            }
+        } else {
+            if (qAbs(spanAngle) > 180) {
+                spanAngle = spanAngle < 0 ? spanAngle + 360 : spanAngle - 360;
+            }
+        }
+        
+        // 处理sweep-flag
+        if (!sweepFlag && spanAngle > 0) {
+            spanAngle -= 360;
+        } else if (sweepFlag && spanAngle < 0) {
+            spanAngle += 360;
+        }
+        
+        // 应用x轴旋转
+        if (xAxisRotation != 0) {
+            QTransform transform;
+            transform.translate(center.x(), center.y());
+            transform.rotate(xAxisRotation);
+            boundingRect = transform.mapRect(boundingRect);
+            transform.translate(-center.x(), -center.y());
+        }
+        
+        // 添加椭圆弧到路径
+        path.arcTo(boundingRect, startAngle, spanAngle);
+        
+        currentPoint = endPoint;
         lastControlPoint = currentPoint;
+
         numIndex += 7;
     }
 }

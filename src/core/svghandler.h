@@ -96,6 +96,7 @@ private:
     
     // 解析变换字符串为QTransform
     static QTransform parseTransform(const QString &transformStr);
+    static QTransform parseAdjustedTransform(const QString &transformStr, const QPointF &shapePos);
     
     // 应用样式到图形
     static void applyStyleToShape(DrawingShape *shape, const QString &style);

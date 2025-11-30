@@ -1,4 +1,4 @@
-#include <QGraphicsItem>
+#include <QGraphicsScene>
 #include <QGraphicsSceneMouseEvent>
 #include <QKeyEvent>
 #include <QUndoCommand>
@@ -10,6 +10,7 @@
 #include <QPointer>
 #include <algorithm>
 #include <limits>
+#include <QLinearGradient>
 #include "drawingscene.h"
 #include "command-manager.h"
 #include "snap-manager.h"
@@ -663,22 +664,38 @@ void DrawingScene::drawBackground(QPainter *painter, const QRectF &rect)
     // 设置亮色背景
     painter->fillRect(rect, QColor(255, 255, 255)); // 白色背景
     
-    // 绘制场景边界阴影
+    // 绘制场景边界阴影（只在右边和底边，自然重叠）
     QRectF sceneRect = QGraphicsScene::sceneRect();
     if (!sceneRect.isEmpty()) {
-        // 在场景边界外绘制阴影区域
-        QRectF shadowRect = sceneRect.adjusted(-20, -20, 20, 20);
+        // 获取当前变换的缩放因子，使阴影大小不随视图缩放变化
+        QTransform worldTransform = painter->worldTransform();
+        qreal scale = worldTransform.m11(); // 假设X和Y缩放相同
         
-        // 绘制阴影
-        QColor shadowColor(0, 0, 0, 30);
-        painter->fillRect(shadowRect, shadowColor);
+        // 计算固定设备像素大小的阴影
+        qreal shadowOffset = 2.0 / scale; // 反向缩放以保持固定设备像素大小
+        qreal shadowBlur = 4.0 / scale;
+        
+        // 右边阴影（向下延伸到与底边阴影上边对齐）
+        QRectF rightShadow(sceneRect.right(), sceneRect.top() + shadowOffset, shadowBlur, sceneRect.height() - shadowOffset * 2 + shadowBlur);
+        
+        // 添加渐变模糊效果
+        QLinearGradient rightGradient(sceneRect.right(), sceneRect.top() + shadowOffset, sceneRect.right(), sceneRect.bottom());
+        rightGradient.setColorAt(0, QColor(0, 0, 0, 35));
+        rightGradient.setColorAt(1, QColor(0, 0, 0, 10));
+        painter->fillRect(rightShadow, rightGradient);
+        
+        // 底边阴影（精确延伸到右边阴影的终点）
+        QRectF bottomShadow(sceneRect.left() + shadowOffset, sceneRect.bottom(), sceneRect.width() - shadowOffset + shadowBlur, shadowBlur);
+        
+        // 添加渐变模糊效果
+        QLinearGradient bottomGradient(sceneRect.left() + shadowOffset, sceneRect.bottom(), sceneRect.right(), sceneRect.bottom());
+        bottomGradient.setColorAt(0, QColor(0, 0, 0, 25));
+        bottomGradient.setColorAt(1, QColor(0, 0, 0, 10));
+        painter->fillRect(bottomShadow, bottomGradient);
         
         // 绘制场景边界
-        painter->setPen(QPen(QColor(100, 100, 100), 2));
+        painter->setPen(QPen(QColor(100, 100, 100), 1));
         painter->drawRect(sceneRect);
-        
-        // 绘制内部白色区域覆盖阴影
-        painter->fillRect(sceneRect, QColor(255, 255, 255));
     }
     
     // Draw guide lines

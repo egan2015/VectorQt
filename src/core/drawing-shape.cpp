@@ -2409,22 +2409,53 @@ void DrawingText::paintShape(QPainter *painter)
     // 文本颜色应该使用填充色而不是描边色
     if (m_fillBrush != Qt::NoBrush)
     {
-        painter->setPen(QPen(m_fillBrush.color()));
+        // 检查是否是渐变填充
+        if (m_fillBrush.style() == Qt::LinearGradientPattern || 
+            m_fillBrush.style() == Qt::RadialGradientPattern || 
+            m_fillBrush.style() == Qt::ConicalGradientPattern)
+        {
+            // 对于渐变，需要使用画刷而不是画笔
+            painter->setPen(Qt::NoPen);
+            painter->setBrush(m_fillBrush);
+        }
+        else
+        {
+            // 对于纯色，使用画笔
+            painter->setPen(QPen(m_fillBrush.color()));
+            painter->setBrush(Qt::NoBrush);
+        }
     }
     else if (m_strokePen.style() != Qt::NoPen)
     {
         // 如果没有填充色，使用描边色
         painter->setPen(m_strokePen.color());
+        painter->setBrush(Qt::NoBrush);
     }
     else
     {
         // 默认使用黑色
         painter->setPen(QPen(Qt::black));
+        painter->setBrush(Qt::NoBrush);
     }
-    painter->setBrush(Qt::NoBrush);
 
     // 在本地坐标系中绘制文本（QGraphicsItem的位置已经由setPos处理）
-    painter->drawText(QPointF(0, 0), m_text);
+    QPainterPath textPath;
+    QFontMetricsF metrics(m_font);
+    QRectF textRect = metrics.boundingRect(m_text);
+    textPath.addText(textRect.bottomLeft(), m_font, m_text);
+    
+    // 如果有渐变填充，使用drawPath绘制带渐变的文本
+    if (m_fillBrush.style() == Qt::LinearGradientPattern || 
+        m_fillBrush.style() == Qt::RadialGradientPattern || 
+        m_fillBrush.style() == Qt::ConicalGradientPattern)
+    {
+        painter->drawPath(textPath);
+    }
+    else
+    {
+        // 对于纯色，使用常规的drawText方法
+        painter->drawText(QPointF(0, 0), m_text);
+    }
 
     // 如果正在编辑，显示编辑指示器
     if (m_editing)

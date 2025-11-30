@@ -100,12 +100,22 @@ public:
     static DrawingGroup* parseGroupElement(DrawingScene *scene, const QDomElement &groupElement);
     static DrawingShape* parseUseElement(const QDomElement &element);
     
+    // 调整use元素的变换，考虑位置偏移
+    static QString adjustTransformForUseElement(const QString &transformStr, qreal x, qreal y);
+    
     static QLinearGradient parseLinearGradient(const QDomElement &element);
     static QRadialGradient parseRadialGradient(const QDomElement &element);
     static QGraphicsBlurEffect* parseGaussianBlurFilter(const QDomElement &element);
     static QGraphicsDropShadowEffect* parseDropShadowFilter(const QDomElement &element);
     static QBrush parsePatternBrush(const QDomElement &patternElement);
     static MarkerData parseMarkerData(const QDomElement &markerElement);
+    
+    // 辅助解析函数 - 供SvgStreamHandler使用
+    static QColor parseColor(const QString &colorStr);
+    static qreal parseLength(const QString &lengthStr);
+    static void parseSvgPointsData(const QString &pointsStr, QPainterPath &path, bool closePath = true);
+    static void parseSvgPathData(const QString &data, QPainterPath &path);
+    static void applyMarkers(DrawingPath *path, const QString &markerStart, const QString &markerMid, const QString &markerEnd);
     
 private:
     // 解析SVG元数据
@@ -135,9 +145,6 @@ private:
     
     // 收集所有有id的元素（用于use元素）
     static void collectDefinedElements(const QDomElement &parent);
-    
-    // 调整use元素的变换，考虑位置偏移
-    static QString adjustTransformForUseElement(const QString &transformStr, qreal x, qreal y);
     
     // 解析变换字符串为QTransform
     static QTransform parseTransform(const QString &transformStr);
@@ -182,9 +189,6 @@ private:
     static void parseTransformAttribute(DrawingShape *shape, const QString &transformStr);
     
     
-    // 解析颜色字符串
-    static QColor parseColor(const QString &colorStr);
-    
     // 解析defs元素中的渐变定义
     static void parseDefsElements(const QDomElement &root);
     
@@ -204,14 +208,7 @@ private:
     static void renderMarkerToCache(const QString &id, const QDomElement &markerElement);
     static QPainterPath createMarkerPath(const QString &markerId, const QPointF &startPoint, const QPointF &endPoint);
     // 应用Marker到路径
-    static void applyMarkers(DrawingPath *path, const QString &markerStart, const QString &markerMid, const QString &markerEnd);
     static void applyMarkerToPath(DrawingPath *path, const QString &markerId, const QString &position = "end");
-    
-    // 从字符串解析长度值
-    static qreal parseLength(const QString &lengthStr);
-    
-    // 从字符串解析点数据
-    static void parseSvgPointsData(const QString &pointsStr, QPainterPath &path, bool closePath = true);
     
     // 导出场景到SVG文档
     static QDomDocument exportSceneToSvgDocument(DrawingScene *scene);
@@ -241,7 +238,6 @@ private:
     static QDomElement exportPolygonToSvgElement(QDomDocument &doc, DrawingPolygon *polygon);
     
     // 辅助函数
-    static void parseSvgPathData(const QString &data, QPainterPath &path);
     static QString pathDataToString(const QPainterPath &path);
     static void parseGroupElement(const QDomElement &groupElement);
     

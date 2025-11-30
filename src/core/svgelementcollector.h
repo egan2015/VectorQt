@@ -62,10 +62,12 @@ private:
      * @param element 当前元素
      * @param collected 收集的结果
      * @param isInDefs 是否在defs元素中
+     * @param isInGroup 是否在group元素中
      */
     static void collectRecursive(const QDomElement &element, 
                                 CollectedElements &collected, 
-                                bool isInDefs = false);
+                                bool isInDefs = false,
+                                bool isInGroup = false);
 
     /**
      * 判断元素是否为图层

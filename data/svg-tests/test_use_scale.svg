@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="400" height="200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- 定义一个圆形，中心在(25,25) -->
+    <circle id="testCircle" cx="25" cy="25" r="20" fill="red" stroke="black" stroke-width="2"/>
+  </defs>
+  
+  <!-- 原始圆形，在(0,0)位置 -->
+  <use href="#testCircle" x="0" y="0" fill="blue"/>
+  
+  <!-- 缩放1.5倍的圆形，应该在(100,80)位置 -->
+  <use href="#testCircle" x="100" y="80" transform="scale(1.5)" fill="green"/>
+  
+  <!-- 参考线，显示期望位置 -->
+  <line x1="100" y1="80" x2="150" y2="80" stroke="orange" stroke-width="2"/>
+  <line x1="100" y1="80" x2="100" y2="130" stroke="orange" stroke-width="2"/>
+  
+  <!-- 标签 -->
+  <text x="50" y="20" font-size="12">原始</text>
+  <text x="150" y="100" font-size="12">缩放1.5x</text>
+</svg>

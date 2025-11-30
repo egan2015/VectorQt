@@ -4,13 +4,14 @@
 SvgElementCollector::CollectedElements SvgElementCollector::collect(const QDomElement &root)
 {
     CollectedElements collected;
-    collectRecursive(root, collected);
+    collectRecursive(root, collected, false, false);
     return collected;
 }
 
 void SvgElementCollector::collectRecursive(const QDomElement &element, 
                                           CollectedElements &collected, 
-                                          bool isInDefs)
+                                          bool isInDefs,
+                                          bool isInGroup)
 {
     QString tagName = element.tagName();
     
@@ -57,21 +58,21 @@ void SvgElementCollector::collectRecursive(const QDomElement &element,
             }
         }
     } else if (tagName == "path") {
-        if (!isInDefs) collected.paths.append(element);
+        if (!isInDefs && !isInGroup) collected.paths.append(element);
     } else if (tagName == "rect") {
-        if (!isInDefs) collected.rectangles.append(element);
+        if (!isInDefs && !isInGroup) collected.rectangles.append(element);
     } else if (tagName == "ellipse") {
-        if (!isInDefs) collected.ellipses.append(element);
+        if (!isInDefs && !isInGroup) collected.ellipses.append(element);
     } else if (tagName == "circle") {
-        if (!isInDefs) collected.circles.append(element);
+        if (!isInDefs && !isInGroup) collected.circles.append(element);
     } else if (tagName == "line") {
-        if (!isInDefs) collected.lines.append(element);
+        if (!isInDefs && !isInGroup) collected.lines.append(element);
     } else if (tagName == "polyline") {
-        if (!isInDefs) collected.polylines.append(element);
+        if (!isInDefs && !isInGroup) collected.polylines.append(element);
     } else if (tagName == "polygon") {
-        if (!isInDefs) collected.polygons.append(element);
+        if (!isInDefs && !isInGroup) collected.polygons.append(element);
     } else if (tagName == "text") {
-        if (!isInDefs) collected.texts.append(element);
+        if (!isInDefs && !isInGroup) collected.texts.append(element);
     } else if (tagName == "g") {
         if (isLayerElement(element)) {
             collected.layers.append(element);
@@ -79,15 +80,16 @@ void SvgElementCollector::collectRecursive(const QDomElement &element,
             if (!isInDefs) collected.groups.append(element);
         }
     } else if (tagName == "use") {
-        if (!isInDefs) collected.useElements.append(element);
+        if (!isInDefs && !isInGroup) collected.useElements.append(element);
     }
     
     // 递归处理子元素
+    bool newIsInGroup = isInGroup || (tagName == "g");
     QDomNodeList children = element.childNodes();
     for (int i = 0; i < children.size(); ++i) {
         QDomNode child = children.at(i);
         if (child.isElement()) {
-            collectRecursive(child.toElement(), collected, isInDefs);
+            collectRecursive(child.toElement(), collected, isInDefs, newIsInGroup);
         }
     }
 }

@@ -5,8 +5,7 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QPainterPathStroker>
-#include <QRegularExpression>
-#include <QRegularExpressionMatch>
+
 #include <QPointF>
 #include <QTransform>
 #include <//QDebug>
@@ -32,6 +31,755 @@ static QHash<QString, QBrush> s_patterns;
 QHash<QString, QDomElement> s_markers;
 QHash<QString, MarkerData> s_markerDataCache;
 QHash<QString, QDomElement> s_definedElements;
+
+// 手写解析器类定义 - 避免Qt正则表达式的性能问题
+
+// SvgStringUtils类定义 - 提供简单的字符串分割功能，避免正则表达式
+class SvgStringUtils
+{
+public:
+    static QStringList splitOnWhitespaceOrComma(const QString &str)
+    {
+        QStringList result;
+        if (str.isEmpty())
+            return result;
+
+        QString current;
+        for (int i = 0; i < str.length(); ++i)
+        {
+            QChar c = str[i];
+            if (c.isSpace() || c == ',')
+            {
+                if (!current.isEmpty())
+                {
+                    result.append(current);
+                    current.clear();
+                }
+            }
+            else
+            {
+                current += c;
+            }
+        }
+        
+        if (!current.isEmpty())
+            result.append(current);
+            
+        return result;
+    }
+    
+    static QStringList splitOnWhitespace(const QString &str)
+    {
+        QStringList result;
+        if (str.isEmpty())
+            return result;
+
+        QString current;
+        for (int i = 0; i < str.length(); ++i)
+        {
+            QChar c = str[i];
+            if (c.isSpace())
+            {
+                if (!current.isEmpty())
+                {
+                    result.append(current);
+                    current.clear();
+                }
+            }
+            else
+            {
+                current += c;
+            }
+        }
+        
+        if (!current.isEmpty())
+            result.append(current);
+            
+        return result;
+    }
+};
+
+// SvgTransformParser类定义 - 用于解析SVG变换字符串
+class SvgTransformParser
+{
+public:
+    QTransform parse(const QString &transformStr)
+    {
+        if (transformStr.isEmpty())
+            return QTransform();
+
+        const QString str = transformStr.trimmed();
+        QString result;
+        int i = 0;
+        const int len = str.length();
+        
+        // 先收集所有变换
+        QList<QPair<QString, QStringList>> transforms;
+        
+        while (i < len)
+        {
+            // 跳过空白字符
+            while (i < len && str[i].isSpace())
+                i++;
+            
+            if (i >= len)
+                break;
+            
+            // 解析函数名
+            QString func;
+            while (i < len && (str[i].isLetterOrNumber() || str[i] == '-'))
+            {
+                func += str[i];
+                i++;
+            }
+            
+            // 跳过空白字符
+            while (i < len && str[i].isSpace())
+                i++;
+            
+            // 期望遇到 '('
+            if (i < len && str[i] == '(')
+                i++;
+            
+            // 跳过空白字符
+            while (i < len && str[i].isSpace())
+                i++;
+            
+            // 解析参数字符串
+            QString paramsStr;
+            int parenLevel = 0;
+            while (i < len)
+            {
+                if (str[i] == '(')
+                    parenLevel++;
+                else if (str[i] == ')')
+                {
+                    if (parenLevel == 0)
+                        break;
+                    parenLevel--;
+                }
+                paramsStr += str[i];
+                i++;
+            }
+            
+            // 跳过 ')'
+            if (i < len && str[i] == ')')
+                i++;
+            
+            // 分割参数
+            QStringList params = SvgStringUtils::splitOnWhitespaceOrComma(paramsStr);
+            transforms.append(qMakePair(func, params));
+            
+            // 跳过空白字符
+            while (i < len && str[i].isSpace())
+                i++;
+        }
+        
+        // 按SVG顺序正向应用变换
+        QTransform transform;
+        for (const auto &transformPair : transforms)
+        {
+            QString func = transformPair.first;
+            QStringList params = transformPair.second;
+
+            if (func == "translate" && params.size() >= 1)
+            {
+                qreal tx = params[0].toDouble();
+                qreal ty = params.size() > 1 ? params[1].toDouble() : 0.0;
+                transform.translate(tx, ty);
+            }
+            else if (func == "rotate" && params.size() >= 1)
+            {
+                qreal angle = params[0].toDouble();
+                if (params.size() >= 3)
+                {
+                    qreal cx = params[1].toDouble();
+                    qreal cy = params[2].toDouble();
+                    transform.translate(cx, cy);
+                    transform.rotate(angle);
+                    transform.translate(-cx, -cy);
+                }
+                else
+                {
+                    transform.rotate(angle);
+                }
+            }
+            else if (func == "scale" && params.size() >= 1)
+            {
+                qreal sx = params[0].toDouble();
+                qreal sy = params.size() > 1 ? params[1].toDouble() : sx;
+                transform.scale(sx, sy);
+            }
+            else if (func == "skewX" && params.size() >= 1)
+            {
+                qreal angle = params[0].toDouble();
+                transform.shear(qTan(angle * M_PI / 180.0), 0.0);
+            }
+            else if (func == "skewY" && params.size() >= 1)
+            {
+                qreal angle = params[0].toDouble();
+                transform.shear(0.0, qTan(angle * M_PI / 180.0));
+            }
+            else if (func == "matrix" && params.size() >= 6)
+            {
+                qreal a = params[0].toDouble();
+                qreal b = params[1].toDouble();
+                qreal c = params[2].toDouble();
+                qreal d = params[3].toDouble();
+                qreal e = params[4].toDouble();
+                qreal f = params[5].toDouble();
+                QTransform matrix(a, b, c, d, e, f);
+                transform *= matrix;
+            }
+        }
+        
+        return transform;
+    }
+};
+
+// SvgColorParser类定义 - 用于解析SVG颜色值
+class SvgColorParser
+{
+public:
+    static QColor parseColor(const QString &colorStr)
+    {
+        if (colorStr.isEmpty())
+            return QColor();
+
+        const QString str = colorStr.trimmed().toLower();
+        
+        // 处理none关键字
+        if (str == "none")
+            return QColor();
+        
+        // 处理currentColor关键字
+        if (str == "currentcolor")
+            return QColor(); // 需要从上下文获取当前颜色
+        
+        // 处理十六进制颜色
+        if (str.startsWith('#'))
+        {
+            QString hexStr = str.mid(1);
+            if (hexStr.length() == 3)
+            {
+                // 短格式 #RGB 转换为 #RRGGBB
+                QString expanded;
+                for (int i = 0; i < 3; ++i)
+                {
+                    expanded += QString(hexStr[i]) + QString(hexStr[i]);
+                }
+                hexStr = expanded;
+            }
+            else if (hexStr.length() == 4)
+            {
+                // 短格式 #RGBA 转换为 #RRGGBBAA
+                QString expanded;
+                for (int i = 0; i < 4; ++i)
+                {
+                    expanded += QString(hexStr[i]) + QString(hexStr[i]);
+                }
+                hexStr = expanded;
+            }
+            
+            bool ok;
+            uint color = hexStr.toUInt(&ok, 16);
+            if (ok)
+            {
+                if (hexStr.length() == 6)
+                {
+                    return QColor::fromRgb(color);
+                }
+                else if (hexStr.length() == 8)
+                {
+                    return QColor::fromRgba(color);
+                }
+            }
+        }
+        
+        // 处理RGB/RGBA颜色
+        if (str.startsWith("rgb("))
+        {
+            QString content = str.mid(4, str.length() - 5).trimmed();
+            QStringList parts = SvgStringUtils::splitOnWhitespaceOrComma(content);
+            if (parts.size() >= 3)
+            {
+                int r = qBound(0, parts[0].toInt(), 255);
+                int g = qBound(0, parts[1].toInt(), 255);
+                int b = qBound(0, parts[2].toInt(), 255);
+                int a = 255;
+                if (parts.size() >= 4)
+                {
+                    a = qBound(0, qRound(parts[3].toDouble() * 255), 255);
+                }
+                return QColor(r, g, b, a);
+            }
+        }
+        else if (str.startsWith("rgba("))
+        {
+            QString content = str.mid(5, str.length() - 6).trimmed();
+            QStringList parts = SvgStringUtils::splitOnWhitespaceOrComma(content);
+            if (parts.size() >= 4)
+            {
+                int r = qBound(0, parts[0].toInt(), 255);
+                int g = qBound(0, parts[1].toInt(), 255);
+                int b = qBound(0, parts[2].toInt(), 255);
+                int a = qBound(0, qRound(parts[3].toDouble() * 255), 255);
+                return QColor(r, g, b, a);
+            }
+        }
+        
+        // 处理HSL/HSLA颜色
+        else if (str.startsWith("hsl("))
+        {
+            QString content = str.mid(4, str.length() - 5).trimmed();
+            QStringList parts = SvgStringUtils::splitOnWhitespaceOrComma(content);
+            if (parts.size() >= 3)
+            {
+                qreal h = qBound(0.0, parts[0].toDouble(), 360.0);
+                qreal s = qBound(0.0, parts[1].toDouble(), 100.0) / 100.0;
+                qreal l = qBound(0.0, parts[2].toDouble(), 100.0) / 100.0;
+                int a = 255;
+                if (parts.size() >= 4)
+                {
+                    a = qBound(0, qRound(parts[3].toDouble() * 255), 255);
+                }
+                return QColor::fromHslF(h / 360.0, s, l, a / 255.0);
+            }
+        }
+        else if (str.startsWith("hsla("))
+        {
+            QString content = str.mid(5, str.length() - 6).trimmed();
+            QStringList parts = SvgStringUtils::splitOnWhitespaceOrComma(content);
+            if (parts.size() >= 4)
+            {
+                qreal h = qBound(0.0, parts[0].toDouble(), 360.0);
+                qreal s = qBound(0.0, parts[1].toDouble(), 100.0) / 100.0;
+                qreal l = qBound(0.0, parts[2].toDouble(), 100.0) / 100.0;
+                int a = qBound(0, qRound(parts[3].toDouble() * 255), 255);
+                return QColor::fromHslF(h / 360.0, s, l, a / 255.0);
+            }
+        }
+        
+        // 处理命名颜色
+        static QHash<QString, QColor> namedColors = {
+            {"aliceblue", QColor(240, 248, 255)},
+            {"antiquewhite", QColor(250, 235, 215)},
+            {"aqua", QColor(0, 255, 255)},
+            {"aquamarine", QColor(127, 255, 212)},
+            {"azure", QColor(240, 255, 255)},
+            {"beige", QColor(245, 245, 220)},
+            {"bisque", QColor(255, 228, 196)},
+            {"black", QColor(0, 0, 0)},
+            {"blanchedalmond", QColor(255, 235, 205)},
+            {"blue", QColor(0, 0, 255)},
+            {"blueviolet", QColor(138, 43, 226)},
+            {"brown", QColor(165, 42, 42)},
+            {"burlywood", QColor(222, 184, 135)},
+            {"cadetblue", QColor(95, 158, 160)},
+            {"chartreuse", QColor(127, 255, 0)},
+            {"chocolate", QColor(210, 105, 30)},
+            {"coral", QColor(255, 127, 80)},
+            {"cornflowerblue", QColor(100, 149, 237)},
+            {"cornsilk", QColor(255, 248, 220)},
+            {"crimson", QColor(220, 20, 60)},
+            {"cyan", QColor(0, 255, 255)},
+            {"darkblue", QColor(0, 0, 139)},
+            {"darkcyan", QColor(0, 139, 139)},
+            {"darkgoldenrod", QColor(184, 134, 11)},
+            {"darkgray", QColor(169, 169, 169)},
+            {"darkgreen", QColor(0, 100, 0)},
+            {"darkgrey", QColor(169, 169, 169)},
+            {"darkkhaki", QColor(189, 183, 107)},
+            {"darkmagenta", QColor(139, 0, 139)},
+            {"darkolivegreen", QColor(85, 107, 47)},
+            {"darkorange", QColor(255, 140, 0)},
+            {"darkorchid", QColor(153, 50, 204)},
+            {"darkred", QColor(139, 0, 0)},
+            {"darksalmon", QColor(233, 150, 122)},
+            {"darkseagreen", QColor(143, 188, 143)},
+            {"darkslateblue", QColor(72, 61, 139)},
+            {"darkslategray", QColor(47, 79, 79)},
+            {"darkslategrey", QColor(47, 79, 79)},
+            {"darkturquoise", QColor(0, 206, 209)},
+            {"darkviolet", QColor(148, 0, 211)},
+            {"deeppink", QColor(255, 20, 147)},
+            {"deepskyblue", QColor(0, 191, 255)},
+            {"dimgray", QColor(105, 105, 105)},
+            {"dimgrey", QColor(105, 105, 105)},
+            {"dodgerblue", QColor(30, 144, 255)},
+            {"firebrick", QColor(178, 34, 34)},
+            {"floralwhite", QColor(255, 250, 240)},
+            {"forestgreen", QColor(34, 139, 34)},
+            {"fuchsia", QColor(255, 0, 255)},
+            {"gainsboro", QColor(220, 220, 220)},
+            {"ghostwhite", QColor(248, 248, 255)},
+            {"gold", QColor(255, 215, 0)},
+            {"goldenrod", QColor(218, 165, 32)},
+            {"gray", QColor(128, 128, 128)},
+            {"green", QColor(0, 128, 0)},
+            {"greenyellow", QColor(173, 255, 47)},
+            {"grey", QColor(128, 128, 128)},
+            {"honeydew", QColor(240, 255, 240)},
+            {"hotpink", QColor(255, 105, 180)},
+            {"indianred", QColor(205, 92, 92)},
+            {"indigo", QColor(75, 0, 130)},
+            {"ivory", QColor(255, 255, 240)},
+            {"khaki", QColor(240, 230, 140)},
+            {"lavender", QColor(230, 230, 250)},
+            {"lavenderblush", QColor(255, 240, 245)},
+            {"lawngreen", QColor(124, 252, 0)},
+            {"lemonchiffon", QColor(255, 250, 205)},
+            {"lightblue", QColor(173, 216, 230)},
+            {"lightcoral", QColor(240, 128, 128)},
+            {"lightcyan", QColor(224, 255, 255)},
+            {"lightgoldenrodyellow", QColor(250, 250, 210)},
+            {"lightgray", QColor(211, 211, 211)},
+            {"lightgreen", QColor(144, 238, 144)},
+            {"lightgrey", QColor(211, 211, 211)},
+            {"lightpink", QColor(255, 182, 193)},
+            {"lightsalmon", QColor(255, 160, 122)},
+            {"lightseagreen", QColor(32, 178, 170)},
+            {"lightskyblue", QColor(135, 206, 250)},
+            {"lightslategray", QColor(119, 136, 153)},
+            {"lightslategrey", QColor(119, 136, 153)},
+            {"lightsteelblue", QColor(176, 196, 222)},
+            {"lightyellow", QColor(255, 255, 224)},
+            {"lime", QColor(0, 255, 0)},
+            {"limegreen", QColor(50, 205, 50)},
+            {"linen", QColor(250, 240, 230)},
+            {"magenta", QColor(255, 0, 255)},
+            {"maroon", QColor(128, 0, 0)},
+            {"mediumaquamarine", QColor(102, 205, 170)},
+            {"mediumblue", QColor(0, 0, 205)},
+            {"mediumorchid", QColor(186, 85, 211)},
+            {"mediumpurple", QColor(147, 112, 219)},
+            {"mediumseagreen", QColor(60, 179, 113)},
+            {"mediumslateblue", QColor(123, 104, 238)},
+            {"mediumspringgreen", QColor(0, 250, 154)},
+            {"mediumturquoise", QColor(72, 209, 204)},
+            {"mediumvioletred", QColor(199, 21, 133)},
+            {"midnightblue", QColor(25, 25, 112)},
+            {"mintcream", QColor(245, 255, 250)},
+            {"mistyrose", QColor(255, 228, 225)},
+            {"moccasin", QColor(255, 228, 181)},
+            {"navajowhite", QColor(255, 222, 173)},
+            {"navy", QColor(0, 0, 128)},
+            {"oldlace", QColor(253, 245, 230)},
+            {"olive", QColor(128, 128, 0)},
+            {"olivedrab", QColor(107, 142, 35)},
+            {"orange", QColor(255, 165, 0)},
+            {"orangered", QColor(255, 69, 0)},
+            {"orchid", QColor(218, 112, 214)},
+            {"palegoldenrod", QColor(238, 232, 170)},
+            {"palegreen", QColor(152, 251, 152)},
+            {"paleturquoise", QColor(175, 238, 238)},
+            {"palevioletred", QColor(219, 112, 147)},
+            {"papayawhip", QColor(255, 239, 213)},
+            {"peachpuff", QColor(255, 218, 185)},
+            {"peru", QColor(205, 133, 63)},
+            {"pink", QColor(255, 192, 203)},
+            {"plum", QColor(221, 160, 221)},
+            {"powderblue", QColor(176, 224, 230)},
+            {"purple", QColor(128, 0, 128)},
+            {"red", QColor(255, 0, 0)},
+            {"rosybrown", QColor(188, 143, 143)},
+            {"royalblue", QColor(65, 105, 225)},
+            {"saddlebrown", QColor(139, 69, 19)},
+            {"salmon", QColor(250, 128, 114)},
+            {"sandybrown", QColor(244, 164, 96)},
+            {"seagreen", QColor(46, 139, 87)},
+            {"seashell", QColor(255, 245, 238)},
+            {"sienna", QColor(160, 82, 45)},
+            {"silver", QColor(192, 192, 192)},
+            {"skyblue", QColor(135, 206, 235)},
+            {"slateblue", QColor(106, 90, 205)},
+            {"slategray", QColor(112, 128, 144)},
+            {"slategrey", QColor(112, 128, 144)},
+            {"snow", QColor(255, 250, 250)},
+            {"springgreen", QColor(0, 255, 127)},
+            {"steelblue", QColor(70, 130, 180)},
+            {"tan", QColor(210, 180, 140)},
+            {"teal", QColor(0, 128, 128)},
+            {"thistle", QColor(216, 191, 216)},
+            {"tomato", QColor(255, 99, 71)},
+            {"turquoise", QColor(64, 224, 208)},
+            {"violet", QColor(238, 130, 238)},
+            {"wheat", QColor(245, 222, 179)},
+            {"white", QColor(255, 255, 255)},
+            {"whitesmoke", QColor(245, 245, 245)},
+            {"yellow", QColor(255, 255, 0)},
+            {"yellowgreen", QColor(154, 205, 50)}
+        };
+        
+        auto it = namedColors.find(str);
+        if (it != namedColors.end())
+        {
+            return it.value();
+        }
+        
+        return QColor(); // 无法识别的颜色
+    }
+};
+
+// SvgLengthParser类定义
+class SvgLengthParser
+{
+public:
+    static qreal parseLength(const QString &lengthStr)
+    {
+        if (lengthStr.isEmpty())
+            return 0.0;
+
+        const QString str = lengthStr.trimmed();
+        
+        // 查找单位部分（从后往前查找第一个非数字字符）
+        int unitStart = str.length() - 1;
+        while (unitStart >= 0 && (str[unitStart].isLetter() || str[unitStart] == '%'))
+        {
+            unitStart--;
+        }
+        unitStart++; // 回到第一个单位字符的位置
+        
+        QString numberStr = str.left(unitStart);
+        QString unit = str.mid(unitStart).toLower();
+        
+        bool ok;
+        qreal value = numberStr.toDouble(&ok);
+        if (!ok)
+            return 0.0;
+        
+        // 单位转换（假设96 DPI）
+        if (unit == "px" || unit.isEmpty())
+            return value;
+        else if (unit == "pt")
+            return value * 1.25;      // 1 pt = 1.25 px (96/72)
+        else if (unit == "pc")
+            return value * 15.0;      // 1 pc = 12 pt = 15 px
+        else if (unit == "in")
+            return value * 96.0;      // 1 in = 96 px
+        else if (unit == "cm")
+            return value * 37.7953;   // 1 in = 2.54 cm, so 1 cm = 96/2.54 px
+        else if (unit == "mm")
+            return value * 3.77953;   // 1 mm = 0.1 cm, so 1 mm = 96/25.4 px
+        else if (unit == "%")
+            return value; // 百分比需要上下文，这里直接返回值
+        
+        return value; // 未知单位，直接返回数值
+    }
+};
+
+// SvgPointParser类定义 - 用于解析SVG多边形和折线的点坐标
+class SvgPointParser
+{
+public:
+    static void parsePoints(const QString &pointsStr, QPainterPath &path)
+    {
+        if (pointsStr.isEmpty())
+            return;
+
+        const QString str = pointsStr.trimmed();
+        if (str.isEmpty())
+            return;
+
+        int i = 0;
+        const int len = str.length();
+        
+        while (i < len)
+        {
+            // 跳过空白字符
+            while (i < len && str[i].isSpace())
+                i++;
+            
+            if (i >= len)
+                break;
+            
+            // 解析X坐标
+            QString xStr;
+            while (i < len && (str[i].isDigit() || str[i] == '.' || str[i] == '-' || str[i] == '+'))
+            {
+                xStr += str[i];
+                i++;
+            }
+            
+            // 跳过空白字符
+            while (i < len && str[i].isSpace())
+                i++;
+            
+            // 期望遇到逗号
+            if (i < len && str[i] == ',')
+                i++;
+            
+            // 跳过空白字符
+            while (i < len && str[i].isSpace())
+                i++;
+            
+            // 解析Y坐标
+            QString yStr;
+            while (i < len && (str[i].isDigit() || str[i] == '.' || str[i] == '-' || str[i] == '+'))
+            {
+                yStr += str[i];
+                i++;
+            }
+            
+            // 转换为数值并添加到路径
+            bool okX, okY;
+            qreal x = xStr.toDouble(&okX);
+            qreal y = yStr.toDouble(&okY);
+            
+            if (okX && okY)
+            {
+                if (path.elementCount() == 0)
+                {
+                    path.moveTo(x, y);
+                }
+                else
+                {
+                    path.lineTo(x, y);
+                }
+            }
+            
+            // 跳过到下一个点的空白字符
+            while (i < len && str[i].isSpace())
+                i++;
+        }
+    }
+};
+
+// SvgUrlParser类定义 - 用于解析SVG URL引用，如url(#markerId)
+class SvgUrlParser
+{
+public:
+    static QString parseUrlReference(const QString &urlStr)
+    {
+        if (urlStr.isEmpty())
+            return QString();
+
+        const QString str = urlStr.trimmed();
+        
+        // 检查是否以 "url(#" 开头
+        if (!str.startsWith("url(#"))
+            return QString();
+        
+        // 查找结尾的 ")"
+        int endPos = str.indexOf(')');
+        if (endPos == -1)
+            return QString();
+        
+        // 提取ID部分（去掉 "url(#" 和 ")"）
+        QString id = str.mid(5, endPos - 5); // 5 = len("url(#")
+        return id.trimmed();
+    }
+};
+
+// SvgStringUtils类定义 - 提供简单的字符串分割功能，避免正则表达式
+class SvgUseTransformParser
+{
+public:
+    static QString adjustTransformForUseElement(const QString &transformStr, qreal x, qreal y)
+    {
+        if (transformStr.isEmpty())
+            return QString();
+
+        const QString str = transformStr.trimmed();
+        QString result;
+        int i = 0;
+        const int len = str.length();
+        
+        while (i < len)
+        {
+            // 跳过空白字符
+            while (i < len && str[i].isSpace())
+                i++;
+            
+            if (i >= len)
+                break;
+            
+            // 解析函数名
+            QString func;
+            while (i < len && str[i].isLetterOrNumber())
+            {
+                func += str[i];
+                i++;
+            }
+            
+            // 跳过空白字符
+            while (i < len && str[i].isSpace())
+                i++;
+            
+            // 期望遇到 '('
+            if (i < len && str[i] == '(')
+                i++;
+            
+            // 跳过空白字符
+            while (i < len && str[i].isSpace())
+                i++;
+            
+            // 解析参数字符串
+            QString paramsStr;
+            int parenLevel = 0;
+            while (i < len)
+            {
+                if (str[i] == '(')
+                    parenLevel++;
+                else if (str[i] == ')')
+                {
+                    if (parenLevel == 0)
+                        break;
+                    parenLevel--;
+                }
+                paramsStr += str[i];
+                i++;
+            }
+            
+            // 跳过 ')'
+            if (i < len && str[i] == ')')
+                i++;
+            
+            // 分割参数
+            QStringList params = SvgStringUtils::splitOnWhitespaceOrComma(paramsStr);
+            
+            if (!result.isEmpty())
+                result += " ";
+            
+            // 处理不同的变换类型
+            if (func == "rotate" && params.size() >= 1)
+            {
+                qreal angle = params[0].toDouble();
+                qreal cx = 0, cy = 0;
+                if (params.size() >= 3)
+                {
+                    cx = params[1].toDouble();
+                    cy = params[2].toDouble();
+                    // 调整旋转中心：SVG中的旋转中心是绝对坐标，需要转换为相对坐标
+                    cx += x;
+                    cy += y;
+                }
+                result += QString("rotate(%1 %2 %3)").arg(angle).arg(cx).arg(cy);
+            }
+            else if (func == "scale" && params.size() >= 1)
+            {
+                qreal sx = params[0].toDouble();
+                qreal sy = params.size() > 1 ? params[1].toDouble() : sx;
+
+                // 对于use元素，缩放应该围绕use元素的位置进行
+                // 需要调整为：translate(x,y) scale(sx,sy) translate(-x,-y)
+                result += QString("translate(%1 %2) scale(%3 %4) translate(%5 %6)")
+                        .arg(x).arg(y).arg(sx).arg(sy).arg(-x).arg(-y);
+            }
+            else
+            {
+                // 其他变换保持不变
+                result += func + "(" + paramsStr + ")";
+            }
+            
+            // 跳过空白字符
+            while (i < len && str[i].isSpace())
+                i++;
+        }
+        
+        return result;
+    }
+};
 
 // 辅助函数：计算marker边界框
 static QRectF calculateMarkerBounds(const MarkerData &markerData)
@@ -827,27 +1575,8 @@ DrawingPath *SvgHandler::parsePolygonElement(const QDomElement &element)
 
     QPainterPath path;
     
-    // 正确解析SVG points格式：x1,y1 x2,y2 x3,y3 ...
-    QStringList pointPairs = pointsStr.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
-
-    for (const QString &pointPair : pointPairs)
-    {
-        QStringList coords = pointPair.split(',');
-        if (coords.size() >= 2)
-        {
-            qreal x = coords[0].toDouble();
-            qreal y = coords[1].toDouble();
-            
-            if (path.elementCount() == 0)
-            {
-                path.moveTo(x, y);
-            }
-            else
-            {
-                path.lineTo(x, y);
-            }
-        }
-    }
+    // 使用手写的点解析器，避免正则表达式
+    SvgPointParser::parsePoints(pointsStr, path);
 
     if (element.tagName() == "polygon")
     {
@@ -1111,161 +1840,23 @@ void SvgHandler::parseStyleAttributes(DrawingGroup *group, const QDomElement &el
     }
 }
 
-QTransform SvgHandler::parseAdjustedTransform(const QString &transformStr, const QPointF &shapePos)
+qreal SvgHandler::parseLength(const QString &lengthStr)
 {
-    // 解析SVG变换字符串，但调整旋转中心为相对于图形位置的坐标
-    QRegularExpression regex("(\\S+)\\s*\\(\\s*([^)]+)\\s*\\)");
-    QRegularExpressionMatchIterator iter = regex.globalMatch(transformStr);
+    // 手写长度解析器，避免正则表达式开销
+    return SvgLengthParser::parseLength(lengthStr);
+}
 
-    QTransform transform;
-    
-    while (iter.hasNext())
-    {
-        QRegularExpressionMatch match = iter.next();
-        QString func = match.captured(1);
-        QString paramsStr = match.captured(2);
-        QStringList params = paramsStr.split(QRegularExpression("\\s*,\\s*|\\s+"), Qt::SkipEmptyParts);
-
-        if (func == "translate" && params.size() >= 1)
-        {
-            qreal tx = params[0].toDouble();
-            qreal ty = params.size() > 1 ? params[1].toDouble() : 0.0;
-            transform.translate(tx, ty);
-        }
-        else if (func == "rotate" && params.size() >= 1)
-        {
-            qreal angle = params[0].toDouble();
-            qreal cx = 0, cy = 0;
-            if (params.size() >= 3)
-            {
-                cx = params[1].toDouble();
-                cy = params[2].toDouble();
-                // 将旋转中心转换为相对于图形位置的坐标
-                cx -= shapePos.x();
-                cy -= shapePos.y();
-            }
-            
-            if (cx != 0 || cy != 0)
-            {
-                // 旋转中心变换：先平移到旋转中心，旋转，再平移回来
-                transform.translate(cx, cy);
-                transform.rotate(angle);
-                transform.translate(-cx, -cy);
-            }
-            else
-            {
-                transform.rotate(angle);
-            }
-        }
-        else if (func == "scale" && params.size() >= 1)
-        {
-            qreal sx = params[0].toDouble();
-            qreal sy = params.size() > 1 ? params[1].toDouble() : sx;
-            transform.scale(sx, sy);
-        }
-        else if (func == "skewX" && params.size() >= 1)
-        {
-            qreal angle = params[0].toDouble();
-            transform.shear(qTan(qDegreesToRadians(angle)), 0);
-        }
-        else if (func == "skewY" && params.size() >= 1)
-        {
-            qreal angle = params[0].toDouble();
-            transform.shear(0, qTan(qDegreesToRadians(angle)));
-        }
-    }
-
-    return transform;
+QColor SvgHandler::parseColor(const QString &colorStr)
+{
+    // 使用手写的颜色解析器，避免正则表达式
+    return SvgColorParser::parseColor(colorStr);
 }
 
 QTransform SvgHandler::parseTransform(const QString &transformStr)
 {
-    // 解析SVG变换字符串，如 "translate(10,20) rotate(45) scale(2,1)"
-    // SVG变换按书写顺序应用，Qt的变换方法也是前乘，所以直接按顺序应用即可
-    QRegularExpression regex("(\\S+)\\s*\\(\\s*([^)]+)\\s*\\)");
-    QRegularExpressionMatchIterator iter = regex.globalMatch(transformStr);
-
-    // 先收集所有变换
-    QList<QPair<QString, QStringList>> transforms;
-    
-    while (iter.hasNext())
-    {
-        QRegularExpressionMatch match = iter.next();
-        QString func = match.captured(1);
-        QString paramsStr = match.captured(2);
-        QStringList params = paramsStr.split(QRegularExpression("\\s*,\\s*|\\s+"), Qt::SkipEmptyParts);
-        transforms.append(qMakePair(func, params));
-    }
-
-    // 按SVG顺序正向应用变换
-    QTransform transform;
-    for (const auto &transformPair : transforms)
-    {
-        QString func = transformPair.first;
-        QStringList params = transformPair.second;
-
-        if (func == "translate" && params.size() >= 1)
-        {
-            qreal tx = params[0].toDouble();
-            qreal ty = params.size() > 1 ? params[1].toDouble() : 0.0;
-            transform.translate(tx, ty);
-        }
-        else if (func == "rotate" && params.size() >= 1)
-        {
-            qreal angle = params[0].toDouble();
-            qreal cx = 0, cy = 0;
-            if (params.size() >= 3)
-            {
-                cx = params[1].toDouble();
-                cy = params[2].toDouble();
-            }
-            
-            if (cx != 0 || cy != 0)
-            {
-                // 旋转中心变换：先平移到旋转中心，旋转，再平移回来
-                transform.translate(cx, cy);
-                transform.rotate(angle);
-                transform.translate(-cx, -cy);
-            }
-            else
-            {
-                transform.rotate(angle);
-            }
-        }
-        else if (func == "scale" && params.size() >= 1)
-        {
-            qreal sx = params[0].toDouble();
-            qreal sy = params.size() > 1 ? params[1].toDouble() : sx;
-            transform.scale(sx, sy);
-        }
-        else if (func == "skewX" && params.size() >= 1)
-        {
-            qreal angle = params[0].toDouble();
-            transform.shear(qTan(qDegreesToRadians(angle)), 0);
-        }
-        else if (func == "skewY" && params.size() >= 1)
-        {
-            qreal angle = params[0].toDouble();
-            transform.shear(0, qTan(qDegreesToRadians(angle)));
-        }
-        else if (func == "matrix" && params.size() >= 6)
-        {
-            qreal a = params[0].toDouble();
-            qreal b = params[1].toDouble();
-            qreal c = params[2].toDouble();
-            qreal d = params[3].toDouble();
-            qreal e = params[4].toDouble();
-            qreal f = params[5].toDouble();
-            // 直接使用矩阵值，注意Qt矩阵的格式是：
-            // [a c e]
-            // [b d f]
-            // [0 0 1]
-            QTransform matrixTransform(a, c, e, b, d, f);
-            transform *= matrixTransform; // 前乘保持一致性
-        }
-    }
-
-    return transform;
+    // 使用手写的变换解析器，避免正则表达式
+    SvgTransformParser parser;
+    return parser.parse(transformStr);
 }
 
 void SvgHandler::parseTransformAttribute(DrawingShape *shape, const QString &transformStr)
@@ -1292,127 +1883,10 @@ void SvgHandler::parseTransformAttribute(DrawingShape *shape, const QString &tra
     }
 }
 
-QColor SvgHandler::parseColor(const QString &colorStr)
-{
-    if (colorStr.startsWith("#"))
-    {
-        return QColor(colorStr);
-    }
-    else if (colorStr.startsWith("rgb("))
-    {
-        // 解析rgb(r,g,b)格式
-        QRegularExpression regex(R"(rgb\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\))");
-        QRegularExpressionMatch match = regex.match(colorStr);
-        if (match.hasMatch())
-        {
-            int r = match.captured(1).toInt();
-            int g = match.captured(2).toInt();
-            int b = match.captured(3).toInt();
-            QColor color(r, g, b);
-            if (color.isValid())
-            {
-                return color;
-            }
-        }
-
-        // 尝试更宽松的匹配，允许小数
-        QRegularExpression regexFloat(R"(rgb\s*\(\s*([0-9.]+)\s*,\s*([0-9.]+)\s*,\s*([0-9.]+)\s*\))");
-        match = regexFloat.match(colorStr);
-        if (match.hasMatch())
-        {
-            int r = qRound(match.captured(1).toDouble());
-            int g = qRound(match.captured(2).toDouble());
-            int b = qRound(match.captured(3).toDouble());
-            QColor color(r, g, b);
-            if (color.isValid())
-            {
-                return color;
-            }
-        }
-    }
-    else if (colorStr.startsWith("rgba("))
-    {
-        // 解析rgba(r,g,b,a)格式
-        QRegularExpression regex(R"(rgba\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([\d.]+)\s*\))");
-        QRegularExpressionMatch match = regex.match(colorStr);
-        if (match.hasMatch())
-        {
-            int r = match.captured(1).toInt();
-            int g = match.captured(2).toInt();
-            int b = match.captured(3).toInt();
-            qreal a = match.captured(4).toDouble();            // a是0-1范围的透明度值
-            return QColor(r, g, b, static_cast<int>(a * 255)); // 转换为0-255范围
-        }
-    }
-
-    // 尝试直接使用颜色名称
-    QColor color(colorStr);
-    if (color.isValid())
-    {
-        // 检查是否是透明颜色，如果是透明的不透明颜色，设置为不透明
-        if (color.alpha() == 0 && colorStr != "transparent" && colorStr != "none")
-        {
-            qDebug() << "颜色" << colorStr << "被解析为透明，设置为不透明";
-            color.setAlpha(255);
-        }
-        return color;
-    }
-
-    // 默认返回黑色
-    return QColor(Qt::black);
-}
-
-qreal SvgHandler::parseLength(const QString &lengthStr)
-{
-    // 解析长度值，处理单位（px, pt, cm, mm, in等）
-    QRegularExpression regex("([0-9.]+)([a-z%]*)");
-    QRegularExpressionMatch match = regex.match(lengthStr);
-
-    if (match.hasMatch())
-    {
-        qreal value = match.captured(1).toDouble();
-        QString unit = match.captured(2);
-
-        // 简单处理，假设都是像素单位
-        return value;
-    }
-
-    // 如果没有匹配到，尝试直接转换为数字
-    bool ok;
-    qreal value = lengthStr.toDouble(&ok);
-    if (ok)
-    {
-        return value;
-    }
-
-    return 10.0; // 默认值
-}
-
 void SvgHandler::parseSvgPointsData(const QString &pointsStr, QPainterPath &path, bool closePath)
 {
-    // 移除多余的逗号和空格，然后用逗号分割点对
-    QString cleanedStr = pointsStr.simplified();
-    QStringList pointPairs = cleanedStr.split(",", Qt::SkipEmptyParts);
-    
-    if (pointPairs.isEmpty()) {
-        return;
-    }
-    
-    bool firstPoint = true;
-    for (const QString &pair : pointPairs) {
-        QStringList coords = pair.trimmed().split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
-        if (coords.size() >= 2) {
-            qreal x = coords[0].toDouble();
-            qreal y = coords[1].toDouble();
-            
-            if (firstPoint) {
-                path.moveTo(x, y);
-                firstPoint = false;
-            } else {
-                path.lineTo(x, y);
-            }
-        }
-    }
+    // 使用手写的点解析器，避免正则表达式
+    SvgPointParser::parsePoints(pointsStr, path);
     
     // 只有在需要时才闭合路径
     if (closePath) {
@@ -2262,9 +2736,17 @@ QGraphicsBlurEffect *SvgHandler::parseGaussianBlurFilter(const QDomElement &elem
     // 解析stdDeviation属性
     QString stdDeviation = element.attribute("stdDeviation", "1.0");
     qreal radius = stdDeviation.toDouble();
+    
+    // Qt的模糊效果可能需要更大的半径才能看到明显效果
+    // 增强模糊效果，使半径更加明显
+    if (radius > 0) {
+        radius = qMax(radius * 2.0, 2.0); // 至少2.0，或者原值的2倍
+    }
+    
     blur->setBlurRadius(radius);
+    blur->setBlurHints(QGraphicsBlurEffect::QualityHint);
 
-    // //qDebug() << "高斯模糊滤镜 - 半径:" << radius;
+    //qDebug() << "解析高斯模糊滤镜 - 原始半径:" << stdDeviation.toDouble() << "调整后半径:" << radius;
     return blur;
 }
 
@@ -2292,7 +2774,7 @@ void SvgHandler::applyFilterToShape(DrawingShape *shape, const QString &filterId
         return;
     }
 
-    
+    //qDebug() << "应用滤镜到图形:" << filterId;
     
     if (s_filters.contains(filterId))
     {
@@ -2303,7 +2785,7 @@ void SvgHandler::applyFilterToShape(DrawingShape *shape, const QString &filterId
             return;
         }
 
-        
+        //qDebug() << "找到滤镜效果:" << filterId;
         
         // 注意：Qt中一个effect不能被多个item共享，需要克隆
         if (auto blurEffect = qobject_cast<QGraphicsBlurEffect *>(effect))
@@ -2312,8 +2794,9 @@ void SvgHandler::applyFilterToShape(DrawingShape *shape, const QString &filterId
             if (newBlur)
             {
                 newBlur->setBlurRadius(blurEffect->blurRadius());
+                newBlur->setBlurHints(QGraphicsBlurEffect::QualityHint);
                 shape->setGraphicsEffect(newBlur);
-                
+                // //qDebug() << "应用模糊滤镜到图形:" << filterId;
             }
         }
         else if (auto shadowEffect = qobject_cast<QGraphicsDropShadowEffect *>(effect))
@@ -2358,6 +2841,7 @@ void SvgHandler::applyFilterToShape(DrawingGroup *group, const QString &filterId
             if (newBlur)
             {
                 newBlur->setBlurRadius(blurEffect->blurRadius());
+                newBlur->setBlurHints(QGraphicsBlurEffect::QualityHint);
                 group->setGraphicsEffect(newBlur);
                 // //qDebug() << "应用高斯模糊滤镜到组合:" << filterId << "半径:" << blurEffect->blurRadius();
             }
@@ -2802,11 +3286,9 @@ void SvgHandler::applyMarkers(DrawingPath *path, const QString &markerStart, con
     // 应用start marker
     if (!markerStart.isEmpty())
     {
-        QRegularExpression markerRegex("url\\(#([^\\)]+)\\)");
-        QRegularExpressionMatch match = markerRegex.match(markerStart);
-        if (match.hasMatch())
+        QString markerId = SvgUrlParser::parseUrlReference(markerStart);
+        if (!markerId.isEmpty())
         {
-            QString markerId = match.captured(1);
             applyMarkerToPath(path, markerId, "start");
         }
     }
@@ -2814,11 +3296,9 @@ void SvgHandler::applyMarkers(DrawingPath *path, const QString &markerStart, con
     // 应用end marker
     if (!markerEnd.isEmpty())
     {
-        QRegularExpression markerRegex("url\\(#([^\\)]+)\\)");
-        QRegularExpressionMatch match = markerRegex.match(markerEnd);
-        if (match.hasMatch())
+        QString markerId = SvgUrlParser::parseUrlReference(markerEnd);
+        if (!markerId.isEmpty())
         {
-            QString markerId = match.captured(1);
             applyMarkerToPath(path, markerId, "end");
         }
     }
@@ -2826,11 +3306,9 @@ void SvgHandler::applyMarkers(DrawingPath *path, const QString &markerStart, con
     // 应用mid markers
     if (!markerMid.isEmpty())
     {
-        QRegularExpression markerRegex("url\\(#([^\\)]+)\\)");
-        QRegularExpressionMatch match = markerRegex.match(markerMid);
-        if (match.hasMatch())
+        QString markerId = SvgUrlParser::parseUrlReference(markerMid);
+        if (!markerId.isEmpty())
         {
-            QString markerId = match.captured(1);
             
             // 获取路径的所有中间点
             QPainterPath painterPath = path->path();
@@ -3594,62 +4072,8 @@ DrawingShape *SvgHandler::parseUseElement(const QDomElement &element)
 // 调整use元素的变换，考虑位置偏移
 QString SvgHandler::adjustTransformForUseElement(const QString &transformStr, qreal x, qreal y)
 {
-    // 解析SVG变换字符串
-    QRegularExpression regex("(\\S+)\\s*\\(\\s*([^)]+)\\s*\\)");
-    QRegularExpressionMatchIterator iter = regex.globalMatch(transformStr);
-
-    QString result;
-    int transformCount = 0;
-
-    while (iter.hasNext())
-    {
-        QRegularExpressionMatch match = iter.next();
-        QString func = match.captured(1);
-        QString paramsStr = match.captured(2);
-
-        QStringList params = paramsStr.split(QRegularExpression("\\s*,\\s*|\\s+"), Qt::SkipEmptyParts);
-
-        if (!result.isEmpty())
-        {
-            result += " ";
-        }
-
-        if (func == "rotate" && params.size() >= 1)
-        {
-            qreal angle = params[0].toDouble();
-            qreal cx = 0, cy = 0;
-            if (params.size() >= 3)
-            {
-                cx = params[1].toDouble();
-                cy = params[2].toDouble();
-                // 调整旋转中心：SVG中的旋转中心是绝对坐标，需要转换为相对坐标
-                cx += x;
-                cy += y;
-            }
-            result += QString("rotate(%1 %2 %3)").arg(angle).arg(cx).arg(cy);
-            //qDebug() << "调整变换:" << transformCount << "从" << QPointF(params.size() >= 3 ? params[1].toDouble() : 0, params.size() >= 3 ? params[2].toDouble() : 0) << "调整为" << QPointF(cx, cy);
-        }
-        else if (func == "scale" && params.size() >= 1)
-        {
-            qreal sx = params[0].toDouble();
-            qreal sy = params.size() > 1 ? params[1].toDouble() : sx;
-
-            // 对于use元素，缩放应该围绕use元素的位置进行
-            // 需要调整为：translate(x,y) scale(sx,sy) translate(-x,-y)
-            result += QString("translate(%1 %2) scale(%3 %4) translate(%5 %6)")
-                    .arg(x).arg(y).arg(sx).arg(sy).arg(-x).arg(-y);
-        }
-        else
-        {
-            // 其他变换保持不变
-            result += func + "(" + paramsStr + ")";
-        }
-        
-        transformCount++;
-    }
-
-    //qDebug() << "调整后变换字符串:" << result << "包含" << transformCount << "个变换";
-    return result;
+    // 使用手写的use元素变换解析器，避免正则表达式
+    return SvgUseTransformParser::adjustTransformForUseElement(transformStr, x, y);
 }
 
 // 解析SVG元数据
@@ -3671,7 +4095,7 @@ SvgMetadata SvgHandler::parseSvgMetadata(const QDomElement &svgElement)
     // 解析viewBox属性
     QString viewBoxStr = svgElement.attribute("viewBox");
     if (!viewBoxStr.isEmpty()) {
-        QStringList parts = viewBoxStr.split(QRegularExpression("[\\s,]+"));
+        QStringList parts = SvgStringUtils::splitOnWhitespaceOrComma(viewBoxStr);
         if (parts.size() == 4) {
             qreal x = parts[0].toDouble();
             qreal y = parts[1].toDouble();
@@ -3718,7 +4142,7 @@ QTransform SvgHandler::calculateSvgToSceneTransform(const SvgMetadata &metadata)
         
         // 解析preserveAspectRatio
         QString preserveAspect = metadata.preserveAspectRatio;
-        QStringList aspectParts = preserveAspect.split(QRegularExpression("\\s+"));
+        QStringList aspectParts = SvgStringUtils::splitOnWhitespace(preserveAspect);
         
         QString align = "xMidYMid";  // 默认对齐方式
         QString meetOrSlice = "meet"; // 默认meet模式

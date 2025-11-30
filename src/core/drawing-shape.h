@@ -30,6 +30,13 @@ struct MarkerData
     qreal strokeWidth = 1.0;
     bool isValid = false;
     
+    // Marker参考点和对齐信息
+    qreal refX = 0.0;
+    qreal refY = 0.0;
+    qreal markerWidth = 3.0;
+    qreal markerHeight = 3.0;
+    QString orient = "auto";
+    
     // 构造函数
     MarkerData() = default;
     MarkerData(Type t, const QVariantList& p, const QColor& fill, 
@@ -524,8 +531,19 @@ public:
 
     // Marker相关
     void setMarker(const QString &markerId, const MarkerData &markerData, const QTransform &markerTransform);
-    bool hasMarker() const { return !m_markerId.isEmpty(); }
-    QString markerId() const { return m_markerId; }
+    bool hasMarker() const { return !m_markers.isEmpty(); }
+    QString markerId() const { return m_markers.isEmpty() ? QString() : m_markers.first().markerId; }
+    
+    // 多marker支持
+    struct MarkerInfo {
+        QString markerId;
+        MarkerData markerData;
+        QTransform markerTransform;
+        QString position; // "start", "mid", "end"
+    };
+    
+    void setMarker(const QString &markerId, const MarkerData &markerData, const QTransform &markerTransform, const QString &position = "end");
+    const QList<MarkerInfo>& markers() const { return m_markers; }
 
 protected:
     void paintShape(QPainter *painter) override;
@@ -559,9 +577,10 @@ private:
     QVector<NodeInfo> m_nodeInfo;                           // 节点信息，用于手柄系统
 
     // Marker相关
-    QString m_markerId;
-    MarkerData m_markerData;  // 预解析的marker数据
-    QTransform m_markerTransform;
+    QString m_markerId; // 保留用于向后兼容
+    MarkerData m_markerData;  // 保留用于向后兼容
+    QTransform m_markerTransform; // 保留用于向后兼容
+    QList<MarkerInfo> m_markers; // 多个marker列表
     bool m_showControlPolygon = false;        // 是否显示控制点连线
     int m_activeControlPoint = -1;            // 当前活动的控制点索引
     QPointF m_dragStartPos;                   // 拖动开始位置

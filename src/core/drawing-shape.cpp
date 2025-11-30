@@ -1203,9 +1203,41 @@ DrawingPath::DrawingPath(QGraphicsItem *parent)
 
 void DrawingPath::setMarker(const QString &markerId, const MarkerData &markerData, const QTransform &markerTransform)
 {
+    // 保留旧的实现用于向后兼容
     m_markerId = markerId;
     m_markerData = markerData;
     m_markerTransform = markerTransform;
+}
+
+void DrawingPath::setMarker(const QString &markerId, const MarkerData &markerData, const QTransform &markerTransform, const QString &position)
+{
+    // 对于start和end位置，移除现有marker（只有一个）
+    if (position == "start" || position == "end") {
+        for (int i = 0; i < m_markers.size(); ++i) {
+            if (m_markers[i].position == position) {
+                m_markers.removeAt(i);
+                break;
+            }
+        }
+    }
+    // 对于mid位置，不移除现有marker，支持多个mid marker
+    
+    // 添加新marker
+    MarkerInfo markerInfo;
+    markerInfo.markerId = markerId;
+    markerInfo.markerData = markerData;
+    markerInfo.markerTransform = markerTransform;
+    markerInfo.position = position;
+    
+    m_markers.append(markerInfo);
+    
+    // 同时更新旧的单一marker属性以保持向后兼容
+    if (position == "end") {
+        m_markerId = markerId;
+        m_markerData = markerData;
+        m_markerTransform = markerTransform;
+    }
+    
     update(); // 触发重绘以显示Marker
 }
 
@@ -1267,21 +1299,29 @@ QRectF DrawingPath::localBounds() const
     // 获取路径本身的边界框
     QRectF bounds = m_path.boundingRect();
     
-    // 如果有marker，需要扩展边界框以包含marker区域
-    if (hasMarker() && m_markerData.isValid)
+    // 如果有marker，需要扩展边界框以包含所有marker区域
+    if (hasMarker())
     {
-        // 获取路径终点
-        if (m_path.elementCount() > 0)
+        for (const auto &markerInfo : m_markers)
         {
-            QPointF endPoint = m_path.elementAt(m_path.elementCount() - 1);
-            
-            // 使用相同的逻辑获取marker边界框
-            QRectF markerBounds = getMarkerBounds(m_markerData);
-            
-            // 将marker中心对齐到路径终点
-            QPointF centerOffset = markerBounds.center();
-            markerBounds.translate(endPoint - centerOffset);
-            bounds = bounds.united(markerBounds);
+            if (markerInfo.markerData.isValid)
+            {
+                // 获取marker位置
+                QPointF markerPos = markerInfo.markerTransform.map(QPointF(0, 0));
+                
+                // 获取marker边界框
+                QRectF markerBounds = getMarkerBounds(markerInfo.markerData);
+                
+                // 将marker中心对齐到marker位置（与paintShape中的逻辑一致）
+                QPointF centerOffset = markerBounds.center();
+                markerBounds.translate(markerPos - centerOffset);
+                
+                // 为marker添加一些边距，确保完全可见
+                markerBounds.adjust(-2, -2, 2, 2);
+                
+                // 合并到总边界框
+                bounds = bounds.united(markerBounds);
+            }
         }
     }
     
@@ -1793,32 +1833,39 @@ void DrawingPath::paintShape(QPainter *painter)
 
     if (hasMarker())
     {
-        // 保存当前画家状态
-        painter->save();
-
-        // 获取marker位置
-        QPointF markerPos = m_markerTransform.map(QPointF(0, 0));
-        
-        // 获取旋转角度（使用负值，因为Qt是顺时针旋转）
-        qreal angle = -qAtan2(m_markerTransform.m21(), m_markerTransform.m11()) * 180.0 / M_PI;
-        
-        // 使用预解析的数据直接绘制
-        if (m_markerData.isValid)
+        // 绘制所有markers
+        for (const auto &markerInfo : m_markers)
         {
-            // 移动到线段端点，然后旋转
-            painter->translate(markerPos);
-            painter->rotate(angle);
-            
-            // 将marker中心对齐到原点
-            QRectF markerBounds = getMarkerBounds(m_markerData);
-            QPointF centerOffset = markerBounds.center();
-            painter->translate(-centerOffset.x(), -centerOffset.y());
-            
-            renderMarkerDirectly(painter);
-        }
+            if (markerInfo.markerData.isValid)
+            {
+                // 保存当前画家状态
+                painter->save();
 
-        // 恢复画家状态
-        painter->restore();
+                // 获取marker位置
+                QPointF markerPos = markerInfo.markerTransform.map(QPointF(0, 0));
+                
+                // 获取旋转角度（使用负值，因为Qt是顺时针旋转）
+                qreal angle = -qAtan2(markerInfo.markerTransform.m21(), markerInfo.markerTransform.m11()) * 180.0 / M_PI;
+                
+                // 移动到线段端点，然后旋转
+                painter->translate(markerPos);
+                painter->rotate(angle);
+                
+                // 将marker中心对齐到原点
+                QRectF markerBounds = getMarkerBounds(markerInfo.markerData);
+                QPointF centerOffset = markerBounds.center();
+                painter->translate(-centerOffset.x(), -centerOffset.y());
+                
+                // 临时设置当前marker数据用于渲染
+                MarkerData originalMarkerData = m_markerData;
+                m_markerData = markerInfo.markerData;
+                renderMarkerDirectly(painter);
+                m_markerData = originalMarkerData;
+
+                // 恢复画家状态
+                painter->restore();
+            }
+        }
     }
 
     // 如果启用了控制点连线，则绘制连接线

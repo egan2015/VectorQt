@@ -18,6 +18,8 @@
 
 // 前向声明
 struct MarkerData;
+class FastPathParser;
+class SvgElementCollector;
 
 // Marker存储 - 声明为extern以便其他文件访问
 extern QHash<QString, QDomElement> s_markers;

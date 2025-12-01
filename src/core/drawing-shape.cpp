@@ -10,6 +10,8 @@
 #include <QDataStream>
 #include <QIODevice>
 #include <QDomElement>
+#include <QRandomGenerator>
+#include <QDateTime>
 
 #include "drawing-shape.h"
 #include "drawing-document.h"
@@ -84,9 +86,11 @@ DrawingShape::~DrawingShape()
 
 QString DrawingShape::generateUniqueId()
 {
-    // 使用简短的数字ID，便于在树形结构中显示
+    // 生成稳定的唯一ID，基于时间戳和随机数
     static QAtomicInt counter(1);
-    return QString("%1").arg(counter.fetchAndAddOrdered(1), 4, 10, QChar('0'));
+    quint64 timestamp = QDateTime::currentMSecsSinceEpoch();
+    int random = QRandomGenerator::global()->bounded(1000);
+    return QString("shape_%1_%2_%3").arg(timestamp).arg(random).arg(counter.fetchAndAddOrdered(1));
 }
 
 void DrawingShape::applyTransform(const QTransform &transform, const QPointF &anchor)
@@ -260,11 +264,9 @@ void DrawingShape::paint(QPainter *painter, const QStyleOptionGraphicsItem *opti
     painter->setPen(Qt::NoPen);
     paintShape(painter);
 
-    // 绘制描边，使用cosmetic画笔确保线宽不随缩放变化
+    // 绘制描边
     painter->setBrush(Qt::NoBrush);
-    QPen cosmeticPen = m_strokePen;
-    cosmeticPen.setCosmetic(true); // 设置为cosmetic画笔，线宽不受变换影响
-    painter->setPen(cosmeticPen);
+    painter->setPen(m_strokePen);
     paintShape(painter);
 
     // 恢复变换状态
@@ -1197,7 +1199,7 @@ DrawingShape *DrawingEllipse::clone() const
 
 // DrawingPath
 DrawingPath::DrawingPath(QGraphicsItem *parent)
-    : DrawingShape(Path, parent), m_activeControlPoint(-1)
+    : DrawingShape(Path, parent), m_activeControlPoint(-1), m_fillRule(Qt::OddEvenFill)
 {
 }
 
@@ -1369,6 +1371,8 @@ void DrawingPath::setPath(const QPainterPath &path)
     {
         prepareGeometryChange();
         m_path = path;
+        // 应用填充规则
+        m_path.setFillRule(m_fillRule);
 
         // 保存原始路径元素信息，用于节点编辑
         m_pathElements.clear();
@@ -1994,6 +1998,9 @@ QRectF DrawingPath::getMarkerBounds(const MarkerData &markerData)
         return QRectF(0, 0, 10, 10); // 默认大小
     }
 
+    // 获取原始内容的边界框
+    QRectF originalBounds;
+
     switch (markerData.type)
     {
     case MarkerData::Circle:
@@ -2002,7 +2009,7 @@ QRectF DrawingPath::getMarkerBounds(const MarkerData &markerData)
             qreal cx = markerData.params[0].toReal();
             qreal cy = markerData.params[1].toReal();
             qreal r = markerData.params[2].toReal();
-            return QRectF(cx - r, cy - r, 2 * r, 2 * r);
+            originalBounds = QRectF(cx - r, cy - r, 2 * r, 2 * r);
         }
         break;
 
@@ -2013,7 +2020,7 @@ QRectF DrawingPath::getMarkerBounds(const MarkerData &markerData)
             qreal y = markerData.params[1].toReal();
             qreal width = markerData.params[2].toReal();
             qreal height = markerData.params[3].toReal();
-            return QRectF(x, y, width, height);
+            originalBounds = QRectF(x, y, width, height);
         }
         break;
 
@@ -2022,7 +2029,7 @@ QRectF DrawingPath::getMarkerBounds(const MarkerData &markerData)
         if (markerData.params.size() > 0)
         {
             QPainterPath path = markerData.params[0].value<QPainterPath>();
-            return path.boundingRect();
+            originalBounds = path.boundingRect();
         }
         break;
 
@@ -2030,7 +2037,27 @@ QRectF DrawingPath::getMarkerBounds(const MarkerData &markerData)
         break;
     }
 
-    return QRectF(0, 0, 10, 10); // 默认大小
+    // 如果marker定义了尺寸，应用缩放
+    if (markerData.markerWidth > 0 && markerData.markerHeight > 0 &&
+        originalBounds.isValid() && originalBounds.width() > 0 && originalBounds.height() > 0)
+    {
+        // 计算缩放因子
+        qreal scaleX = markerData.markerWidth / originalBounds.width();
+        qreal scaleY = markerData.markerHeight / originalBounds.height();
+
+        // 应用缩放
+        QPointF center = originalBounds.center();
+        QRectF scaledBounds = originalBounds;
+
+        // 围绕中心缩放
+        scaledBounds.setWidth(originalBounds.width() * scaleX);
+        scaledBounds.setHeight(originalBounds.height() * scaleY);
+        scaledBounds.moveCenter(center);
+
+        return scaledBounds;
+    }
+
+    return originalBounds;
 }
 
 // 直接绘制marker（使用预解析的数据）
@@ -2044,6 +2071,66 @@ void DrawingPath::renderMarkerDirectly(QPainter *painter)
     // 应用样式
     painter->setBrush(QBrush(m_markerData.fillColor));
     painter->setPen(QPen(m_markerData.strokeColor, m_markerData.strokeWidth));
+
+    // 应用marker缩放 - 根据markerWidth和markerHeight缩放内容
+    // SVG中markerWidth和markerHeight定义了marker的"视窗"大小
+    bool applyScaling = false;
+    if (m_markerData.markerWidth > 0 && m_markerData.markerHeight > 0)
+    {
+        // 计算内容的原始边界框
+        QRectF contentBounds;
+        switch (m_markerData.type)
+        {
+        case MarkerData::Path:
+        case MarkerData::Polygon:
+            if (m_markerData.params.size() > 0)
+            {
+                QPainterPath path = m_markerData.params[0].value<QPainterPath>();
+                contentBounds = path.boundingRect();
+            }
+            break;
+
+        case MarkerData::Circle:
+            if (m_markerData.params.size() >= 3)
+            {
+                qreal cx = m_markerData.params[0].toReal();
+                qreal cy = m_markerData.params[1].toReal();
+                qreal r = m_markerData.params[2].toReal();
+                contentBounds = QRectF(cx - r, cy - r, 2 * r, 2 * r);
+            }
+            break;
+
+        case MarkerData::Rect:
+            if (m_markerData.params.size() >= 4)
+            {
+                qreal x = m_markerData.params[0].toReal();
+                qreal y = m_markerData.params[1].toReal();
+                qreal width = m_markerData.params[2].toReal();
+                qreal height = m_markerData.params[3].toReal();
+                contentBounds = QRectF(x, y, width, height);
+            }
+            break;
+
+        default:
+            break;
+        }
+
+        // 如果有有效的边界框，应用缩放以适应marker尺寸
+        if (contentBounds.isValid() && contentBounds.width() > 0 && contentBounds.height() > 0)
+        {
+            // 计算缩放因子
+            qreal scaleX = m_markerData.markerWidth / contentBounds.width();
+            qreal scaleY = m_markerData.markerHeight / contentBounds.height();
+            
+            // 应用缩放，围绕内容的中心点
+            QPointF center = contentBounds.center();
+            painter->translate(center);
+            painter->scale(scaleX, scaleY);
+            painter->translate(-center);
+            
+            applyScaling = true;
+        }
+    }
 
     switch (m_markerData.type)
     {
@@ -2088,6 +2175,7 @@ void DrawingPath::renderMarkerDirectly(QPainter *painter)
         break;
     }
 }
+
 
 // DrawingPath 序列化方法
 QByteArray DrawingPath::serialize() const

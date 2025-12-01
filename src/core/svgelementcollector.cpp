@@ -1,5 +1,5 @@
-#include "svgelementcollector.h"
 #include <QDebug>
+#include "svgelementcollector.h"
 
 SvgElementCollector::CollectedElements SvgElementCollector::collect(const QDomElement &root)
 {

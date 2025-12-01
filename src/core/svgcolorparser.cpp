@@ -1,7 +1,7 @@
-#include "svgcolorparser.h"
-
 #include <QStringList>
 #include <QHash>
+#include "svgcolorparser.h"
+
 
 // 字符串分割辅助函数实现
 QStringList SvgColorParser::splitOnWhitespaceOrComma(const QString &str)

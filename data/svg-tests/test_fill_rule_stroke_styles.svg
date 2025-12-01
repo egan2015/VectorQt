@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="400" height="300" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- 测试fill-rule属性 -->
+    <path id="star" d="M 50,10 L 61,35 L 88,35 L 67,52 L 79,78 L 50,60 L 21,78 L 33,52 L 12,35 L 39,35 Z" 
+          fill="orange" stroke="black" stroke-width="1" />
+  </defs>
+  
+  <!-- 测试fill-rule: evenodd (奇偶填充) -->
+  <path d="M 50,10 L 61,35 L 88,35 L 67,52 L 79,78 L 50,60 L 21,78 L 33,52 L 12,35 L 39,35 Z
+           M 50,25 L 56,40 L 72,40 L 60,50 L 68,65 L 50,55 L 32,65 L 40,50 L 28,40 L 44,40 Z"
+        fill="blue" fill-rule="evenodd" stroke="black" stroke-width="1" />
+  
+  <!-- 测试fill-rule: nonzero (非零填充) -->
+  <path d="M 200,10 L 211,35 L 238,35 L 217,52 L 229,78 L 200,60 L 171,78 L 183,52 L 162,35 L 189,35 Z
+           M 200,25 L 206,40 L 222,40 L 210,50 L 218,65 L 200,55 L 182,65 L 190,50 L 178,40 L 194,40 Z"
+        fill="red" fill-rule="nonzero" stroke="black" stroke-width="1" />
+  
+  <!-- 测试stroke-linecap属性 -->
+  <line x1="50" y1="150" x2="150" y2="150" stroke="black" stroke-width="10" stroke-linecap="butt" />
+  <line x1="50" y1="170" x2="150" y2="170" stroke="black" stroke-width="10" stroke-linecap="round" />
+  <line x1="50" y1="190" x2="150" y2="190" stroke="black" stroke-width="10" stroke-linecap="square" />
+  
+  <!-- 测试stroke-linejoin属性 -->
+  <polyline points="200,150 220,170 240,150 260,170 280,150" 
+              stroke="blue" stroke-width="8" fill="none" stroke-linejoin="miter" />
+  <polyline points="200,190 220,210 240,190 260,210 280,190" 
+              stroke="blue" stroke-width="8" fill="none" stroke-linejoin="round" />
+  <polyline points="200,230 220,250 240,230 260,250 280,230" 
+              stroke="blue" stroke-width="8" fill="none" stroke-linejoin="bevel" />
+</svg>

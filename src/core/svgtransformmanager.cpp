@@ -1,10 +1,9 @@
-#include "svgtransformmanager.h"
-#include "svgstreamhandler.h"
-#include "drawing-shape.h"
-
 #include <QStringList>
 #include <QRegularExpression>
 #include <QDebug>
+#include "svgtransformmanager.h"
+#include "svgstreamhandler.h"
+#include "drawing-shape.h"
 
 // 字符串分割函数实现
 QStringList splitOnWhitespaceOrComma(const QString &str)

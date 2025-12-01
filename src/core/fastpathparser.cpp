@@ -1,6 +1,6 @@
-#include "fastpathparser.h"
 #include <QPointF>
 #include <QDebug>
+#include "fastpathparser.h"
 
 void FastPathParser::parsePathData(const QString &data, QPainterPath &path)
 {
@@ -329,11 +329,11 @@ void FastPathParser::parseArcCommand(const QVector<qreal> &numbers, bool isRelat
     
     int numIndex = 0;
     while (numIndex + 6 < numCount) {
-        qreal rx = numbers[numIndex];
-        qreal ry = numbers[numIndex + 1];
+        qreal rx = qAbs(numbers[numIndex]);     // 确保半径为正
+        qreal ry = qAbs(numbers[numIndex + 1]); // 确保半径为正
         qreal xAxisRotation = numbers[numIndex + 2];
-        qreal largeArcFlag = numbers[numIndex + 3];
-        qreal sweepFlag = numbers[numIndex + 4];
+        int largeArcFlag = (int)qRound(numbers[numIndex + 3]);
+        int sweepFlag = (int)qRound(numbers[numIndex + 4]);
         qreal x = numbers[numIndex + 5];
         qreal y = numbers[numIndex + 6];
 
@@ -342,60 +342,121 @@ void FastPathParser::parseArcCommand(const QVector<qreal> &numbers, bool isRelat
             y += currentPoint.y();
         }
 
-        // 使用Qt内置的arcTo方法，简化实现
-        QRectF boundingRect(currentPoint.x() - rx, currentPoint.y() - ry, rx * 2, ry * 2);
-        
-        // 计算椭圆弧的参数
-        qreal startAngle = 0;
-        qreal spanAngle = 360.0;
-        
-        // 通过计算起点和终点来确定角度
         QPointF startPoint = currentPoint;
-        QPointF endPoint = QPointF(x, y);
+        QPointF endPoint(x, y);
         
-        // 将椭圆中心移动到原点进行计算
-        QPointF center = startPoint + QPointF(rx, ry);
-        QPointF startPointFromCenter = startPoint - center;
-        QPointF endPointFromCenter = endPoint - center;
+        // 检查半径是否为零 - 如果是，则绘制直线
+        if (rx == 0.0 || ry == 0.0) {
+            path.lineTo(endPoint);
+            currentPoint = endPoint;
+            lastControlPoint = currentPoint;
+            numIndex += 7;
+            continue;
+        }
+
+        // 如果起点和终点相同，则不绘制任何内容
+        if (qFuzzyCompare(startPoint.x(), endPoint.x()) && qFuzzyCompare(startPoint.y(), endPoint.y())) {
+            currentPoint = endPoint;
+            lastControlPoint = currentPoint;
+            numIndex += 7;
+            continue;
+        }
+
+        // SVG弧参数化实现，严格按照SVG规范
+        // 1. 角度转换为弧度
+        qreal phi = qDegreesToRadians(xAxisRotation);
+        qreal cos_phi = qCos(phi);
+        qreal sin_phi = qSin(phi);
         
-        // 计算起点角度
-        startAngle = qAtan2(startPointFromCenter.y() / ry, startPointFromCenter.x() / rx) * 180.0 / M_PI;
+        // 2. 将终点坐标变换到与椭圆对齐的坐标系
+        qreal dx2 = (startPoint.x() - endPoint.x()) / 2.0;
+        qreal dy2 = (startPoint.y() - endPoint.y()) / 2.0;
+        qreal x1p = cos_phi * dx2 + sin_phi * dy2;
+        qreal y1p = -sin_phi * dx2 + cos_phi * dy2;
         
-        // 计算终点角度
-        qreal endAngle = qAtan2(endPointFromCenter.y() / ry, endPointFromCenter.x() / rx) * 180.0 / M_PI;
+        // 3. 确保半径足够大
+        qreal rx_sq = rx * rx;
+        qreal ry_sq = ry * ry;
+        qreal x1p_sq = x1p * x1p;
+        qreal y1p_sq = y1p * y1p;
         
-        // 计算角度差
-        spanAngle = endAngle - startAngle;
+        qreal lambda = (x1p_sq / rx_sq) + (y1p_sq / ry_sq);
+        if (lambda > 1) {
+            qreal lambda_sqrt = qSqrt(lambda);
+            rx *= lambda_sqrt;
+            ry *= lambda_sqrt;
+            rx_sq = rx * rx;
+            ry_sq = ry * ry;
+        }
         
-        // 处理large-arc-flag
-        if (largeArcFlag) {
-            if (qAbs(spanAngle) < 180) {
-                spanAngle = spanAngle < 0 ? spanAngle + 360 : spanAngle - 360;
-            }
+        // 4. 计算椭圆中心
+        qreal sign = (largeArcFlag == sweepFlag) ? -1.0 : 1.0;
+        qreal sq = ((rx_sq * ry_sq) - (rx_sq * y1p_sq) - (ry_sq * x1p_sq)) / 
+                   ((rx_sq * y1p_sq) + (ry_sq * x1p_sq));
+        sq = (sq < 0) ? 0 : sq;
+        qreal coef = sign * qSqrt(sq);
+        qreal cxp = coef * ((rx * y1p) / ry);
+        qreal cyp = coef * (-(ry * x1p) / rx);
+        
+        // 椭圆中心在原始坐标系中的坐标
+        qreal cx = ((startPoint.x() + endPoint.x()) / 2.0) + 
+                   (cos_phi * cxp - sin_phi * cyp);
+        qreal cy = ((startPoint.y() + endPoint.y()) / 2.0) + 
+                   (sin_phi * cxp + cos_phi * cyp);
+        
+        // 5. 计算起始角度和扫掠角度
+        QPointF vec1((x1p - cxp) / rx, (y1p - cyp) / ry);
+        QPointF vec2((-x1p - cxp) / rx, (-y1p - cyp) / ry);
+        qreal theta1 = qAtan2(vec1.y(), vec1.x());
+        qreal delta_theta = qAtan2(vec2.y(), vec2.x()) - theta1;
+        
+        // 根据large-arc-flag和sweep-flag调整角度
+        if (largeArcFlag == 0 && qAbs(delta_theta) > M_PI) {
+            // 小弧情况，但角度差超过180度，需要调整
+            delta_theta += (delta_theta > 0) ? -2 * M_PI : 2 * M_PI;
+        } else if (largeArcFlag == 1 && qAbs(delta_theta) < M_PI) {
+            // 大弧情况，但角度差小于180度，需要调整
+            delta_theta += (delta_theta > 0) ? -2 * M_PI : 2 * M_PI;
+        }
+        
+        if (sweepFlag == 0 && delta_theta > 0) {
+            // sweep-flag为0表示逆时针，但角度差为正，需要调整
+            delta_theta -= 2 * M_PI;
+        } else if (sweepFlag == 1 && delta_theta < 0) {
+            // sweep-flag为1表示顺时针，但角度差为负，需要调整
+            delta_theta += 2 * M_PI;
+        }
+        
+        // 6. 使用Qt的arcTo方法绘制椭圆弧
+        // 计算椭圆边界矩形
+        QRectF ellipseRect(cx - rx, cy - ry, 2 * rx, 2 * ry);
+        
+        // 计算起始角度和扫掠角度（转换为度数）
+        qreal startAngle = qRadiansToDegrees(theta1);
+        qreal spanAngle = qRadiansToDegrees(delta_theta);
+        
+        // SVG和Qt在角度方向上的差异：
+        // SVG：sweepFlag=0表示逆时针，sweepFlag=1表示顺时针
+        // Qt：正角度表示逆时针，负角度表示顺时针
+        
+        // 根据SVG的sweepFlag调整Qt的角度方向
+        if (sweepFlag == 0) {
+            // SVG逆时针，Qt正角度
+            // spanAngle保持不变
         } else {
-            if (qAbs(spanAngle) > 180) {
-                spanAngle = spanAngle < 0 ? spanAngle + 360 : spanAngle - 360;
-            }
+            // SVG顺时针，Qt负角度
+            spanAngle = -spanAngle;
         }
         
-        // 处理sweep-flag
-        if (!sweepFlag && spanAngle > 0) {
-            spanAngle -= 360;
-        } else if (sweepFlag && spanAngle < 0) {
-            spanAngle += 360;
+        // 对于旋转椭圆，Qt的arcTo不能直接处理旋转
+        // 我们需要调整起始角度以考虑旋转
+        if (!qFuzzyIsNull(xAxisRotation)) {
+            // 对于旋转椭圆，调整起始角度
+            startAngle -= xAxisRotation;
         }
         
-        // 应用x轴旋转
-        if (xAxisRotation != 0) {
-            QTransform transform;
-            transform.translate(center.x(), center.y());
-            transform.rotate(xAxisRotation);
-            boundingRect = transform.mapRect(boundingRect);
-            transform.translate(-center.x(), -center.y());
-        }
-        
-        // 添加椭圆弧到路径
-        path.arcTo(boundingRect, startAngle, spanAngle);
+        // 直接使用arcTo绘制弧线
+        path.arcTo(ellipseRect, startAngle, spanAngle);
         
         currentPoint = endPoint;
         lastControlPoint = currentPoint;

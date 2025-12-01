@@ -1,28 +1,30 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg width="300" height="200" xmlns="http://www.w3.org/2000/svg">
+<svg width="400" height="300" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
   <defs>
-    <!-- 定义一个可重用的矩形 -->
-    <rect id="myRect" x="0" y="0" width="50" height="30" fill="blue" stroke="black" stroke-width="2"/>
+    <!-- 定义一个基础图形 -->
+    <rect id="baseRect" x="0" y="0" width="50" height="30" fill="blue" />
     
-    <!-- 定义一个可重用的圆形 -->
-    <circle id="myCircle" cx="25" cy="25" r="20" fill="red" stroke="black" stroke-width="2"/>
+    <!-- 定义一个基础圆形 -->
+    <circle id="baseCircle" cx="25" cy="15" r="15" fill="red" />
     
-    <!-- 定义一个可重用的路径 -->
-    <path id="myPath" d="M 10,10 Q 25,0 40,10 T 70,10" fill="none" stroke="green" stroke-width="3"/>
+    <!-- 定义一个基础路径 -->
+    <path id="basePath" d="M 0 0 L 50 0 L 25 30 Z" fill="green" />
   </defs>
   
-  <!-- 使用定义的矩形 -->
-  <use href="#myRect" x="20" y="20"/>
-  <use href="#myRect" x="100" y="20" fill="yellow"/>
-  <use href="#myRect" x="180" y="20" transform="rotate(45 205 35)"/>
+  <!-- 测试use元素引用rect -->
+  <use href="#baseRect" x="50" y="50" />
   
-  <!-- 使用定义的圆形 -->
-  <use href="#myCircle" x="20" y="80"/>
-  <use href="#myCircle" x="100" y="80" transform="scale(1.5)"/>
-  <use href="#myCircle" x="200" y="80" r="15" fill="purple"/>
+  <!-- 测试use元素带变换 -->
+  <use href="#baseCircle" x="150" y="50" transform="scale(1.5)" />
   
-  <!-- 使用定义的路径 -->
-  <use href="#myPath" x="20" y="140"/>
-  <use href="#myPath" x="120" y="140" stroke="orange"/>
-  <use href="#myPath" x="20" y="170" transform="scale(0.8)"/>
+  <!-- 测试use元素带复杂变换 -->
+  <use href="#basePath" x="250" y="50" transform="rotate(30 25 15)" />
+  
+  <!-- 测试use元素使用xlink:href -->
+  <use x="50" y="150" width="60" height="40" xlink:href="#baseRect" />
+  
+  <!-- 测试use元素引用多个实例 -->
+  <use href="#baseCircle" x="50" y="200" />
+  <use href="#baseCircle" x="100" y="200" />
+  <use href="#baseCircle" x="150" y="200" />
 </svg>

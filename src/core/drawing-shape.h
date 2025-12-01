@@ -225,6 +225,10 @@ public:
     }
     QPen strokePen() const { return m_strokePen; }
 
+    // 填充规则（虚方法，子类可重写）
+    virtual void setFillRule(Qt::FillRule rule) { Q_UNUSED(rule); }
+    virtual Qt::FillRule fillRule() const { return Qt::OddEvenFill; }
+
     // 滤镜效果管理
     void setBlurEffect(qreal radius);
     void setDropShadowEffect(const QColor &color, qreal blurRadius, const QPointF &offset);
@@ -506,6 +510,15 @@ public:
     void setShowControlPolygon(bool show);
     bool showControlPolygon() const;
 
+    // 填充规则相关
+    void setFillRule(Qt::FillRule rule) override { 
+        m_fillRule = rule;
+        // 立即应用到路径上
+        m_path.setFillRule(m_fillRule);
+        update();
+    }
+    Qt::FillRule fillRule() const override { return m_fillRule; }
+
     // 节点信息相关 - 重写基类方法
     QVector<NodeInfo> getNodeInfo() const override;
     void updateNodeInfo() override; // 从路径元素更新节点信息
@@ -575,6 +588,9 @@ private:
     QVector<QPointF> m_controlPoints;                       // 控制点，用于编辑
     QVector<QPainterPath::ElementType> m_controlPointTypes; // 控制点类型
     QVector<NodeInfo> m_nodeInfo;                           // 节点信息，用于手柄系统
+    
+    // 填充规则
+    Qt::FillRule m_fillRule;                                // 填充规则
 
     // Marker相关
     QString m_markerId; // 保留用于向后兼容
@@ -792,12 +808,12 @@ public:
     }
 
     // 填充属性
-    void setFillRule(Qt::FillRule rule)
+    void setFillRule(Qt::FillRule rule) override
     {
         m_fillRule = rule;
         update();
     }
-    Qt::FillRule fillRule() const { return m_fillRule; }
+    Qt::FillRule fillRule() const override { return m_fillRule; }
 
     // 编辑点相关 - 多边形的所有顶点
     QVector<QPointF> getNodePoints() const override;

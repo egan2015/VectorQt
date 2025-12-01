@@ -2,8 +2,7 @@
 #include <QTextStream>
 #include <QFile>
 #include <QXmlStreamReader>
-#include <QDomDocument>
-#include <QDomElement>
+
 #include <QPainter>
 #include <QPainterPath>
 #include <QPainterPathStroker>
@@ -453,12 +452,42 @@ void SvgStreamHandler::collectElementsFromStreamRecursive(const SvgStreamElement
     }
 }
 
+// 辅助方法：将元素添加到正确的位置
+static void addShapeToCorrectPlace(DrawingScene *scene, DrawingShape *shape, 
+                                   QStack<DrawingShape*> &elementStack, int &elementCount,
+                                   const QTransform &svgToSceneTransform)
+{
+    // 应用SVG到Scene的变换
+    if (!svgToSceneTransform.isIdentity()) {
+        shape->setTransform(svgToSceneTransform * shape->transform());
+    }
+    
+    if (elementStack.isEmpty()) {
+        // 检查是否有当前活动图层
+        DrawingLayer *activeLayer = LayerManager::instance()->activeLayer();
+        if (activeLayer && LayerManager::instance()->layerCount() > 1) {
+            // 有图层，添加到图层
+            activeLayer->addShape(shape);
+        } else {
+            // 没有图层，直接添加到scene
+            scene->addItem(shape);
+            shape->setZValue(elementCount++);
+        }
+    } else {
+        DrawingShape *parent = elementStack.top();
+        if (DrawingGroup *group = dynamic_cast<DrawingGroup*>(parent)) {
+            group->addItem(shape);
+        }
+    }
+}
+
 // 真正的基于栈的流式解析
 bool SvgStreamHandler::parseSvgStream(DrawingScene *scene, QXmlStreamReader &reader)
 {
     // 元素栈：存储当前嵌套的父元素
     QStack<DrawingShape*> elementStack;
     int elementCount = 0;
+    bool inDefs = false;  // 跟踪是否在defs元素中
     
     // 解析SVG元数据
     SvgMetadata metadata;
@@ -486,6 +515,9 @@ bool SvgStreamHandler::parseSvgStream(DrawingScene *scene, QXmlStreamReader &rea
     // 应用SVG设置到Scene
     applySvgSettingsToScene(scene, metadata);
     
+    // 计算SVG到Scene的变换矩阵
+    QTransform svgToSceneTransform = calculateSvgToSceneTransform(metadata);
+    
     while (!reader.atEnd())
     {
         QXmlStreamReader::TokenType token = reader.readNext();
@@ -494,104 +526,101 @@ bool SvgStreamHandler::parseSvgStream(DrawingScene *scene, QXmlStreamReader &rea
         {
             QString tagName = reader.name().toString();
             
+            // 处理defs元素
+            if (tagName == "defs") {
+                inDefs = true;
+                continue;
+            }
+            
+            // 跳过defs中的所有元素（暂时不处理渐变）
+            if (inDefs) {
+                continue;
+            }
+            
             if (tagName == "g")
             {
-                // 创建group并推入栈
-                DrawingGroup *group = new DrawingGroup();
-                parseStyleAttributes(group, reader.attributes());
+                // 检查是否为Inkscape图层
+                QString inkscapeLabel = reader.attributes().value("inkscape:label").toString();
+                QString inkscapeGroupmode = reader.attributes().value("inkscape:groupmode").toString();
+                bool isLayer = (!inkscapeGroupmode.isEmpty() && inkscapeGroupmode == "layer") || 
+                               (!inkscapeLabel.isEmpty());
                 
-                // 处理变换
-                if (reader.attributes().hasAttribute("transform")) {
-                    QString transform = reader.attributes().value("transform").toString();
-                    parseTransformAttribute(group, transform);
-                }
-                
-                if (elementStack.isEmpty()) {
-                    // 顶级group，直接添加到scene
-                    scene->addItem(group);
-                    group->setZValue(elementCount++);
-                } else {
-                    // 嵌套group，添加到父元素
-                    DrawingShape *parent = elementStack.top();
-                    if (DrawingGroup *parentGroup = dynamic_cast<DrawingGroup*>(parent)) {
-                        parentGroup->addItem(group);
+                if (isLayer) {
+                    // 创建Inkscape图层
+                    DrawingLayer *layer = LayerManager::instance()->createLayerForSvg(inkscapeLabel);
+                    
+                    // 解析图层属性
+                    QString visibility = reader.attributes().value("visibility", "visible").toString();
+                    layer->setVisible(visibility != "hidden");
+                    
+                    QString opacity = reader.attributes().value("opacity", "1.0").toString();
+                    layer->setOpacity(opacity.toDouble());
+                    
+                    // 处理图层变换
+                    if (reader.attributes().hasAttribute("transform")) {
+                        QString transform = reader.attributes().value("transform").toString();
+                        // TODO: 应用变换到图层
                     }
+                    
+                    // 图层不推入栈，后续元素直接添加到当前活动图层
+                } else {
+                    // 普通group
+                    DrawingGroup *group = new DrawingGroup();
+                    parseStyleAttributes(group, reader.attributes());
+                    
+                    // 处理变换
+                    if (reader.attributes().hasAttribute("transform")) {
+                        QString transform = reader.attributes().value("transform").toString();
+                        parseTransformAttribute(group, transform);
+                    }
+                    
+                    if (elementStack.isEmpty()) {
+                        // 顶级group，直接添加到scene
+                        scene->addItem(group);
+                        group->setZValue(elementCount++);
+                    } else {
+                        // 嵌套group，添加到父元素
+                        DrawingShape *parent = elementStack.top();
+                        if (DrawingGroup *parentGroup = dynamic_cast<DrawingGroup*>(parent)) {
+                            parentGroup->addItem(group);
+                        }
+                    }
+                    elementStack.push(group);
                 }
-                elementStack.push(group);
             }
             else if (tagName == "rect")
             {
                 DrawingRectangle *rect = parseRectElementFromAttributes(reader.attributes());
                 if (rect) {
-                    if (elementStack.isEmpty()) {
-                        scene->addItem(rect);
-                        rect->setZValue(elementCount++);
-                    } else {
-                        DrawingShape *parent = elementStack.top();
-                        if (DrawingGroup *group = dynamic_cast<DrawingGroup*>(parent)) {
-                            group->addItem(rect);
-                        }
-                    }
+                    addShapeToCorrectPlace(scene, rect, elementStack, elementCount, svgToSceneTransform);
                 }
             }
             else if (tagName == "circle")
             {
                 DrawingEllipse *circle = parseCircleElementFromAttributes(reader.attributes());
                 if (circle) {
-                    if (elementStack.isEmpty()) {
-                        scene->addItem(circle);
-                        circle->setZValue(elementCount++);
-                    } else {
-                        DrawingShape *parent = elementStack.top();
-                        if (DrawingGroup *group = dynamic_cast<DrawingGroup*>(parent)) {
-                            group->addItem(circle);
-                        }
-                    }
+                    addShapeToCorrectPlace(scene, circle, elementStack, elementCount, svgToSceneTransform);
                 }
             }
             else if (tagName == "ellipse")
             {
                 DrawingEllipse *ellipse = parseEllipseElementFromAttributes(reader.attributes());
                 if (ellipse) {
-                    if (elementStack.isEmpty()) {
-                        scene->addItem(ellipse);
-                        ellipse->setZValue(elementCount++);
-                    } else {
-                        DrawingShape *parent = elementStack.top();
-                        if (DrawingGroup *group = dynamic_cast<DrawingGroup*>(parent)) {
-                            group->addItem(ellipse);
-                        }
-                    }
+                    addShapeToCorrectPlace(scene, ellipse, elementStack, elementCount, svgToSceneTransform);
                 }
             }
             else if (tagName == "path")
             {
                 DrawingPath *path = parsePathElementFromAttributes(reader.attributes());
                 if (path) {
-                    if (elementStack.isEmpty()) {
-                        scene->addItem(path);
-                        path->setZValue(elementCount++);
-                    } else {
-                        DrawingShape *parent = elementStack.top();
-                        if (DrawingGroup *group = dynamic_cast<DrawingGroup*>(parent)) {
-                            group->addItem(path);
-                        }
-                    }
+                    addShapeToCorrectPlace(scene, path, elementStack, elementCount, svgToSceneTransform);
                 }
             }
             else if (tagName == "text")
             {
                 DrawingText *text = parseTextElementFromAttributes(reader);
                 if (text) {
-                    if (elementStack.isEmpty()) {
-                        scene->addItem(text);
-                        text->setZValue(elementCount++);
-                    } else {
-                        DrawingShape *parent = elementStack.top();
-                        if (DrawingGroup *group = dynamic_cast<DrawingGroup*>(parent)) {
-                            group->addItem(text);
-                        }
-                    }
+                    addShapeToCorrectPlace(scene, text, elementStack, elementCount, svgToSceneTransform);
                 }
             }
             // 可以继续添加其他元素类型...
@@ -599,7 +628,13 @@ bool SvgStreamHandler::parseSvgStream(DrawingScene *scene, QXmlStreamReader &rea
         else if (token == QXmlStreamReader::EndElement)
         {
             QString tagName = reader.name().toString();
-            if (tagName == "g" && !elementStack.isEmpty()) {
+            
+            // 处理defs结束
+            if (tagName == "defs") {
+                inDefs = false;
+            }
+            // 处理group结束
+            else if (tagName == "g" && !elementStack.isEmpty()) {
                 elementStack.pop(); // group结束，出栈
             }
         }

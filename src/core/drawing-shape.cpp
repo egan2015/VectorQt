@@ -2245,6 +2245,8 @@ DrawingShape *DrawingPath::clone() const
 DrawingText::DrawingText(const QString &text, QGraphicsItem *parent)
     : DrawingShape(Text, parent), m_text(text), m_font(QFont("Arial", 12)), m_position(0, 0), m_fontSize(12.0), m_editing(false)
 {
+    // 设置文本默认填充颜色为黑色
+    setFillBrush(QBrush(Qt::black));
     setFlag(QGraphicsItem::ItemIsSelectable, true);
     setFlag(QGraphicsItem::ItemIsMovable, true);
 }
@@ -2454,6 +2456,7 @@ void DrawingText::paintShape(QPainter *painter)
     else
     {
         // 对于纯色，使用常规的drawText方法
+        // SVG的y坐标已经是基线位置，直接在(0,0)绘制
         painter->drawText(QPointF(0, 0), m_text);
     }
 

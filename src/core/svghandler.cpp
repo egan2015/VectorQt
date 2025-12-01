@@ -703,7 +703,6 @@ bool SvgHandler::parseSvgDocument(DrawingScene *scene, const QDomDocument &doc)
             if (!isInGroup) {
                 DrawingShape *shape = parseSvgElement(element);
                 if (shape) {
-                    // 所有元素的变换都在各自的解析函数中处理，避免重复处理
                     scene->addItem(shape);
                     // 设置Z值，确保按照SVG文档顺序显示
                     shape->setZValue(elementCount);
@@ -748,6 +747,29 @@ bool SvgHandler::parseSvgDocument(DrawingScene *scene, const QDomDocument &doc)
         {
             DrawingLayer *firstLayer = layerManager->layer(0);
             layerManager->setActiveLayer(firstLayer);
+        }
+    }
+
+    // 应用SVG到Scene的变换到所有元素
+    if (!svgToSceneTransform.isIdentity()) {
+        // 对场景中的所有顶级元素应用变换
+        QList<QGraphicsItem*> items = scene->items();
+        for (QGraphicsItem *item : items) {
+            if (DrawingShape *shape = dynamic_cast<DrawingShape*>(item)) {
+                // 只对不在图层中的元素应用变换
+                if (!shape->parentItem()) {
+                    shape->setTransform(svgToSceneTransform * shape->transform());
+                }
+            }
+        }
+        
+        // 对所有图层也应用变换
+        LayerManager *layerManager = LayerManager::instance();
+        for (DrawingLayer *layer : layerManager->layers()) {
+            if (layer) {
+                // DrawingLayer使用setLayerTransform方法
+                layer->setLayerTransform(svgToSceneTransform * layer->layerTransform());
+            }
         }
     }
 
@@ -2373,11 +2395,32 @@ DrawingPath *SvgHandler::parsePolygonElement(const QDomElement &element)
 
 DrawingText *SvgHandler::parseTextElement(const QDomElement &element)
 {
+    // 检查是否有tspan子元素
+    bool hasTspan = false;
+    QDomNode child = element.firstChild();
+    while (!child.isNull()) {
+        if (child.isElement() && child.toElement().tagName().toLower() == "tspan") {
+            hasTspan = true;
+            break;
+        }
+        child = child.nextSibling();
+    }
+    
+    if (hasTspan) {
+        // 如果有tspan，创建一个包含所有文本的DrawingText，使用父元素的样式
+        return parseTextElementWithTspan(element);
+    } else {
+        // 如果没有tspan，使用原来的逻辑
+        return parseSimpleTextElement(element);
+    }
+}
+
+DrawingText *SvgHandler::parseSimpleTextElement(const QDomElement &element)
+{
     // 获取文本内容
     QString text = element.text().trimmed();
     if (text.isEmpty())
     {
-        // //qDebug() << "文本元素内容为空";
         return nullptr;
     }
 
@@ -2386,20 +2429,9 @@ DrawingText *SvgHandler::parseTextElement(const QDomElement &element)
     qreal y = element.attribute("y", "0").toDouble();
     QPointF position(x, y);
 
-    
-
     // 创建文本形状
     DrawingText *shape = new DrawingText(text);
-    
-    // 对于SVG文本，y坐标指定的是基线位置，需要调整
-    // 先设置一个临时位置来获取字体度量
-    QFont tempFont("Arial", 12); // 临时字体，稍后会被正确设置
-    QFontMetricsF metrics(tempFont);
-    
-    // SVG的y坐标是基线位置，Qt的drawText也是基于基线的
-    // 但考虑到可能的字体大小差异，我们先按原位置设置
     shape->setPos(position);
-    
 
     // 解析字体属性
     QString fontFamily = element.attribute("font-family", "Arial");
@@ -2425,22 +2457,17 @@ DrawingText *SvgHandler::parseTextElement(const QDomElement &element)
     // 解析文本锚点属性
     QString textAnchor = element.attribute("text-anchor", "start");
     
-    
     // 如果是中间对齐，需要调整位置
     if (textAnchor == "middle") {
-        // 获取字体度量信息来计算文本宽度
         QFontMetricsF metrics(font);
         qreal textWidth = metrics.horizontalAdvance(text);
         QPointF adjustedPos = position - QPointF(textWidth / 2, 0);
         shape->setPos(adjustedPos);
-        
     } else if (textAnchor == "end") {
-        // 右对齐
         QFontMetricsF metrics(font);
         qreal textWidth = metrics.horizontalAdvance(text);
         QPointF adjustedPos = position - QPointF(textWidth, 0);
         shape->setPos(adjustedPos);
-        
     }
 
     // 解析样式属性
@@ -2454,6 +2481,100 @@ DrawingText *SvgHandler::parseTextElement(const QDomElement &element)
         shape->applyTransform(transformMatrix);
     }
     return shape;
+}
+
+DrawingText *SvgHandler::parseTextElementWithTspan(const QDomElement &element)
+{
+    // 对于包含tspan的文本，我们将所有文本合并，但使用父元素的样式
+    // 这是一个折中方案，确保所有文本都能显示
+    
+    // 获取位置
+    qreal x = element.attribute("x", "0").toDouble();
+    qreal y = element.attribute("y", "0").toDouble();
+    QPointF position(x, y);
+
+    // 解析字体属性
+    QString fontFamily = element.attribute("font-family", "Arial");
+    qreal fontSize = element.attribute("font-size", "12").toDouble();
+    QString fontWeight = element.attribute("font-weight", "normal");
+    QString fontStyle = element.attribute("font-style", "normal");
+
+    QFont font(fontFamily);
+    font.setPointSizeF(fontSize);
+
+    if (fontWeight == "bold")
+    {
+        font.setBold(true);
+    }
+
+    if (fontStyle == "italic")
+    {
+        font.setItalic(true);
+    }
+
+    // 收集所有文本内容
+    QString allText = collectTextContent(element).trimmed();
+    if (allText.isEmpty()) {
+        return nullptr;
+    }
+
+    DrawingText *shape = new DrawingText(allText);
+    shape->setPos(position);
+    shape->setFont(font);
+
+    // 解析文本锚点属性
+    QString textAnchor = element.attribute("text-anchor", "start");
+    
+    // 如果是中间对齐，需要调整位置
+    if (textAnchor == "middle") {
+        QFontMetricsF metrics(font);
+        qreal textWidth = metrics.horizontalAdvance(allText);
+        QPointF adjustedPos = position - QPointF(textWidth / 2, 0);
+        shape->setPos(adjustedPos);
+    } else if (textAnchor == "end") {
+        QFontMetricsF metrics(font);
+        qreal textWidth = metrics.horizontalAdvance(allText);
+        QPointF adjustedPos = position - QPointF(textWidth, 0);
+        shape->setPos(adjustedPos);
+    }
+
+    // 使用父元素的样式属性（不包括tspan的特殊样式）
+    parseStyleAttributes(shape, element);
+
+    // 解析变换属性
+    QString transform = element.attribute("transform");
+    if (!transform.isEmpty())
+    {
+        QTransform transformMatrix = parseTransform(transform);
+        shape->applyTransform(transformMatrix);
+    }
+    
+    return shape;
+}
+
+// 递归收集文本内容，包括tspan元素
+QString SvgHandler::collectTextContent(const QDomElement &element)
+{
+    QString content;
+    
+    // 获取当前元素的直接文本内容
+    QDomNode child = element.firstChild();
+    while (!child.isNull()) {
+        if (child.isText()) {
+            content += child.toText().data();
+        } else if (child.isElement()) {
+            QDomElement childElement = child.toElement();
+            QString tagName = childElement.tagName().toLower();
+            
+            // 递归处理tspan和其他文本相关元素
+            if (tagName == "tspan" || tagName == "text" || tagName == "tref") {
+                content += collectTextContent(childElement);
+            }
+        }
+        child = child.nextSibling();
+    }
+    
+    return content;
 }
 
 void SvgHandler::parseStyleAttributes(DrawingShape *shape, const QDomElement &element)

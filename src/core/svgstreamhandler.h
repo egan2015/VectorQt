@@ -9,8 +9,7 @@
 #include <QGradient>
 #include <QLinearGradient>
 #include <QRadialGradient>
-#include <QDomDocument>
-#include <QDomElement>
+
 #include <QString>
 #include <QGraphicsBlurEffect>
 #include <QGraphicsDropShadowEffect>

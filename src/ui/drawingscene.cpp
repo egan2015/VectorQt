@@ -693,8 +693,8 @@ void DrawingScene::drawBackground(QPainter *painter, const QRectF &rect)
         bottomGradient.setColorAt(1, QColor(0, 0, 0, 10));
         painter->fillRect(bottomShadow, bottomGradient);
         
-        // 绘制场景边界
-        painter->setPen(QPen(QColor(100, 100, 100), 1));
+        // 绘制场景边界（使用更细的边框）
+        painter->setPen(QPen(QColor(200, 200, 200), 0.5)); // 更细更浅的边框
         painter->drawRect(sceneRect);
     }
     

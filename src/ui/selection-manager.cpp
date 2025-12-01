@@ -995,23 +995,76 @@ void SelectionManager::sameWidth()
     }
     qreal averageWidth = totalWidth / shapes.size();
 
-    // 设置所有对象为相同宽度
-    for (DrawingShape *shape : shapes)
+    // 使用第一个对象的宽度作为目标宽度
+    if (shapes.isEmpty()) {
+        emit statusMessageChanged("没有选中的对象");
+        return;
+    }
+    
+    DrawingShape *firstShape = shapes.first();
+    qreal targetWidth = firstShape->boundingRect().width();
+    
+    qDebug() << "执行同宽命令，选中对象数量:" << shapes.size() << "目标宽度:" << targetWidth;
+    
+    // 创建撤销命令
+    if (!CommandManager::hasInstance())
     {
-        QRectF bounds = shape->boundingRect();
-        QRectF newBounds(bounds.left(), bounds.top(), averageWidth, bounds.height());
+        emit statusMessageChanged("命令管理器未初始化");
+        return;
+    }
 
-        // 根据形状类型设置新尺寸
-        if (shape->shapeType() == DrawingShape::Rectangle)
+    // 创建自定义命令
+    class SameWidthCommand : public QUndoCommand
+    {
+    public:
+        SameWidthCommand(const QList<DrawingShape*>& shapes, qreal targetWidth, QUndoCommand* parent = nullptr)
+            : QUndoCommand("同宽", parent), m_shapes(shapes), m_targetWidth(targetWidth)
         {
-            DrawingRectangle *rect = qgraphicsitem_cast<DrawingRectangle *>(shape);
-            if (rect)
-            {
-                rect->setRectangle(newBounds);
+            // 保存原始状态
+            for (DrawingShape* shape : shapes) {
+                m_originalWidths.append(shape->boundingRect().width());
             }
         }
-        // 可以添加其他形状类型的支持
-    }
+        
+        void redo() override
+        {
+            for (int i = 0; i < m_shapes.size(); ++i) {
+                DrawingShape* shape = m_shapes[i];
+                QRectF bounds = shape->boundingRect();
+                QRectF newBounds(bounds.left(), bounds.top(), m_targetWidth, bounds.height());
+                
+                if (shape->shapeType() == DrawingShape::Rectangle) {
+                    DrawingRectangle* rect = qgraphicsitem_cast<DrawingRectangle*>(shape);
+                    if (rect) {
+                        rect->setRectangle(newBounds);
+                    }
+                }
+            }
+        }
+        
+        void undo() override
+        {
+            for (int i = 0; i < m_shapes.size(); ++i) {
+                DrawingShape* shape = m_shapes[i];
+                QRectF bounds = shape->boundingRect();
+                QRectF newBounds(bounds.left(), bounds.top(), m_originalWidths[i], bounds.height());
+                
+                if (shape->shapeType() == DrawingShape::Rectangle) {
+                    DrawingRectangle* rect = qgraphicsitem_cast<DrawingRectangle*>(shape);
+                    if (rect) {
+                        rect->setRectangle(newBounds);
+                    }
+                }
+            }
+        }
+        
+    private:
+        QList<DrawingShape*> m_shapes;
+        qreal m_targetWidth;
+        QList<qreal> m_originalWidths;
+    };
+    
+    CommandManager::instance()->pushCommand(new SameWidthCommand(shapes, targetWidth));
 
     emit statusMessageChanged("统一宽度完成");
     emit alignmentCompleted("统一宽度");
@@ -1040,23 +1093,76 @@ void SelectionManager::sameHeight()
     }
     qreal averageHeight = totalHeight / shapes.size();
 
-    // 设置所有对象为相同高度
-    for (DrawingShape *shape : shapes)
+    // 使用第一个对象的高度作为目标高度
+    if (shapes.isEmpty()) {
+        emit statusMessageChanged("没有选中的对象");
+        return;
+    }
+    
+    DrawingShape *firstShape = shapes.first();
+    qreal targetHeight = firstShape->boundingRect().height();
+    
+    qDebug() << "执行同高命令，选中对象数量:" << shapes.size() << "目标高度:" << targetHeight;
+    
+    // 创建撤销命令
+    if (!CommandManager::hasInstance())
     {
-        QRectF bounds = shape->boundingRect();
-        QRectF newBounds(bounds.left(), bounds.top(), bounds.width(), averageHeight);
+        emit statusMessageChanged("命令管理器未初始化");
+        return;
+    }
 
-        // 根据形状类型设置新尺寸
-        if (shape->shapeType() == DrawingShape::Rectangle)
+    // 创建自定义命令
+    class SameHeightCommand : public QUndoCommand
+    {
+    public:
+        SameHeightCommand(const QList<DrawingShape*>& shapes, qreal targetHeight, QUndoCommand* parent = nullptr)
+            : QUndoCommand("同高", parent), m_shapes(shapes), m_targetHeight(targetHeight)
         {
-            DrawingRectangle *rect = qgraphicsitem_cast<DrawingRectangle *>(shape);
-            if (rect)
-            {
-                rect->setRectangle(newBounds);
+            // 保存原始状态
+            for (DrawingShape* shape : shapes) {
+                m_originalHeights.append(shape->boundingRect().height());
             }
         }
-        // 可以添加其他形状类型的支持
-    }
+        
+        void redo() override
+        {
+            for (int i = 0; i < m_shapes.size(); ++i) {
+                DrawingShape* shape = m_shapes[i];
+                QRectF bounds = shape->boundingRect();
+                QRectF newBounds(bounds.left(), bounds.top(), bounds.width(), m_targetHeight);
+                
+                if (shape->shapeType() == DrawingShape::Rectangle) {
+                    DrawingRectangle* rect = qgraphicsitem_cast<DrawingRectangle*>(shape);
+                    if (rect) {
+                        rect->setRectangle(newBounds);
+                    }
+                }
+            }
+        }
+        
+        void undo() override
+        {
+            for (int i = 0; i < m_shapes.size(); ++i) {
+                DrawingShape* shape = m_shapes[i];
+                QRectF bounds = shape->boundingRect();
+                QRectF newBounds(bounds.left(), bounds.top(), bounds.width(), m_originalHeights[i]);
+                
+                if (shape->shapeType() == DrawingShape::Rectangle) {
+                    DrawingRectangle* rect = qgraphicsitem_cast<DrawingRectangle*>(shape);
+                    if (rect) {
+                        rect->setRectangle(newBounds);
+                    }
+                }
+            }
+        }
+        
+    private:
+        QList<DrawingShape*> m_shapes;
+        qreal m_targetHeight;
+        QList<qreal> m_originalHeights;
+    };
+    
+    CommandManager::instance()->pushCommand(new SameHeightCommand(shapes, targetHeight));
 
     emit statusMessageChanged("统一高度完成");
     emit alignmentCompleted("统一高度");
@@ -1088,23 +1194,82 @@ void SelectionManager::sameSize()
     qreal averageWidth = totalWidth / shapes.size();
     qreal averageHeight = totalHeight / shapes.size();
 
-    // 设置所有对象为相同尺寸
-    for (DrawingShape *shape : shapes)
+    // 使用第一个对象的尺寸作为目标尺寸
+    if (shapes.isEmpty()) {
+        emit statusMessageChanged("没有选中的对象");
+        return;
+    }
+    
+    DrawingShape *firstShape = shapes.first();
+    QRectF firstBounds = firstShape->boundingRect();
+    qreal targetWidth = firstBounds.width();
+    qreal targetHeight = firstBounds.height();
+    
+    qDebug() << "执行同大小命令，选中对象数量:" << shapes.size() << "目标宽度:" << targetWidth << "目标高度:" << targetHeight;
+    
+    // 创建撤销命令
+    if (!CommandManager::hasInstance())
     {
-        QRectF bounds = shape->boundingRect();
-        QRectF newBounds(bounds.left(), bounds.top(), averageWidth, averageHeight);
+        emit statusMessageChanged("命令管理器未初始化");
+        return;
+    }
 
-        // 根据形状类型设置新尺寸
-        if (shape->shapeType() == DrawingShape::Rectangle)
+    // 创建自定义命令
+    class SameSizeCommand : public QUndoCommand
+    {
+    public:
+        SameSizeCommand(const QList<DrawingShape*>& shapes, qreal targetWidth, qreal targetHeight, QUndoCommand* parent = nullptr)
+            : QUndoCommand("同大小", parent), m_shapes(shapes), m_targetWidth(targetWidth), m_targetHeight(targetHeight)
         {
-            DrawingRectangle *rect = qgraphicsitem_cast<DrawingRectangle *>(shape);
-            if (rect)
-            {
-                rect->setRectangle(newBounds);
+            // 保存原始状态
+            for (DrawingShape* shape : shapes) {
+                QRectF bounds = shape->boundingRect();
+                m_originalWidths.append(bounds.width());
+                m_originalHeights.append(bounds.height());
             }
         }
-        // 可以添加其他形状类型的支持
-    }
+        
+        void redo() override
+        {
+            for (int i = 0; i < m_shapes.size(); ++i) {
+                DrawingShape* shape = m_shapes[i];
+                QRectF bounds = shape->boundingRect();
+                QRectF newBounds(bounds.left(), bounds.top(), m_targetWidth, m_targetHeight);
+                
+                if (shape->shapeType() == DrawingShape::Rectangle) {
+                    DrawingRectangle* rect = qgraphicsitem_cast<DrawingRectangle*>(shape);
+                    if (rect) {
+                        rect->setRectangle(newBounds);
+                    }
+                }
+            }
+        }
+        
+        void undo() override
+        {
+            for (int i = 0; i < m_shapes.size(); ++i) {
+                DrawingShape* shape = m_shapes[i];
+                QRectF bounds = shape->boundingRect();
+                QRectF newBounds(bounds.left(), bounds.top(), m_originalWidths[i], m_originalHeights[i]);
+                
+                if (shape->shapeType() == DrawingShape::Rectangle) {
+                    DrawingRectangle* rect = qgraphicsitem_cast<DrawingRectangle*>(shape);
+                    if (rect) {
+                        rect->setRectangle(newBounds);
+                    }
+                }
+            }
+        }
+        
+    private:
+        QList<DrawingShape*> m_shapes;
+        qreal m_targetWidth;
+        qreal m_targetHeight;
+        QList<qreal> m_originalWidths;
+        QList<qreal> m_originalHeights;
+    };
+    
+    CommandManager::instance()->pushCommand(new SameSizeCommand(shapes, targetWidth, targetHeight));
 
     emit statusMessageChanged("统一尺寸完成");
     emit alignmentCompleted("统一尺寸");

@@ -178,6 +178,15 @@ private:
     // 解析多线元素
     static DrawingPath* parsePolylineElement(const QDomElement &element);
     
+    // 递归收集文本内容，包括tspan元素
+    static QString collectTextContent(const QDomElement &element);
+    
+    // 解析简单文本元素（不含tspan）
+    static DrawingText* parseSimpleTextElement(const QDomElement &element);
+    
+    // 解析包含tspan的文本元素
+    static DrawingText* parseTextElementWithTspan(const QDomElement &element);
+    
     // 解析组元素（现在支持图层）
     static DrawingLayer* parseLayerElement(const QDomElement &element);
     

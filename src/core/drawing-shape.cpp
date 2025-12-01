@@ -264,9 +264,13 @@ void DrawingShape::paint(QPainter *painter, const QStyleOptionGraphicsItem *opti
     painter->setPen(Qt::NoPen);
     paintShape(painter);
 
-    // 绘制描边
+    // 绘制描边 - 使用cosmetic笔确保描边不受变换影响
     painter->setBrush(Qt::NoBrush);
-    painter->setPen(m_strokePen);
+    
+    // 创建cosmetic描边笔，确保描边宽度不受变换影响
+    QPen cosmeticPen = m_strokePen;
+    cosmeticPen.setCosmetic(true);
+    painter->setPen(cosmeticPen);
     paintShape(painter);
 
     // 恢复变换状态

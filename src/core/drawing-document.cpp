@@ -144,9 +144,13 @@ bool DrawingDocument::load(const QString &filePath)
         m_isUntitled = false;
         m_filePath = filePath;
         
+        // 获取导入后的场景大小并发送信号
+        QSizeF sceneSize = m_scene->sceneRect().size();
+        
         emit documentCreated();
         emit modificationChanged(false);
         emit filePathChanged(filePath);
+        emit pageSizeChanged(sceneSize);
         
         return true;
     }

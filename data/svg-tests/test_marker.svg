@@ -1,38 +1,31 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg width="400" height="300" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <!-- 箭头Marker -->
-    <marker id="arrow" markerWidth="10" markerHeight="10" refX="0" refY="3" orient="auto" markerUnits="strokeWidth">
-      <path d="M0,0 L0,6 L9,3 z" fill="black" />
+    <!-- 测试marker定义 -->
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" 
+            refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="black" />
     </marker>
     
-    <!-- 圆形Marker -->
-    <marker id="circle" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
-      <circle cx="4" cy="4" r="3" fill="red" />
-    </marker>
-    
-    <!-- 方形Marker -->
-    <marker id="square" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
-      <rect x="1" y="1" width="6" height="6" fill="blue" />
+    <!-- 测试带路径的marker -->
+    <marker id="dot" markerWidth="8" markerHeight="8" refX="4" refY="4">
+      <circle cx="4" cy="4" r="2" fill="red" />
     </marker>
   </defs>
   
-  <!-- 带箭头的线 -->
-  <line x1="50" y1="50" x2="200" y2="50" stroke="black" stroke-width="2" marker-end="url(#arrow)" />
+  <!-- 测试线条应用marker -->
+  <line x1="50" y1="50" x2="200" y2="100" 
+        stroke="black" stroke-width="2" 
+        marker-end="url(#arrowhead)" />
   
-  <!-- 带圆形端点的线 -->
-  <line x1="50" y1="100" x2="200" y2="100" stroke="red" stroke-width="2" marker-start="url(#circle)" marker-end="url(#circle)" />
+  <!-- 测试路径应用marker -->
+  <path d="M 50 150 L 150 150 L 200 200" 
+        stroke="blue" stroke-width="2" fill="none"
+        marker-end="url(#arrowhead)"
+        marker-mid="url(#dot)" />
   
-  <!-- 带方形起点和箭头终点的线 -->
-  <line x1="50" y1="150" x2="200" y2="150" stroke="blue" stroke-width="2" marker-start="url(#square)" marker-end="url(#arrow)" />
-  
-  <!-- 带Marker的路径 -->
-  <path d="M250,50 C280,30 320,70 350,50" 
-        stroke="green" stroke-width="2" fill="none" 
-        marker-start="url(#circle)" marker-end="url(#arrow)" />
-  
-  <!-- 多段线带Marker -->
-  <polyline points="250,100 280,120 310,100 340,120" 
-            stroke="purple" stroke-width="2" fill="none" 
-            marker-start="url(#square)" marker-mid="url(#circle)" marker-end="url(#arrow)" />
+  <!-- 测试折线应用marker -->
+  <polyline points="50,250 100,220 150,240 200,210" 
+              stroke="green" stroke-width="2" fill="none"
+              marker-end="url(#arrowhead)" />
 </svg>

@@ -3,6 +3,7 @@
 #include <QPen>
 #include "transform-handle.h"
 #include "../ui/drawingscene.h"
+#include "../ui/drawingview.h"
 
 // 静态颜色定义 - 现代化配色方案
 const QColor HandleManager::HANDLE_COLOR = QColor(255, 255, 255, 220);  // 更不透明的白色
@@ -40,7 +41,7 @@ void HandleManager::createHandles()
         }
         
         CustomHandleItem *handle = new CustomHandleItem(type);
-        handle->setSize(getHandleSize());
+        handle->setSize(8.0);
         handle->setSpecificColor(QColor(173, 216, 230, 160)); //浅蓝色
         handle->setZValue(2000);
         handle->setVisible(false);
@@ -61,7 +62,7 @@ void HandleManager::createHandles()
         }
         
         CustomHandleItem *handle = new CustomHandleItem(type);
-        handle->setSize(getHandleSize());
+        handle->setSize(8.0);
         handle->setSpecificColor(QColor(173, 216, 230, 160)); //浅蓝色
         handle->setZValue(2000);
         handle->setVisible(false);
@@ -72,7 +73,7 @@ void HandleManager::createHandles()
 
     // 创建中心手柄 - 圆形
     m_centerHandle = new CustomHandleItem(TransformHandle::Center);
-    m_centerHandle->setSize(getHandleSize() * 1.2);
+    m_centerHandle->setSize(8.0 * 1.2);
     m_centerHandle->setZValue(2000);
     m_centerHandle->setVisible(false);
     m_centerHandle->setOpacity(0.9);
@@ -81,7 +82,7 @@ void HandleManager::createHandles()
     // 创建旋转手柄 - 带箭头的空心圆
     m_rotateHandle = new CustomHandleItem(TransformHandle::Rotate);
     m_rotateHandle->setStyle(HandleItemBase::RotateCircle);
-    m_rotateHandle->setSize(getHandleSize() * 1.2);
+    m_rotateHandle->setSize(8.0 * 1.2);
     m_rotateHandle->setZValue(2000);
     m_rotateHandle->setVisible(false);
     m_rotateHandle->setOpacity(0.9);
@@ -99,7 +100,7 @@ void HandleManager::createHandles()
         }
         
         CustomHandleItem *handle = new CustomHandleItem(type);
-        handle->setSize(getHandleSize() * 1.2);
+        handle->setSize(8.0 * 1.2);
         handle->setStyle(HandleItemBase::RotateCircle); // 旋转手柄用带箭头的空心圆
         handle->setSpecificColor(QColor(173, 216, 230, 160));
         handle->setZValue(2000);
@@ -121,7 +122,7 @@ void HandleManager::createHandles()
         }
         
         CustomHandleItem *handle = new CustomHandleItem(type);
-        handle->setSize(getHandleSize() * 1.1);
+        handle->setSize(8.0 * 1.1);
         handle->setStyle(HandleItemBase::Diamond); // 斜切手柄用菱形
         handle->setSpecificColor(QColor(173, 216, 230, 160)); //浅蓝色
         handle->setZValue(2000);
@@ -134,7 +135,9 @@ void HandleManager::createHandles()
     // 创建选择边框线
     m_selectionBorder = new QGraphicsRectItem();
     m_selectionBorder->setBrush(Qt::NoBrush);
-    m_selectionBorder->setPen(QPen(QColor(100, 149, 237, 150), 1, Qt::DashLine)); // 蓝色虚线边框
+    QPen selectionPen(QColor(100, 149, 237, 150), 1.5, Qt::DashLine); // 蓝色虚线边框
+    selectionPen.setCosmetic(true); // 使用cosmetic画笔保持固定线宽
+    m_selectionBorder->setPen(selectionPen);
     m_selectionBorder->setZValue(1999); // 在手柄下方
     m_selectionBorder->setVisible(false);
     m_scene->addItem(m_selectionBorder);
@@ -414,7 +417,7 @@ void HandleManager::updateHandles(const QRectF &bounds)
     // 🌟 确保所有手柄都在正确的场景中
     ensureHandlesInScene();
 
-    const qreal handleSize = getHandleSize();
+    const qreal handleSize = 8.0;
     const qreal halfSize = handleSize / 2.0;
     const qreal offset = 4.0; // 手柄向外偏移量，避免遮挡图形
 
@@ -489,7 +492,7 @@ void HandleManager::updateRotateCornerHandle(int index, const QPointF &pos)
 
 void HandleManager::updateHandlePosition(TransformHandle::HandleType type, const QPointF &pos)
 {
-    const qreal handleSize = getHandleSize();
+    const qreal handleSize = 8.0;
     const qreal halfSize = handleSize / 2.0;
     const qreal centerSize = handleSize * 1.5 / 2.0;
     const qreal rotateSize = handleSize * 1.2 / 2.0;
@@ -607,7 +610,7 @@ void HandleManager::updateHandlePosition(TransformHandle::HandleType type, const
 
 TransformHandle::HandleType HandleManager::getHandleAtPosition(const QPointF &scenePos) const
 {
-    const qreal tolerance = getHandleSize() / 2.0 + 2.0; // 添加一些容差
+    const qreal tolerance = 8.0 / 2.0 + 2.0; // 添加一些容差
 
     // 安全检查：确保场景存在且有效
     if (!m_scene) {
@@ -733,7 +736,7 @@ void HandleManager::setActiveHandle(TransformHandle::HandleType type)
 
 QPointF HandleManager::getHandlePosition(TransformHandle::HandleType type) const
 {
-    const qreal handleSize = getHandleSize();
+    const qreal handleSize = 8.0;
     const qreal halfSize = handleSize / 2.0;
 
     switch (type)

@@ -81,8 +81,7 @@ private:
     // 更新单个手柄的悬停效果
     void updateHandleHoverEffect(QGraphicsItem *handle, bool isHovered);
     
-    // 获取手柄的视觉大小
-    qreal getHandleSize() const { return 8.0; }
+    
     
     DrawingScene *m_scene;
     QRectF m_bounds;

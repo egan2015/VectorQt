@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="800" height="600" viewBox="0 0 2400 1800" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+  <!-- 背景 -->
+  <rect width="2400" height="1800" fill="#f8f8f8"/>
+  
+  <!-- 大尺寸测试矩形 -->
+  <rect x="100" y="100" width="600" height="400" fill="lightblue" stroke="blue" stroke-width="10"/>
+  <rect x="800" y="100" width="600" height="400" fill="lightgreen" stroke="green" stroke-width="10"/>
+  <rect x="1500" y="100" width="600" height="400" fill="lightcoral" stroke="red" stroke-width="10"/>
+  
+  <rect x="100" y="600" width="600" height="400" fill="lightyellow" stroke="orange" stroke-width="10"/>
+  <rect x="800" y="600" width="600" height="400" fill="lightpink" stroke="purple" stroke-width="10"/>
+  <rect x="1500" y="600" width="600" height="400" fill="lightgray" stroke="gray" stroke-width="10"/>
+  
+  <rect x="100" y="1100" width="600" height="400" fill="lavender" stroke="indigo" stroke-width="10"/>
+  <rect x="800" y="1100" width="600" height="400" fill="mintcream" stroke="darkgreen" stroke-width="10"/>
+  <rect x="1500" y="1100" width="600" height="400" fill="peachpuff" stroke="darkred" stroke-width="10"/>
+  
+  <!-- 中心大圆形 -->
+  <circle cx="1200" cy="900" r="300" fill="rgba(255,255,255,0.8)" stroke="black" stroke-width="15"/>
+  
+  <!-- 文本标签 -->
+  <text x="400" y="300" text-anchor="middle" font-size="60" fill="darkblue">区域 1</text>
+  <text x="1100" y="300" text-anchor="middle" font-size="60" fill="darkgreen">区域 2</text>
+  <text x="1800" y="300" text-anchor="middle" font-size="60" fill="darkred">区域 3</text>
+  
+  <text x="400" y="800" text-anchor="middle" font-size="60" fill="darkorange">区域 4</text>
+  <text x="1100" y="800" text-anchor="middle" font-size="60" fill="purple">区域 5</text>
+  <text x="1800" y="800" text-anchor="middle" font-size="60" fill="gray">区域 6</text>
+  
+  <text x="400" y="1300" text-anchor="middle" font-size="60" fill="indigo">区域 7</text>
+  <text x="1100" y="1300" text-anchor="middle" font-size="60" fill="darkgreen">区域 8</text>
+  <text x="1800" y="1300" text-anchor="middle" font-size="60" fill="darkred">区域 9</text>
+  
+  <!-- 标题 -->
+  <text x="1200" y="1650" text-anchor="middle" font-size="80" fill="black" font-weight="bold">大型ViewBox测试 (2400×1800)</text>
+  
+  <!-- 边框 -->
+  <rect x="0" y="0" width="2400" height="1800" fill="none" stroke="red" stroke-width="20"/>
+</svg>

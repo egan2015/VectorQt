@@ -58,6 +58,12 @@ set(SOURCES
     src/ui/ruler.cpp
     src/ui/scrollable-toolbar.cpp
     src/core/svghandler.cpp
+    src/core/svgstreamhandler.cpp
+    src/core/svgtransformmanager.cpp
+    src/core/svgcolorparser.cpp
+    src/core/svglengthparser.cpp
+    src/core/fastpathparser.cpp
+    src/core/svgelementcollector.cpp
     src/tools/tool-state-manager.cpp
     src/tools/tool-manager.cpp
     src/ui/shortcut-manager.cpp

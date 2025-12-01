@@ -245,7 +245,7 @@ void DrawingToolText::createText(const QPointF &scenePos)
     m_currentText->setFont(m_font);
     m_currentText->setFillBrush(QBrush(m_currentFillColor));
     m_currentText->setStrokePen(QPen(m_currentStrokeColor, 1.0));
-    m_currentText->setPosition(scenePos);
+    m_currentText->setPos(scenePos);
     
     // 使用CreateCommand添加到场景
     CommandManager *commandManager = CommandManager::instance();

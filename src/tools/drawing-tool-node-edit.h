@@ -21,7 +21,7 @@ public:
     NodeEditCommand(DrawingScene *scene, DrawingShape *shape, int nodeIndex, 
                    const QPointF &oldPos, const QPointF &newPos, 
                    qreal oldCornerRadius = -1.0, qreal newCornerRadius = -1.0,
-                   QUndoCommand *parent = nullptr);
+                   bool skipInitialRedo = false, QUndoCommand *parent = nullptr);
     
     void undo() override;
     void redo() override;
@@ -34,6 +34,8 @@ private:
     QPointF m_newPos;
     qreal m_oldCornerRadius;  // 原始圆角半径（-1表示不适用）
     qreal m_newCornerRadius;  // 新圆角半径（-1表示不适用）
+    bool m_skipInitialRedo;   // 是否跳过初始redo（避免二次变换）
+    bool m_hasSkippedFirstRedo; // 是否已经跳过第一次redo
 };
 
 /**

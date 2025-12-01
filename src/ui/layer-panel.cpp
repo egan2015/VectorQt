@@ -53,7 +53,7 @@ void LayerPanel::setScene(DrawingScene *scene)
 
 void LayerPanel::setLayerManager(LayerManager *layerManager)
 {
-    qDebug() << "LayerPanel::setLayerManager called with layerManager:" << layerManager;
+    
     
     if (m_layerManager == layerManager) {
         return;
@@ -84,7 +84,7 @@ void LayerPanel::setLayerManager(LayerManager *layerManager)
         // 添加一个测试连接来确认信号是否被接收
         connect(m_layerManager, &LayerManager::layerAdded, this, &LayerPanel::onLayerAdded);
         
-        qDebug() << "LayerPanel: Connected to LayerManager, waiting for signals";
+        
         // 不再立即更新，等待信号推送
     }
 }
@@ -173,16 +173,16 @@ void LayerPanel::setupUI()
 
 void LayerPanel::updateLayerList()
 {
-    qDebug() << "LayerPanel::updateLayerList called, m_layerManager:" << m_layerManager;
+    
     populateLayerTree();
 }
 
 void LayerPanel::populateLayerTree()
 {
-    qDebug() << "LayerPanel::populateLayerTree called";
+    
     
     if (!m_layerTree) {
-        qDebug() << "No layer tree widget";
+        
         return;
     }
     
@@ -206,7 +206,7 @@ void LayerPanel::populateLayerTree()
     m_layerTree->clear();
     
     if (!m_layerManager) {
-        qDebug() << "No layer manager in populateLayerTree";
+        
         m_layerCountLabel->setText(tr("图层数量: 0"));
         updateLayerButtons();
         return;
@@ -214,17 +214,17 @@ void LayerPanel::populateLayerTree()
     
     // 从LayerManager获取真实的图层列表
     QList<DrawingLayer*> layers = m_layerManager->layers();
-    qDebug() << "Got" << layers.count() << "layers from manager";
+    
     
     for (int i = 0; i < layers.count(); ++i) {
         DrawingLayer *layer = layers.at(i);
         if (!layer) {
-            qDebug() << "Layer at index" << i << "is null";
+            
             continue;
         }
         
         QString layerName = layer->name();
-        qDebug() << "Adding layer item:" << layerName;
+        
         
         QTreeWidgetItem *layerItem = new QTreeWidgetItem();
         layerItem->setText(0, layerName);
@@ -246,7 +246,7 @@ void LayerPanel::populateLayerTree()
         try {
             addObjectsToLayerItem(layerItem, layer);
         } catch (...) {
-            qDebug() << "Error adding objects to layer item for layer:" << layerName;
+            
         }
         
         // 默认展开图层以显示列表式效果
@@ -258,7 +258,7 @@ void LayerPanel::populateLayerTree()
         }
         
         m_layerTree->addTopLevelItem(layerItem);
-        qDebug() << "Layer item added to tree";
+        
     }
     
     m_layerCountLabel->setText(tr("图层数量: %1").arg(layers.count()));
@@ -346,33 +346,24 @@ void LayerPanel::addObjectsToLayerItem(QTreeWidgetItem *layerItem, DrawingLayer 
     
     // 获取图层中的所有对象
     QList<DrawingShape*> shapes = layer->shapes();
-    qDebug() << "Processing layer with" << shapes.count() << "shapes";
+    
     
     // 清理无效的图形（已从场景中删除但仍在图层列表中的图形）
     for (int i = shapes.count() - 1; i >= 0; --i) {
         DrawingShape *shape = shapes.at(i);
         if (shape && !shape->scene()) {
-            qDebug() << "Removing invalid shape from layer:" << shape;
+            
             layer->removeShape(shape);
         }
     }
     
     // 重新获取清理后的图形列表
     shapes = layer->shapes();
-    qDebug() << "After cleanup, layer has" << shapes.count() << "shapes";
+    
     
     // 调试：打印所有形状的详细信息
     for (int debugIdx = 0; debugIdx < shapes.count(); ++debugIdx) {
-        DrawingShape *debugShape = shapes.at(debugIdx);
-        if (debugShape) {
-            // 检查图形是否仍在场景中，避免访问已删除的对象
-            bool isInScene = debugShape->scene() != nullptr;
-            qDebug() << "DEBUG shape" << debugIdx << "- type:" << debugShape->shapeType() 
-                     << "- address:" << debugShape
-                     << "- isGroup:" << (debugShape->shapeType() == DrawingShape::Group)
-                     << "- isInScene:" << isInScene
-                     << "- dynamic_cast result:" << (dynamic_cast<DrawingGroup*>(debugShape) != nullptr);
-        }
+        
     }
     
     for (int i = 0; i < shapes.count(); ++i) {
@@ -381,23 +372,23 @@ void LayerPanel::addObjectsToLayerItem(QTreeWidgetItem *layerItem, DrawingLayer 
         if (shape) {
             // 检查图形是否仍在场景中，避免访问已删除的对象
             if (!shape->scene()) {
-                qDebug() << "Skipping shape at index" << i << "- not in scene (deleted)";
+                
                 continue;
             }
             
             try {
-                qDebug() << "Processing shape at index" << i << "type:" << shape->shapeType() << "address:" << shape;
-                qDebug() << "Is DrawingShape:" << (dynamic_cast<DrawingShape*>(shape) != nullptr);
+                
+                
                 
                 // 如果是组对象，创建组节点并递归添加子对象
                 if (shape->shapeType() == DrawingShape::Group) {
-                    qDebug() << "Shape type is Group, attempting dynamic_cast";
+                    
                     DrawingGroup *group = dynamic_cast<DrawingGroup*>(shape);
                     if (group) {
-                        qDebug() << "Found group, adding as group item";
+                        
                         addGroupAsShapeItem(layerItem, group);
                     } else {
-                        qDebug() << "dynamic_cast failed for Group type";
+                        
                         // 降级处理，作为普通形状
                         QTreeWidgetItem *shapeItem = new QTreeWidgetItem(layerItem);
                         QString shapeName = getShapeName(shape);
@@ -406,7 +397,7 @@ void LayerPanel::addObjectsToLayerItem(QTreeWidgetItem *layerItem, DrawingLayer 
                         shapeItem->setCheckState(1, shape->isVisible() ? Qt::Checked : Qt::Unchecked);
                         shapeItem->setData(0, Qt::UserRole, reinterpret_cast<quintptr>(shape));
                         shapeItem->setData(0, Qt::UserRole + 1, "shape");
-                        qDebug() << "Added shape item (failed cast):" << shapeName;
+                        
                     }
                 } else {
                     // 普通形状对象，直接添加到图层下
@@ -420,13 +411,13 @@ void LayerPanel::addObjectsToLayerItem(QTreeWidgetItem *layerItem, DrawingLayer 
                     shapeItem->setData(0, Qt::UserRole, reinterpret_cast<quintptr>(shape));
                     shapeItem->setData(0, Qt::UserRole + 1, "shape");  // 标识为形状类型
                     
-                    qDebug() << "Added shape item:" << shapeName;
+                    
                 }
             } catch (...) {
-                qDebug() << "Error processing shape at index" << i;
+                
             }
         } else {
-            qDebug() << "Null shape at index" << i;
+            
         }
     }
 }
@@ -478,7 +469,7 @@ QString LayerPanel::getShapeName(DrawingShape *shape) const
             return baseName;
         }
     } catch (...) {
-        qDebug() << "Error getting shape name";
+        
         return tr("对象");
     }
 }
@@ -501,7 +492,7 @@ void LayerPanel::addGroupAsShapeItem(QTreeWidgetItem *parentItem, DrawingGroup *
         groupItem->setData(0, Qt::UserRole, reinterpret_cast<quintptr>(group));
         groupItem->setData(0, Qt::UserRole + 1, "shape");  // 标识为形状类型
         
-        qDebug() << "Added group item:" << groupName << "with" << group->items().count() << "children";
+        
         
         // 递归添加组的子对象
         addGroupChildrenToShapeItem(groupItem, group);
@@ -509,7 +500,7 @@ void LayerPanel::addGroupAsShapeItem(QTreeWidgetItem *parentItem, DrawingGroup *
         // 默认展开组节点
         groupItem->setExpanded(true);
     } catch (...) {
-        qDebug() << "Error adding group item";
+        
     }
 }
 
@@ -520,7 +511,7 @@ void LayerPanel::addGroupChildrenToShapeItem(QTreeWidgetItem *groupItem, Drawing
     }
     
     QList<DrawingShape*> children = group->items();
-    qDebug() << "Processing group with" << children.count() << "children";
+    
     
     for (int i = 0; i < children.count(); ++i) {
         DrawingShape *shape = children.at(i);
@@ -543,13 +534,13 @@ void LayerPanel::addGroupChildrenToShapeItem(QTreeWidgetItem *groupItem, Drawing
                     childItem->setData(0, Qt::UserRole, reinterpret_cast<quintptr>(shape));
                     childItem->setData(0, Qt::UserRole + 1, "shape");  // 标识为形状类型
                     
-                    qDebug() << "Added group child item:" << shapeName;
+                    
                 }
             } catch (...) {
-                qDebug() << "Error processing group child at index" << i;
+                
             }
         } else {
-            qDebug() << "Null group child at index" << i;
+            
         }
     }
 }
@@ -584,7 +575,7 @@ void LayerPanel::updateLayerButtons()
 
 void LayerPanel::onAddLayer()
 {
-    qDebug() << "LayerPanel::onAddLayer called";
+    
     
     // 使用单例模式获取LayerManager
     if (!m_layerManager) {
@@ -592,7 +583,7 @@ void LayerPanel::onAddLayer()
     }
     
     if (!m_layerManager) {
-        qDebug() << "No layer manager available";
+        
         return;
     }
     
@@ -601,13 +592,13 @@ void LayerPanel::onAddLayer()
                                               tr("图层名称:"), QLineEdit::Normal,
                                               tr("新图层"), &ok);
     
-    qDebug() << "Dialog result - ok:" << ok << "layerName:" << layerName;
+    
     
     if (ok && !layerName.isEmpty()) {
-        qDebug() << "Calling LayerManager::createLayer";
+        
         m_layerManager->createLayer(layerName);
     } else {
-        qDebug() << "User cancelled or empty name";
+        
     }
 }
 
@@ -948,7 +939,7 @@ void LayerPanel::renameLayer(int index)
 
 void LayerPanel::onLayerAdded()
 {
-    qDebug() << "LayerPanel::onLayerAdded() - Received layerAdded signal!";
+    
 }
 
 void LayerPanel::selectLayer(int index)

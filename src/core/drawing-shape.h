@@ -13,8 +13,36 @@
 #include <QGraphicsSceneMouseEvent>
 #include <QFont>
 #include <QUndoCommand>
+#include <QDomElement>
+#include <QVariant>
 #include <memory>
 #include "smart-render-manager.h"
+
+// Marker渲染数据结构
+struct MarkerData
+{
+    enum Type { None, Path, Circle, Rect, Polygon };
+    
+    Type type = None;
+    QVariantList params;  // 存储具体参数
+    QColor fillColor = Qt::black;
+    QColor strokeColor = Qt::transparent;
+    qreal strokeWidth = 1.0;
+    bool isValid = false;
+    
+    // Marker参考点和对齐信息
+    qreal refX = 0.0;
+    qreal refY = 0.0;
+    qreal markerWidth = 3.0;
+    qreal markerHeight = 3.0;
+    QString orient = "auto";
+    
+    // 构造函数
+    MarkerData() = default;
+    MarkerData(Type t, const QVariantList& p, const QColor& fill, 
+               const QColor& stroke, qreal width)
+        : type(t), params(p), fillColor(fill), strokeColor(stroke), strokeWidth(width), isValid(true) {}
+};
 
 class DrawingDocument;
 
@@ -196,6 +224,10 @@ public:
         notifyObjectStateChanged();
     }
     QPen strokePen() const { return m_strokePen; }
+
+    // 填充规则（虚方法，子类可重写）
+    virtual void setFillRule(Qt::FillRule rule) { Q_UNUSED(rule); }
+    virtual Qt::FillRule fillRule() const { return Qt::OddEvenFill; }
 
     // 滤镜效果管理
     void setBlurEffect(qreal radius);
@@ -478,6 +510,15 @@ public:
     void setShowControlPolygon(bool show);
     bool showControlPolygon() const;
 
+    // 填充规则相关
+    void setFillRule(Qt::FillRule rule) override { 
+        m_fillRule = rule;
+        // 立即应用到路径上
+        m_path.setFillRule(m_fillRule);
+        update();
+    }
+    Qt::FillRule fillRule() const override { return m_fillRule; }
+
     // 节点信息相关 - 重写基类方法
     QVector<NodeInfo> getNodeInfo() const override;
     void updateNodeInfo() override; // 从路径元素更新节点信息
@@ -502,9 +543,20 @@ public:
     bool isPointOnPath(const QPointF &pos, qreal threshold = 5.0) const override;
 
     // Marker相关
-    void setMarker(const QString &markerId, const QPixmap &markerPixmap, const QTransform &markerTransform);
-    bool hasMarker() const { return !m_markerId.isEmpty(); }
-    QString markerId() const { return m_markerId; }
+    void setMarker(const QString &markerId, const MarkerData &markerData, const QTransform &markerTransform);
+    bool hasMarker() const { return !m_markers.isEmpty(); }
+    QString markerId() const { return m_markers.isEmpty() ? QString() : m_markers.first().markerId; }
+    
+    // 多marker支持
+    struct MarkerInfo {
+        QString markerId;
+        MarkerData markerData;
+        QTransform markerTransform;
+        QString position; // "start", "mid", "end"
+    };
+    
+    void setMarker(const QString &markerId, const MarkerData &markerData, const QTransform &markerTransform, const QString &position = "end");
+    const QList<MarkerInfo>& markers() const { return m_markers; }
 
 protected:
     void paintShape(QPainter *painter) override;
@@ -524,17 +576,27 @@ private:
     // 控制点交互相关
     int findNearestControlPoint(const QPointF &scenePos) const;
     bool isPointNearControlPoint(const QPointF &scenePos, const QPointF &controlPoint, qreal threshold = 10.0) const;
+    
+    // 直接绘制marker（使用预解析的数据）
+    void renderMarkerDirectly(QPainter *painter);
+    
+    // 获取marker的边界框
+    static QRectF getMarkerBounds(const MarkerData &markerData);
 
     QPainterPath m_path;
     QVector<QPainterPath::Element> m_pathElements;          // 原始路径元素，保存曲线信息
     QVector<QPointF> m_controlPoints;                       // 控制点，用于编辑
     QVector<QPainterPath::ElementType> m_controlPointTypes; // 控制点类型
     QVector<NodeInfo> m_nodeInfo;                           // 节点信息，用于手柄系统
+    
+    // 填充规则
+    Qt::FillRule m_fillRule;                                // 填充规则
 
     // Marker相关
-    QString m_markerId;
-    QPixmap m_markerPixmap;
-    QTransform m_markerTransform;
+    QString m_markerId; // 保留用于向后兼容
+    MarkerData m_markerData;  // 保留用于向后兼容
+    QTransform m_markerTransform; // 保留用于向后兼容
+    QList<MarkerInfo> m_markers; // 多个marker列表
     bool m_showControlPolygon = false;        // 是否显示控制点连线
     int m_activeControlPoint = -1;            // 当前活动的控制点索引
     QPointF m_dragStartPos;                   // 拖动开始位置
@@ -746,12 +808,12 @@ public:
     }
 
     // 填充属性
-    void setFillRule(Qt::FillRule rule)
+    void setFillRule(Qt::FillRule rule) override
     {
         m_fillRule = rule;
         update();
     }
-    Qt::FillRule fillRule() const { return m_fillRule; }
+    Qt::FillRule fillRule() const override { return m_fillRule; }
 
     // 编辑点相关 - 多边形的所有顶点
     QVector<QPointF> getNodePoints() const override;

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="400" height="300" viewBox="0 0 800 600" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+  <!-- 背景 -->
+  <rect width="800" height="600" fill="#f0f0f0"/>
+  
+  <!-- 测试viewBox的矩形 -->
+  <rect x="50" y="50" width="200" height="150" fill="blue" stroke="black" stroke-width="2"/>
+  
+  <!-- 测试viewBox的圆形 -->
+  <circle cx="400" cy="300" r="100" fill="red" stroke="black" stroke-width="2"/>
+  
+  <!-- 测试viewBox的文本 -->
+  <text x="400" y="550" text-anchor="middle" font-size="40" fill="green">ViewBox Test (800x600)</text>
+  
+  <!-- 边框显示viewBox范围 -->
+  <rect x="0" y="0" width="800" height="600" fill="none" stroke="orange" stroke-width="5" stroke-dasharray="10,5"/>
+</svg>

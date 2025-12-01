@@ -76,6 +76,7 @@ PageSettingsPanel::PageSettingsPanel(QWidget *parent)
     setupUI();
 }
 
+// 设置场景
 void PageSettingsPanel::setScene(DrawingScene *scene)
 {
     m_scene = scene;
@@ -93,7 +94,38 @@ void PageSettingsPanel::setScene(DrawingScene *scene)
         if (m_showGridCheck) {
             m_showGridCheck->setChecked(m_scene->isGridVisible());
         }
+        
+        // 同步网格大小显示
+        m_gridSizeSpin->setValue(m_scene->gridSize());
     }
+}
+
+// 从场景更新设置
+void PageSettingsPanel::updateFromScene()
+{
+    if (!m_scene) {
+        return;
+    }
+    
+    // 从场景获取当前设置
+    m_currentPageSize = m_scene->sceneRect().size();
+    updateOrientationFromSize();
+    
+    // 更新控件显示，但不触发信号
+    m_widthSpin->blockSignals(true);
+    m_heightSpin->blockSignals(true);
+    
+    m_widthSpin->setValue(m_currentPageSize.width());
+    m_heightSpin->setValue(m_currentPageSize.height());
+    
+    // 注意：网格大小是编辑器属性，不随SVG导入更新
+    // 保持用户当前的网格设置
+    
+    m_widthSpin->blockSignals(false);
+    m_heightSpin->blockSignals(false);
+    
+    // 更新预设尺寸选择
+    updatePresetSelection();
 }
 
 void PageSettingsPanel::setView(DrawingView *view)
@@ -543,6 +575,45 @@ void PageSettingsPanel::applySettings()
     
     emit settingsChanged();
     emit pageSizeChanged(m_currentPageSize);
+}
+
+void PageSettingsPanel::updatePresetSelection()
+{
+    // 检查当前尺寸是否匹配预设尺寸
+    bool found = false;
+    for (int i = 0; i < m_presetSizeCombo->count(); ++i) {
+        int presetIndex = m_presetSizeCombo->itemData(i).toInt();
+        if (presetIndex < 0) continue; // 跳过"自定义"
+        
+        QSizeF presetSize;
+        switch (presetIndex) {
+            case 0: presetSize = QSizeF(210, 297); break;    // A4
+            case 1: presetSize = QSizeF(297, 420); break;    // A3
+            case 2: presetSize = QSizeF(148, 210); break;    // A5
+            case 3: presetSize = QSizeF(215.9, 279.4); break; // Letter
+            case 4: presetSize = QSizeF(215.9, 355.6); break; // Legal
+            case 5: presetSize = QSizeF(279.4, 431.8); break; // Tabloid
+            default: continue;
+        }
+        
+        // 考虑横向/纵向
+        if ((m_portraitRadio->isChecked() && m_currentPageSize == presetSize) ||
+            (!m_portraitRadio->isChecked() && m_currentPageSize == QSizeF(presetSize.height(), presetSize.width()))) {
+            m_presetSizeCombo->setCurrentIndex(i);
+            found = true;
+            break;
+        }
+    }
+    
+    if (!found) {
+        // 设置为"自定义"
+        for (int i = 0; i < m_presetSizeCombo->count(); ++i) {
+            if (m_presetSizeCombo->itemData(i).toInt() == -1) {
+                m_presetSizeCombo->setCurrentIndex(i);
+                break;
+            }
+        }
+    }
 }
 
 void PageSettingsPanel::resetToDefaults()

@@ -16,9 +16,10 @@
 // NodeEditCommand 实现
 NodeEditCommand::NodeEditCommand(DrawingScene *scene, DrawingShape *shape, int nodeIndex,
                                  const QPointF &oldPos, const QPointF &newPos,
-                                 qreal oldCornerRadius, qreal newCornerRadius, QUndoCommand *parent)
+                                 qreal oldCornerRadius, qreal newCornerRadius, bool skipInitialRedo, QUndoCommand *parent)
     : QUndoCommand("编辑节点", parent), m_scene(scene), m_shape(shape), m_nodeIndex(nodeIndex),
-      m_oldPos(oldPos), m_newPos(newPos), m_oldCornerRadius(oldCornerRadius), m_newCornerRadius(newCornerRadius)
+      m_oldPos(oldPos), m_newPos(newPos), m_oldCornerRadius(oldCornerRadius), m_newCornerRadius(newCornerRadius),
+      m_skipInitialRedo(skipInitialRedo), m_hasSkippedFirstRedo(false)
 {
 }
 
@@ -51,6 +52,13 @@ void NodeEditCommand::undo()
 
 void NodeEditCommand::redo()
 {
+    // 如果设置了跳过初始redo标志，则第一次调用时跳过执行
+    if (m_skipInitialRedo && !m_hasSkippedFirstRedo)
+    {
+        m_hasSkippedFirstRedo = true;
+        return;
+    }
+
     if (m_shape && m_shape->scene() == m_scene)
     {
         // 设置到新位置
@@ -131,21 +139,17 @@ bool DrawingNodeEditTool::mousePressEvent(QMouseEvent *event, const QPointF &sce
             {
                 m_selectedShape->beginNodeDrag(handleInfo.nodeIndex);
 
-                // 保存原始值用于撤销
-                QVector<QPointF> nodePoints = m_selectedShape->getNodePoints();
-                if (handleInfo.nodeIndex < nodePoints.size())
-                {
-                    m_originalValue = m_selectedShape->mapToScene(nodePoints[handleInfo.nodeIndex]);
+                // 直接保存鼠标位置作为原始位置（场景坐标）
+                m_originalValue = scenePos;
 
-                    // 如果是矩形且编辑的是圆角（第一个节点），保存原始圆角半径
-                    m_originalCornerRadius = -1.0;
-                    if (m_selectedShape->shapeType() == DrawingShape::Rectangle && handleInfo.nodeIndex == 0)
+                // 如果是矩形且编辑的是圆角（第一个节点），保存原始圆角半径
+                m_originalCornerRadius = -1.0;
+                if (m_selectedShape->shapeType() == DrawingShape::Rectangle && handleInfo.nodeIndex == 0)
+                {
+                    DrawingRectangle *rect = static_cast<DrawingRectangle *>(m_selectedShape);
+                    if (rect)
                     {
-                        DrawingRectangle *rect = static_cast<DrawingRectangle *>(m_selectedShape);
-                        if (rect)
-                        {
-                            m_originalCornerRadius = rect->cornerRadius();
-                        }
+                        m_originalCornerRadius = rect->cornerRadius();
                     }
                 }
             }
@@ -306,13 +310,6 @@ bool DrawingNodeEditTool::mouseMoveEvent(QMouseEvent *event, const QPointF &scen
                 m_handleManager->updateExistingHandlePositions(m_selectedShape);
             }
         }
-
-        // 触发场景重绘
-        if (m_scene)
-        {
-            m_scene->update();
-        }
-
         // 触发场景重绘
         if (m_scene)
         {
@@ -418,84 +415,90 @@ bool DrawingNodeEditTool::mouseReleaseEvent(QMouseEvent *event, const QPointF &s
         // 创建撤销命令
         if (m_selectedShape && handleInfo.handle && m_scene)
         {
-            // 获取当前节点位置
-            QVector<QPointF> nodePoints = m_selectedShape->getNodePoints();
-            if (handleInfo.nodeIndex < nodePoints.size())
+            // 获取当前鼠标位置并应用相同的约束逻辑
+            QPointF alignedScenePos = scenePos;
+            if (m_scene)
             {
-                QPointF currentPos = m_selectedShape->mapToScene(nodePoints[handleInfo.nodeIndex]);
-
-                // 只有当位置真正发生变化时才创建撤销命令
-                if (currentPos != m_originalValue)
+                DrawingScene *drawingScene = qobject_cast<DrawingScene *>(m_scene);
+                if (drawingScene && drawingScene->isGridAlignmentEnabled())
                 {
-                    qreal oldCornerRadius = -1.0;
-                    qreal newCornerRadius = -1.0;
+                    // 使用智能网格吸附
+                    SnapResult gridSnap = drawingScene->snapManager()->smartAlignToGrid(scenePos);
+                    alignedScenePos = gridSnap.snappedPos;
 
-                    // 如果是矩形且编辑的是圆角（第一个节点），保存圆角信息
-                    if (m_selectedShape->shapeType() == DrawingShape::Rectangle && handleInfo.nodeIndex == 0)
+                    // 尝试对象吸附
+                    ObjectSnapResult objectSnap = drawingScene->snapManager()->snapToObjects(scenePos, m_selectedShape);
+                    if (objectSnap.snappedToObject)
                     {
-                        oldCornerRadius = m_originalCornerRadius;
-
-                        // 计算新的圆角半径
-                        DrawingRectangle *rect = static_cast<DrawingRectangle *>(m_selectedShape);
-                        if (rect)
-                        {
-                            QPointF localPos = m_selectedShape->mapFromScene(currentPos);
-                            QTransform transform = m_selectedShape->transform();
-                            localPos = transform.inverted().map(localPos);
-
-                            qreal distance = localPos.x() - rect->rectangle().left();
-                            qreal maxRadius = qMin(rect->rectangle().width(), rect->rectangle().height()) / 2.0;
-                            newCornerRadius = qBound(0.0, distance, maxRadius);
-                        }
-                    }
-
-                    // 首先将节点恢复到原始位置，然后让命令的redo()应用新位置
-                    // 这样可以避免双重设置，同时确保撤销/重做都能正常工作
-                    m_selectedShape->setNodePoint(handleInfo.nodeIndex, m_originalValue);
-                    if (oldCornerRadius >= 0.0 && m_selectedShape->shapeType() == DrawingShape::Rectangle && handleInfo.nodeIndex == 0)
-                    {
-                        DrawingRectangle *rect = static_cast<DrawingRectangle *>(m_selectedShape);
-                        if (rect)
-                        {
-                            rect->setCornerRadius(oldCornerRadius);
-                        }
-                    }
-
-                    NodeEditCommand *command = new NodeEditCommand(m_scene, m_selectedShape,
-                                                                   handleInfo.nodeIndex, m_originalValue, currentPos,
-                                                                   oldCornerRadius, newCornerRadius);
-                    if (CommandManager::hasInstance())
-                    {
-                        CommandManager::instance()->pushCommand(command);
-                    }
-                    else
-                    {
-                        command->redo();
-                        delete command;
+                        // 对象吸附优先级更高
+                        alignedScenePos = objectSnap.snappedPos;
                     }
                 }
             }
 
-            // 通知图形结束拖动节点
-            m_selectedShape->endNodeDrag(handleInfo.nodeIndex);
+            // 应用相同的约束逻辑，这是鼠标松开时的目标位置
+            QPointF newPos = m_selectedShape->constrainNodePoint(handleInfo.nodeIndex, alignedScenePos);
+
+            // 只有当位置真正发生变化时才创建撤销命令
+            if (newPos != m_originalValue)
+            {
+                qreal oldCornerRadius = -1.0;
+                qreal newCornerRadius = -1.0;
+
+                // 如果是矩形且编辑的是圆角（第一个节点），保存圆角信息
+                if (m_selectedShape->shapeType() == DrawingShape::Rectangle && handleInfo.nodeIndex == 0)
+                {
+                    oldCornerRadius = m_originalCornerRadius;
+
+                    // 计算新的圆角半径
+                    DrawingRectangle *rect = static_cast<DrawingRectangle *>(m_selectedShape);
+                    if (rect)
+                    {
+                        QPointF localPos = m_selectedShape->mapFromScene(newPos);
+                        QTransform transform = m_selectedShape->transform();
+                        localPos = transform.inverted().map(localPos);
+
+                        qreal distance = localPos.x() - rect->rectangle().left();
+                        qreal maxRadius = qMin(rect->rectangle().width(), rect->rectangle().height()) / 2.0;
+                        newCornerRadius = qBound(0.0, distance, maxRadius);
+                    }
+                }
+
+                // 创建撤销命令，oldPos和newPos都是鼠标位置（场景坐标）
+                // 跳过初始redo()避免二次变换，因为节点位置已经在mousemove中设置
+                NodeEditCommand *command = new NodeEditCommand(m_scene, m_selectedShape,
+                                                               handleInfo.nodeIndex, m_originalValue, newPos,
+                                                               oldCornerRadius, newCornerRadius, true); // true = 跳过初始redo
+
+                if (CommandManager::hasInstance())
+                {
+                    CommandManager::instance()->pushCommand(command);
+                }
+                else
+                {
+                    // 如果没有命令管理器，直接删除命令，不需要执行redo
+                    delete command;
+                }
+            }
         }
 
-        // 结束拖动
-        m_dragging = false;
-        m_activeHandle = nullptr;
-
-        // 如果有选中的图形，更新其显示
-        if (m_selectedShape)
-        {
-            m_selectedShape->update();
-        }
-
-        return true;
+        // 通知图形结束拖动节点
+        m_selectedShape->endNodeDrag(handleInfo.nodeIndex);
     }
 
-    // 在节点编辑状态下，不调用父类的mouseReleaseEvent，以防止图形被移动
-    return false;
+    // 结束拖动
+    m_dragging = false;
+    m_activeHandle = nullptr;
+
+    // 如果有选中的图形，更新其显示
+    if (m_selectedShape)
+    {
+        m_selectedShape->update();
+    }
+
+    return true;
 }
+
 
 void DrawingNodeEditTool::activate(DrawingScene *scene, DrawingView *view)
 {

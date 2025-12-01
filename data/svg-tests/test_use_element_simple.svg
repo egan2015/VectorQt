@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="300" height="200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- 定义一个可重用的矩形 -->
+    <rect id="myRect" x="0" y="0" width="50" height="30" fill="blue" stroke="black" stroke-width="2"/>
+    
+    <!-- 定义一个可重用的圆形 -->
+    <circle id="myCircle" cx="25" cy="25" r="20" fill="red" stroke="black" stroke-width="2"/>
+    
+    <!-- 定义一个可重用的路径 -->
+    <path id="myPath" d="M 10,10 Q 25,0 40,10 T 70,10" fill="none" stroke="green" stroke-width="3"/>
+  </defs>
+  
+  <!-- 使用定义的矩形 - 只有位置，没有变换 -->
+  <use href="#myRect" x="20" y="20"/>
+  <use href="#myRect" x="100" y="20" fill="yellow"/>
+  <use href="#myRect" x="180" y="20"/>
+  
+  <!-- 使用定义的圆形 - 只有位置，没有变换 -->
+  <use href="#myCircle" x="20" y="80"/>
+  <use href="#myCircle" x="100" y="80"/>
+  <use href="#myCircle" x="200" y="80" r="15" fill="purple"/>
+  
+  <!-- 使用定义的路径 - 只有位置，没有变换 -->
+  <use href="#myPath" x="20" y="140"/>
+  <use href="#myPath" x="120" y="140" stroke="orange"/>
+  <use href="#myPath" x="20" y="170"/>
+</svg>

@@ -26,6 +26,7 @@
 #include "drawingview.h"
 #include "propertypanel.h"
 #include "tabbed-property-panel.h"
+#include "page-settings-panel.h"
 
 #include "effect-manager.h"
 #include "snap-manager.h"
@@ -543,6 +544,17 @@ void MainWindow::setupUI()
                     // 文档创建或加载后，重新激活选择工具以重建视觉组件
                     if (m_toolManager) {
                         m_toolManager->switchTool(ToolType::Select);
+                    }
+                });
+        
+        connect(m_document, &DrawingDocument::pageSizeChanged,
+                this, [this](const QSizeF &size) {
+                    // SVG导入后页面大小发生变化，更新页面设置面板
+                    if (m_tabbedPropertyPanel) {
+                        PageSettingsPanel *pagePanel = m_tabbedPropertyPanel->getPageSettingsPanel();
+                        if (pagePanel) {
+                            pagePanel->updateFromScene();
+                        }
                     }
                 });
     }
@@ -1423,10 +1435,26 @@ void MainWindow::connectActions()
         }
     });
     connect(m_gridSizeAction, &QAction::triggered, this, [this]() {
-        // 网格大小设置暂时简化
+        // 创建网格大小设置对话框
         if (m_canvas && m_canvas->scene()) {
             DrawingScene* scene = static_cast<DrawingScene*>(m_canvas->scene());
-            scene->setGridSize(20); // 可以添加设置对话框
+            
+            bool ok;
+            int currentSize = scene->gridSize();
+            int newSize = QInputDialog::getInt(
+                this,
+                tr("网格大小设置"),
+                tr("请输入网格大小 (像素):"),
+                currentSize,
+                1,
+                200,
+                1,
+                &ok
+            );
+            
+            if (ok) {
+                scene->setGridSize(newSize);
+            }
         }
     });
     connect(m_gridColorAction, &QAction::triggered, this, [this]() {

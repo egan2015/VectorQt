@@ -49,16 +49,15 @@ LayerManager::~LayerManager()
 
 void LayerManager::setScene(DrawingScene *scene)
 {
-    qDebug() << "LayerManager::setScene called with scene:" << scene;
-    qDebug() << "Current m_scene:" << m_scene << "Current layers count:" << m_layers.count();
+    
     
     if (m_scene == scene) {
-        qDebug() << "Scene is the same, but checking if need to create default layer";
+        
         // 即使场景相同，如果图层列表为空且不在SVG导入模式，也要创建默认图层
         if (m_scene && m_layers.isEmpty() && !m_svgImporting) {
-            qDebug() << "Creating default layer (scene was the same)";
+            
         } else {
-            qDebug() << "No need to create default layer";
+            
             return;
         }
     } else {
@@ -67,7 +66,7 @@ void LayerManager::setScene(DrawingScene *scene)
     
     // 如果场景已设置且不是在SVG导入期间，创建默认图层
     if (m_scene && m_layers.isEmpty() && !m_svgImporting) {
-        qDebug() << "Creating default layer";
+        
         // 使用标准方法创建默认图层
         DrawingLayer *defaultLayer = new DrawingLayer("背景图层");
         connectLayer(defaultLayer);
@@ -84,20 +83,20 @@ void LayerManager::setScene(DrawingScene *scene)
             }
         }
         
-        qDebug() << "Default layer created successfully, total layers:" << m_layers.count();
+        
         
         // 发出图层添加信号，通知UI
-        qDebug() << "LayerManager: Emitting layerAdded signal for default layer:" << defaultLayer->name();
+        
         emit layerAdded(defaultLayer);
         
         // 检查是否有LayerPanel已经连接，如果有但可能错过了信号，手动更新
         // 注意：这是一个临时解决方案，更好的架构应该是延迟初始化
         if (m_layerPanel) {
-            qDebug() << "LayerManager: LayerPanel already exists, updating it";
+            
             updatePanel();
         }
     } else {
-        qDebug() << "Not creating default layer. m_scene:" << m_scene << "layers.isEmpty():" << m_layers.isEmpty();
+        
     }
 }
 
@@ -108,27 +107,27 @@ void LayerManager::setLayerPanel(LayerPanel *panel)
     }
     
     m_layerPanel = panel;
-    qDebug() << "Layer panel set, updating with" << m_layers.count() << "layers";
+    
     updatePanel();
 }
 
 DrawingLayer* LayerManager::createLayer(const QString &name)
 {
-    qDebug() << "LayerManager::createLayer called with name:" << name;
+    
     
     QString layerName = name;
     if (layerName.isEmpty()) {
         layerName = QString("图层 %1").arg(m_layerCounter++);
     }
     
-    qDebug() << "Creating layer with name:" << layerName;
+    
     
     DrawingLayer *newLayer = new DrawingLayer(layerName);
     connectLayer(newLayer);
     
     // 添加到列表开头（新图层在最上层）
     m_layers.insert(0, newLayer);
-    qDebug() << "Layer added to list, total layers:" << m_layers.count();
+    
     
     // 添加到场景
     addLayerToScene(newLayer);
@@ -137,24 +136,25 @@ DrawingLayer* LayerManager::createLayer(const QString &name)
     setActiveLayer(newLayer);
     
     emit layerAdded(newLayer);
-    qDebug() << "Layer created successfully:" << newLayer->name();
+    
     
     return newLayer;
 }
 
 DrawingLayer* LayerManager::createLayerForSvg(const QString &name)
 {
-    qDebug() << "LayerManager::createLayerForSvg called with name:" << name;
+    
     
     DrawingLayer *newLayer = new DrawingLayer(name);
     connectLayer(newLayer);
     
     // 添加到列表末尾（保持SVG中的顺序，先解析的在下层）
     m_layers.append(newLayer);
-    qDebug() << "SVG Layer added to end of list, total layers:" << m_layers.count();
+    
     
     // 添加到场景
     addLayerToScene(newLayer);
+    
     
     // 设置为活动图层（如果是第一个SVG图层）
     if (m_layers.count() == 1) {
@@ -162,7 +162,7 @@ DrawingLayer* LayerManager::createLayerForSvg(const QString &name)
     }
     
     emit layerAdded(newLayer);
-    qDebug() << "SVG Layer created successfully:" << newLayer->name();
+    
     
     return newLayer;
 }
@@ -488,8 +488,10 @@ void LayerManager::updateLayerPanel()
 
 void LayerManager::addLayerToScene(DrawingLayer *layer)
 {
+    
     if (layer) {
         layer->setScene(m_scene);
+        
     }
 }
 
@@ -506,7 +508,7 @@ void LayerManager::updatePanel()
         return;
     }
     
-    qDebug() << "Updating layer panel with" << m_layers.count() << "layers";
+    
     
     // 调用图层面板的updateLayerList方法来显示真实图层
     m_layerPanel->updateLayerList();

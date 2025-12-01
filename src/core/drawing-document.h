@@ -48,6 +48,7 @@ signals:
     void documentClosed();
     void modificationChanged(bool modified);
     void filePathChanged(const QString &filePath);
+    void pageSizeChanged(const QSizeF &size);  // 页面大小变化信号
 
 private:
     void initializeDocument();      // 初始化文档

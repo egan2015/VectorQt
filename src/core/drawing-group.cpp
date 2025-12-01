@@ -46,10 +46,14 @@ void DrawingGroup::addItem(DrawingShape *item)
     if (isSvgImport)
     {
         // SVG导入时，子元素的位置是相对于SVG坐标系的
-        // 需要将其转换为相对于组的本地坐标
-        // 由于组还没有变换，子元素应该保持其原始位置
-        // 但需要确保坐标系一致
-        item->setPos(item->pos()); // 保持原始位置
+        // 但为了统一变换正常工作，我们需要将其转换为组的本地坐标
+        // 由于组还没有位置和变换，我们可以假设组在原点(0,0)
+        // 所以SVG坐标就是场景坐标，需要转换为组本地坐标
+        QPointF svgPos = item->pos();  // SVG坐标
+        // 由于组在原点，mapFromScene(svgPos) = svgPos
+        // 但为了确保坐标系一致，我们还是进行转换
+        QPointF localPos = svgPos;  // 组在原点时，SVG坐标就是本地坐标
+        item->setPos(localPos);
     }
     else
     {
@@ -58,7 +62,7 @@ void DrawingGroup::addItem(DrawingShape *item)
         QPointF scenePos = item->scenePos();
         // 将场景位置转换为组的本地坐标
         QPointF localPos = this->mapFromScene(scenePos);
-        // 设置子项在组内的本地位置
+        // 设置子项在组内的本地坐标
         item->setPos(localPos);
     }
 
@@ -67,7 +71,11 @@ void DrawingGroup::addItem(DrawingShape *item)
 
     // 🌟 关键修复：重置子项的变换，避免二次变换
     // 子项的位置已经转换为本地坐标，所以变换应该是单位矩阵
-    // item->applyTransform(QTransform());
+    // 对于SVG导入的子元素，需要重置其变换矩阵
+    if (isSvgImport)
+    {
+        item->setTransform(QTransform());
+    }
 
     // 保存到列表
     m_items.append(item);

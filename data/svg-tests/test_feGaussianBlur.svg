@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="400" height="300" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- 测试feGaussianBlur滤镜 -->
+    <filter id="blur1">
+      <feGaussianBlur stdDeviation="2" />
+    </filter>
+    
+    <!-- 测试带属性的feGaussianBlur滤镜 -->
+    <filter id="blur2" x="-0.1" y="-0.1" width="1.2" height="1.2">
+      <feGaussianBlur stdDeviation="3" />
+    </filter>
+  </defs>
+  
+  <!-- 测试矩形应用滤镜 -->
+  <rect x="50" y="50" width="100" height="60" fill="blue" filter="url(#blur1)" />
+  
+  <!-- 测试圆形应用滤镜 -->
+  <circle cx="250" cy="80" r="40" fill="red" filter="url(#blur2)" />
+  
+  <!-- 测试路径应用滤镜 -->
+  <path d="M 50 150 L 150 150 L 100 200 Z" fill="green" filter="url(#blur1)" />
+</svg>

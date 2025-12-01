@@ -39,6 +39,8 @@ CustomHandleItem::CustomHandleItem()
 {
     // 启用半透明效果
     setFlag(QGraphicsItem::ItemUsesExtendedStyleOption, true);
+    // 关键：设置手柄不进行缩放
+    setFlag(QGraphicsItem::ItemIgnoresTransformations, true);
     setAcceptHoverEvents(true);
 }
 
@@ -47,6 +49,8 @@ CustomHandleItem::CustomHandleItem(TransformHandle::HandleType type, QGraphicsIt
 {
     // 启用半透明效果
     setFlag(QGraphicsItem::ItemUsesExtendedStyleOption, true);
+    // 关键：设置手柄不进行缩放
+    setFlag(QGraphicsItem::ItemIgnoresTransformations, true);
     setAcceptHoverEvents(true);
 
     // 根据手柄类型设置样式
